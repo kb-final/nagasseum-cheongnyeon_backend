@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE configuration PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-config.dtd">
+<configuration>
+    <settings>
+        <!-- DB의 snake_case → 자바 camelCase 자동 매핑 -->
+        <setting name="mapUnderscoreToCamelCase" value="true"/>
+        <!-- null 값도 매핑 대상에 포함 -->
+        <setting name="callSettersOnNulls" value="true"/>
+        <!-- 개발 중 SQL 로그 확인용 -->
+        <setting name="logImpl" value="SLF4J"/>
+    </settings>
+</configuration>

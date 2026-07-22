@@ -1,0 +1,41 @@
+package com.team.independence.common.exception;
+
+import lombok.Getter;
+import org.springframework.http.HttpStatus;
+
+/**
+ * 도메인별 프리픽스로 구역을 나눈다.
+ * 각자 자기 도메인 구역에만 코드를 추가할 것 (git 충돌 최소화).
+ */
+@Getter
+public enum ErrorCode {
+
+    // ===== 공통 COMMON_xxx =====
+    INVALID_INPUT("COMMON_001", "잘못된 요청입니다.", HttpStatus.BAD_REQUEST),
+    INTERNAL_ERROR("COMMON_002", "서버 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
+    UNAUTHORIZED("COMMON_003", "인증이 필요합니다.", HttpStatus.UNAUTHORIZED),
+
+    // ===== 회원 MEMBER_xxx =====
+    MEMBER_NOT_FOUND("MEMBER_001", "회원을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    MEMBER_WITHDRAWN("MEMBER_002", "탈퇴한 회원입니다.", HttpStatus.FORBIDDEN),
+
+    // ===== 자산 ASSET_xxx =====
+    ASSET_NOT_LINKED("ASSET_001", "자산 연동이 필요합니다.", HttpStatus.BAD_REQUEST),
+    ASSET_SYNC_IN_PROGRESS("ASSET_002", "동기화가 이미 진행 중입니다.", HttpStatus.CONFLICT),
+
+    // ===== 목표 GOAL_xxx =====
+    GOAL_NOT_FOUND("GOAL_001", "목표를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+
+    // ===== 정책 POLICY_xxx =====
+    POLICY_NOT_FOUND("POLICY_001", "정책을 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
+
+    private final String code;
+    private final String message;
+    private final HttpStatus status;
+
+    ErrorCode(String code, String message, HttpStatus status) {
+        this.code = code;
+        this.message = message;
+        this.status = status;
+    }
+}

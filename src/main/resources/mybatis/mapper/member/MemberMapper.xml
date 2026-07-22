@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  ★ 도메인별로 XML을 분리한다 (git 충돌 최소화).
+    각자 자기 도메인 폴더의 XML만 수정할 것.
+-->
+<mapper namespace="com.team.independence.member.mapper.MemberMapper">
+
+    <resultMap id="memberMap" type="com.team.independence.member.domain.Member">
+        <id     property="id"                     column="id"/>
+        <result property="kakaoId"                column="kakao_id"/>
+        <result property="nickname"               column="nickname"/>
+        <result property="birthDate"              column="birth_date"/>
+        <result property="incomeBracket"          column="income_bracket"/>
+        <result property="incomeBracketUpdatedAt" column="income_bracket_updated_at"/>
+        <result property="createdAt"              column="created_at"/>
+        <result property="updatedAt"              column="updated_at"/>
+    </resultMap>
+
+    <select id="findById" parameterType="long" resultMap="memberMap">
+        SELECT id, kakao_id, nickname, birth_date,
+               income_bracket, income_bracket_updated_at,
+               created_at, updated_at
+          FROM member
+         WHERE id = #{id}
+    </select>
+
+</mapper>
