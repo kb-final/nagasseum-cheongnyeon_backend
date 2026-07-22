@@ -2,7 +2,7 @@
 
 청년 독립 준비 플랫폼 백엔드 · **Spring Legacy 5.3 + MyBatis + JDK 17 + Maven**
 
-> 처음 세팅 시 → **[ONBOARDING.md](./ONBOARDING.md)** 를 순서대로 따라오세요.
+> 처음 세팅 시 → **[ONBOARDING.md](./Onboarding.md)** 를 순서대로 따라오세요.
 
 ---
 
