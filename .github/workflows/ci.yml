@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ develop, main ]
+  push:
+    branches: [ develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: JDK 17 설정
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: 빌드
+        run: mvn -B clean package
+
+      - name: WAR 생성 확인
+        run: |
+          if [ ! -f target/independence-backend.war ]; then
+            echo "❌ WAR 파일이 생성되지 않았습니다"
+            exit 1
+          fi
+          echo "✅ 빌드 성공: $(ls -lh target/independence-backend.war | awk '{print $5}')"
