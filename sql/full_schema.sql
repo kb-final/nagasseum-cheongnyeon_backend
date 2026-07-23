@@ -1,5 +1,5 @@
 -- =====================================================================
--- 나갔음 청년 - 전체 스키마 (17개 테이블)
+-- 나갔음 청년 - 전체 스키마 (19개 테이블)
 -- MySQL 8.0 / utf8mb4 / 금액은 BIGINT(원 단위) / 타임존 KST
 -- 생성 순서: 참조되는(부모) 테이블 → 참조하는(자식) 테이블
 -- =====================================================================
@@ -147,13 +147,28 @@ CREATE TABLE member_saved_policies (
     CONSTRAINT fk_saved_policy FOREIGN KEY (policy_id) REFERENCES policies (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='관심(저장) 정책';
 
+-- 수동 입력 자산 (연동으로 못 가져오는 자산) ---------------------------
+CREATE TABLE manual_assets (
+    id          BIGINT      NOT NULL AUTO_INCREMENT,
+    member_id   BIGINT      NOT NULL COMMENT '회원 FK',
+    asset_type  VARCHAR(20) NOT NULL COMMENT '자산 유형(DEPOSIT: 현재 거주 보증금)',
+    amount      BIGINT      NOT NULL DEFAULT 0 COMMENT '자산 금액(원)',
+    created_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_manual_member (member_id),
+    -- 회원당 유형별 1건으로 제한할 경우 아래 주석 해제 (팀 결정 사항)
+    -- UNIQUE KEY uk_manual_member_type (member_id, asset_type),
+    CONSTRAINT fk_manual_member FOREIGN KEY (member_id) REFERENCES member (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='수동 입력 자산';
+
 CREATE TABLE asset_summary (
     id               BIGINT   NOT NULL AUTO_INCREMENT,
     member_id        BIGINT   NOT NULL COMMENT '회원 FK(1:1)',
     total_assets     BIGINT   NOT NULL DEFAULT 0 COMMENT '총자산 합계',
     loan_balance     BIGINT   NOT NULL DEFAULT 0 COMMENT '총 대출 잔액',
     monthly_savings  BIGINT   NOT NULL DEFAULT 0 COMMENT '월 저축액',
-    synced_at        DATETIME NOT NULL COMMENT '마지막 동기화 시각',
+    synced_at        DATETIME NULL     COMMENT '마지막 동기화 시각',
     created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -170,12 +185,12 @@ CREATE TABLE asset_snapshot (
     net_assets      BIGINT      NOT NULL DEFAULT 0 COMMENT '그 달 순자산(total - loan)',
     monthly_savings BIGINT      NOT NULL DEFAULT 0 COMMENT '월 저축액',
     income_bracket  VARCHAR(20) NULL     COMMENT '그 시점 소득 구간(member 값 복사)',
-    created_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '그 달 첫 동기화 시점',
+    created_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_snapshot_member_ym (member_id, snapshot_ym),
     CONSTRAINT fk_snapshot_member FOREIGN KEY (member_id) REFERENCES member (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='자산 월별 이력(동기화 시 upsert)';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='자산 월별 이력';
 
 CREATE TABLE connected_account (
     id                BIGINT       NOT NULL AUTO_INCREMENT,
@@ -207,6 +222,35 @@ CREATE TABLE goal (
     KEY idx_goal_member_status (member_id, status),
     CONSTRAINT fk_goal_member FOREIGN KEY (member_id) REFERENCES member (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='목표 본체(금액 고정)';
+
+-- =====================================================================
+-- [또래 비교]
+-- =====================================================================
+
+-- 목표 월별 스냅샷 (매월 1일 배치로 고정 저장) -------------------------
+CREATE TABLE goal_snapshot (
+    id               BIGINT       NOT NULL AUTO_INCREMENT,
+    member_id        BIGINT       NOT NULL COMMENT '대상 회원 FK',
+    goal_id          BIGINT       NOT NULL COMMENT '대상 목표 FK',
+    region_code      VARCHAR(5)   NOT NULL COMMENT '희망 지역 FK → 인기 지역 TOP 3',
+    snapshot_ym      VARCHAR(6)   NOT NULL COMMENT '집계 기준월 YYYYMM',
+    age              INT          NOT NULL COMMENT '그 시점 만 나이(고정) → 코호트 연령 필터',
+    net_assets       BIGINT       NOT NULL COMMENT '그 시점 순자산 → 코호트 자산 필터 기준값',
+    goal_type        VARCHAR(20)  NOT NULL COMMENT '목표 종류(현재 HOUSING)',
+    housing_type     VARCHAR(20)  NOT NULL COMMENT '주거 형태 → 향후 분포 확장 대비',
+    deal_type        VARCHAR(10)  NOT NULL COMMENT '거래 유형 → 목표 유형 분포',
+    target_amount    BIGINT       NOT NULL COMMENT '목표 금액 → 평균 목표 자산',
+    achievement_rate DECIMAL(5,2) NOT NULL COMMENT '그 시점 달성률(%) → 달성률 분포',
+    prep_months      INT          NOT NULL COMMENT '준비 기간(개월) → 평균 준비 기간',
+    monthly_saving   BIGINT       NOT NULL COMMENT '그 시점 월 저축액 → 저축액 구간',
+    created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_goal_snapshot_member_ym (member_id, snapshot_ym),
+    KEY idx_goal_snapshot_cohort (snapshot_ym, net_assets, age),
+    CONSTRAINT fk_goal_snapshot_member FOREIGN KEY (member_id)   REFERENCES member (id),
+    CONSTRAINT fk_goal_snapshot_goal   FOREIGN KEY (goal_id)     REFERENCES goal (id),
+    CONSTRAINT fk_goal_snapshot_region FOREIGN KEY (region_code) REFERENCES region (code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='또래 비교 집계용 목표 스냅샷';
 
 -- =====================================================================
 -- [연동·기관 종속]
@@ -245,7 +289,7 @@ CREATE TABLE asset_account (
     KEY idx_asset_account_inst (connected_institution_id),
     KEY idx_asset_account_category (asset_category),
     CONSTRAINT fk_asset_account_inst FOREIGN KEY (connected_institution_id) REFERENCES connected_institution (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='자산 계좌(예적금·주식)';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='자산 계좌(예적금·주식). 동기화 시 사라진 계좌는 물리 삭제';
 
 CREATE TABLE loan_account (
     id                       BIGINT      NOT NULL AUTO_INCREMENT,
@@ -265,20 +309,23 @@ CREATE TABLE loan_account (
 -- [목표 종속]
 -- =====================================================================
 
+-- 주거 목표 상세 (단일 선택) -------------------------------------------
 CREATE TABLE goal_housing (
-    goal_id          BIGINT NOT NULL COMMENT 'goal FK(1:1)',
-    regions          JSON   NOT NULL COMMENT '지역 코드 배열 ["11650","11680"]',
-    housing_types    JSON   NOT NULL COMMENT '다중 선택 주거 형태',
-    deal_types       JSON   NOT NULL COMMENT '다중 선택 거래 유형',
-    area_min         INT    NOT NULL COMMENT '희망 최소 평수',
-    area_max         INT    NOT NULL COMMENT '희망 최대 평수',
-    deposit_min      BIGINT NOT NULL COMMENT '희망 최소 보증금',
-    deposit_max      BIGINT NOT NULL COMMENT '희망 최대 보증금',
-    monthly_rent_min BIGINT NOT NULL DEFAULT 0 COMMENT '희망 최소 월세(전세만이면 0)',
-    monthly_rent_max BIGINT NOT NULL DEFAULT 0 COMMENT '희망 최대 월세(전세만이면 0)',
+    goal_id          BIGINT      NOT NULL COMMENT 'goal FK(1:1)',
+    region_code      VARCHAR(5)  NOT NULL COMMENT '희망 지역 FK → region.code',
+    housing_type     VARCHAR(20) NOT NULL COMMENT '희망 주거 형태(APT/OFFICETEL/ROW_HOUSE/DETACHED)',
+    deal_type        VARCHAR(10) NOT NULL COMMENT '희망 거래 유형(전세/월세)',
+    area_min         INT         NOT NULL COMMENT '희망 최소 평수',
+    area_max         INT         NOT NULL COMMENT '희망 최대 평수',
+    deposit_min      BIGINT      NOT NULL COMMENT '희망 최소 보증금',
+    deposit_max      BIGINT      NOT NULL COMMENT '희망 최대 보증금',
+    monthly_rent_min BIGINT      NOT NULL DEFAULT 0 COMMENT '희망 최소 월세(전세면 0)',
+    monthly_rent_max BIGINT      NOT NULL DEFAULT 0 COMMENT '희망 최대 월세(전세면 0)',
     PRIMARY KEY (goal_id),
-    CONSTRAINT fk_goal_housing_goal FOREIGN KEY (goal_id) REFERENCES goal (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='주거 목표 상세';
+    KEY idx_goal_housing_region (region_code),
+    CONSTRAINT fk_goal_housing_goal   FOREIGN KEY (goal_id)     REFERENCES goal (id),
+    CONSTRAINT fk_goal_housing_region FOREIGN KEY (region_code) REFERENCES region (code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='주거 목표 상세(단일 선택)';
 
 CREATE TABLE saving_record (
     id            BIGINT     NOT NULL AUTO_INCREMENT,
