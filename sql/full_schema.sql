@@ -86,13 +86,13 @@ CREATE TABLE rent_transaction (
     region_code    VARCHAR(5)    NOT NULL COMMENT '지역코드(sggCd) → region.code',
     housing_type   VARCHAR(20)   NOT NULL COMMENT 'APT / ROW_HOUSE / OFFICETEL / DETACHED',
     dong_name      VARCHAR(50)   NOT NULL COMMENT '법정동',
-    jibun          VARCHAR(30)   NULL     COMMENT '지번(단독다가구 미제공)',
-    complex_name   VARCHAR(100)  NULL     COMMENT '단지명(단독다가구 미제공)',
+    jibun          VARCHAR(30)   NULL     COMMENT '지번(단독/다가구 미제공)',
+    complex_name   VARCHAR(100)  NULL     COMMENT '단지명(단독/다가구 미제공)',
     area           DECIMAL(10,2) NOT NULL COMMENT '전용면적 / 연면적(단독다가구)',
     deal_type      VARCHAR(10)   NOT NULL COMMENT '전세 / 월세 (monthly_rent=0이면 전세)',
     deposit        BIGINT        NOT NULL DEFAULT 0 COMMENT '보증금(원)',
     monthly_rent   BIGINT        NOT NULL DEFAULT 0 COMMENT '월세(원, 전세=0)',
-    floor          INT           NULL     COMMENT '층(단독다가구 미제공)',
+    floor          INT           NULL     COMMENT '층(단독/다가구 미제공)',
     build_year     INT           NULL     COMMENT '건축년도(빈 값으로 오는 거래 존재)',
     deal_ym        VARCHAR(6)    NOT NULL COMMENT '계약년월 YYYYMM',
     deal_day       VARCHAR(2)    NOT NULL COMMENT '계약일',
@@ -180,7 +180,7 @@ CREATE TABLE asset_snapshot (
     id              BIGINT      NOT NULL AUTO_INCREMENT,
     member_id       BIGINT      NOT NULL COMMENT '대상 회원 FK',
     snapshot_ym     VARCHAR(6)  NOT NULL COMMENT '스냅샷 연월 YYYYMM',
-    total_assets    BIGINT      NOT NULL DEFAULT 0 COMMENT '그 달 총자산',
+    total_assets    BIGINT      NOT NULL DEFAULT 0 COMMENT '그 달 총자산(asset_account.current_value 합산)',
     loan_balance    BIGINT      NOT NULL DEFAULT 0 COMMENT '그 달 총부채',
     net_assets      BIGINT      NOT NULL DEFAULT 0 COMMENT '그 달 순자산(total - loan)',
     monthly_savings BIGINT      NOT NULL DEFAULT 0 COMMENT '월 저축액',
@@ -211,6 +211,7 @@ CREATE TABLE goal (
     member_id                    BIGINT      NOT NULL COMMENT '회원 FK',
     goal_type                    VARCHAR(20) NOT NULL DEFAULT 'HOUSING' COMMENT '목표 종류',
     target_amount                BIGINT      NOT NULL COMMENT '목표 금액(설정 시점 고정, 자동 갱신 없음)',
+    target_rent_middle_amount    BIGINT      NOT NULL COMMENT '목표 설정 당시 매물 중앙값(시세 알림 배너 비교 기준)',
     target_date                  DATE        NOT NULL COMMENT '희망 목표 시점',
     monthly_saving               BIGINT      NOT NULL COMMENT '월 저축액(사용자 입력, 수정 가능)',
     status                       VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/ACHIEVED/ARCHIVED',
@@ -227,7 +228,6 @@ CREATE TABLE goal (
 -- [또래 비교]
 -- =====================================================================
 
--- 목표 월별 스냅샷 (매월 1일 배치로 고정 저장) -------------------------
 CREATE TABLE goal_snapshot (
     id               BIGINT       NOT NULL AUTO_INCREMENT,
     member_id        BIGINT       NOT NULL COMMENT '대상 회원 FK',
@@ -247,6 +247,7 @@ CREATE TABLE goal_snapshot (
     PRIMARY KEY (id),
     UNIQUE KEY uk_goal_snapshot_member_ym (member_id, snapshot_ym),
     KEY idx_goal_snapshot_cohort (snapshot_ym, net_assets, age),
+    KEY idx_goal_snapshot_region (region_code),
     CONSTRAINT fk_goal_snapshot_member FOREIGN KEY (member_id)   REFERENCES member (id),
     CONSTRAINT fk_goal_snapshot_goal   FOREIGN KEY (goal_id)     REFERENCES goal (id),
     CONSTRAINT fk_goal_snapshot_region FOREIGN KEY (region_code) REFERENCES region (code)
@@ -274,14 +275,21 @@ CREATE TABLE connected_institution (
     CONSTRAINT fk_conn_inst_institution FOREIGN KEY (institution_code)     REFERENCES institution (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='연동 기관(기관별 상태·실패 관리)';
 
+-- 자산 계좌 -------------------------------------------------------------
+-- account_type   : 카드 부제 표시용 (자유입출금/예금/적금/청약/펀드/주식)
+-- asset_category : 화면 섹션 그룹핑용 (5개 섹션)
 CREATE TABLE asset_account (
     id                       BIGINT       NOT NULL AUTO_INCREMENT,
     connected_institution_id BIGINT       NOT NULL COMMENT '연결된 기관 FK',
-    account_type             VARCHAR(20)  NOT NULL COMMENT 'DEPOSIT/SAVINGS/STOCK/FUND',
-    asset_category           VARCHAR(20)  NOT NULL COMMENT 'CASH_ASSET/INVESTMENT',
+    account_type             VARCHAR(20)  NOT NULL COMMENT 'DEMAND:자유입출금 / DEPOSIT:예금 / SAVINGS:적금 / SUBSCRIPTION:청약 / FUND:펀드 / STOCK:주식',
+    asset_category           VARCHAR(20)  NOT NULL COMMENT 'CASH / DEPOSIT_SAVINGS / INVESTMENT / SUBSCRIPTION / ETC',
     account_display          VARCHAR(50)  NOT NULL COMMENT '표시용 계좌번호',
     product_name             VARCHAR(100) NOT NULL COMMENT '계좌명/상품명',
-    balance                  BIGINT       NOT NULL DEFAULT 0 COMMENT '현재가치 환산액(증권=평가금액+예수금)',
+    current_value            BIGINT       NULL     COMMENT '현재가치 환산액(예적금=잔액, 펀드/증권=평가금액+예수금). 기준가 미공시 시 NULL',
+    valuation_amount         BIGINT       NULL     COMMENT '증권 평가금액(증권 계좌 전용)',
+    deposit_received         BIGINT       NULL     COMMENT '예수금(증권 계좌 전용)',
+    earnings_rate            DECIMAL(6,2) NULL     COMMENT '수익률(%, 음수 가능)',
+    maturity_date            DATE         NULL     COMMENT '만기일',
     raw_response             JSON         NOT NULL COMMENT 'CODEF 원본 응답',
     created_at               DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at               DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -289,17 +297,17 @@ CREATE TABLE asset_account (
     KEY idx_asset_account_inst (connected_institution_id),
     KEY idx_asset_account_category (asset_category),
     CONSTRAINT fk_asset_account_inst FOREIGN KEY (connected_institution_id) REFERENCES connected_institution (id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='자산 계좌(예적금·주식). 동기화 시 사라진 계좌는 물리 삭제';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='자산 계좌. 동기화 시 응답에 없는 계좌는 물리 삭제';
 
 CREATE TABLE loan_account (
-    id                       BIGINT      NOT NULL AUTO_INCREMENT,
-    connected_institution_id BIGINT      NOT NULL COMMENT '연결된 기관 FK',
-    loan_name                VARCHAR(20) NOT NULL COMMENT '대출 상품명',
-    account_display          VARCHAR(20) NOT NULL COMMENT '표시용 계좌번호',
-    loan_balance             BIGINT      NOT NULL DEFAULT 0 COMMENT '대출 잔액(원)',
-    raw_response             JSON        NOT NULL COMMENT 'CODEF 원본 응답',
-    created_at               DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at               DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    id                       BIGINT       NOT NULL AUTO_INCREMENT,
+    connected_institution_id BIGINT       NOT NULL COMMENT '연결된 기관 FK',
+    loan_name                VARCHAR(100) NOT NULL COMMENT '대출 상품명',
+    account_display          VARCHAR(50)  NOT NULL COMMENT '표시용 계좌번호',
+    loan_balance             BIGINT       NOT NULL DEFAULT 0 COMMENT '대출 잔액(원)',
+    raw_response             JSON         NOT NULL COMMENT 'CODEF 원본 응답',
+    created_at               DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at               DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_loan_account_inst (connected_institution_id),
     CONSTRAINT fk_loan_account_inst FOREIGN KEY (connected_institution_id) REFERENCES connected_institution (id)
@@ -309,11 +317,10 @@ CREATE TABLE loan_account (
 -- [목표 종속]
 -- =====================================================================
 
--- 주거 목표 상세 (단일 선택) -------------------------------------------
 CREATE TABLE goal_housing (
     goal_id          BIGINT      NOT NULL COMMENT 'goal FK(1:1)',
     region_code      VARCHAR(5)  NOT NULL COMMENT '희망 지역 FK → region.code',
-    housing_type     VARCHAR(20) NOT NULL COMMENT '희망 주거 형태(APT/OFFICETEL/ROW_HOUSE/DETACHED)',
+    housing_type     VARCHAR(20) NOT NULL COMMENT '희망 주거 형태(아파트/오피스텔/연립다세대/단독다가구)',
     deal_type        VARCHAR(10) NOT NULL COMMENT '희망 거래 유형(전세/월세)',
     area_min         INT         NOT NULL COMMENT '희망 최소 평수',
     area_max         INT         NOT NULL COMMENT '희망 최대 평수',
