@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 
 import javax.sql.DataSource;
+import org.springframework.web.client.RestTemplate;
 
 /**
  * 공통 인프라 빈 설정 (DataSource, MyBatis, Redis, 트랜잭션).
@@ -113,5 +114,10 @@ public class RootConfig {
     @Bean
     public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory cf) {
         return new StringRedisTemplate(cf);
+    }
+
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
     }
 }
