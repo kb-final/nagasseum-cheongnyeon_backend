@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.auth.mapper.RefreshTokenMapper">
+
+    <insert id="save">
+        INSERT INTO refresh_token (member_id, token, expires_at)
+        VALUES (#{memberId}, #{token}, #{expiresAt})
+    </insert>
+
+    <delete id="deleteByMemberId" parameterType="long">
+        DELETE FROM refresh_token
+         WHERE member_id = #{memberId}
+    </delete>
+
+</mapper>

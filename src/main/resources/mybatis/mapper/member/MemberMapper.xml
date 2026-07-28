@@ -27,4 +27,12 @@
          WHERE id = #{id}
     </select>
 
+    <select id="findByKakaoId" parameterType="string" resultMap="memberMap">
+        SELECT id, kakao_id, nickname, birth_date,
+               income_bracket, income_bracket_updated_at,
+               created_at, updated_at
+          FROM member
+         WHERE kakao_id = #{kakaoId}
+    </select>
+
 </mapper>

@@ -14,4 +14,7 @@ public interface MemberMapper {
 
     /** PK로 회원 조회 */
     Member findById(Long id);
+
+    /** 카카오 고유 ID로 회원 조회 */
+    Member findByKakaoId(String kakaoId);
 }
