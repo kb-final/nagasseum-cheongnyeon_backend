@@ -4,6 +4,12 @@ import org.springframework.web.filter.CharacterEncodingFilter;
 import org.springframework.web.servlet.support.AbstractAnnotationConfigDispatcherServletInitializer;
 
 import javax.servlet.Filter;
+import javax.servlet.ServletContext;
+import javax.servlet.ServletException;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 /**
  * web.xml 대체 (자바 Config 방식).
@@ -38,5 +44,63 @@ public class WebAppInitializer extends AbstractAnnotationConfigDispatcherServlet
         encodingFilter.setEncoding("UTF-8");
         encodingFilter.setForceEncoding(true);
         return new Filter[]{ encodingFilter };
+    }
+
+    /**
+     * Spring 컨텍스트 초기화 전에 .env 파일을 읽어 시스템 프로퍼티로 주입합니다.
+     * VM options(-D)나 이미 설정된 시스템 프로퍼티가 있으면 .env 값을 덮어쓰지 않습니다.
+     */
+    @Override
+    public void onStartup(ServletContext servletContext) throws ServletException {
+        loadDotEnv(servletContext);
+        super.onStartup(servletContext);
+    }
+
+    private void loadDotEnv(ServletContext servletContext) {
+        Path envFile = findEnvFile(servletContext);
+        if (envFile == null) return;
+
+        try {
+            Files.lines(envFile)
+                    .map(String::trim)
+                    .filter(line -> !line.isEmpty() && !line.startsWith("#") && line.contains("="))
+                    .forEach(line -> {
+                        int eq = line.indexOf('=');
+                        String key   = line.substring(0, eq).trim();
+                        String value = line.substring(eq + 1).trim();
+                        if (System.getProperty(key) == null) {
+                            System.setProperty(key, value);
+                        }
+                    });
+        } catch (IOException ignored) {
+        }
+    }
+
+    /**
+     * <.env 탐색 순서>
+     * 1) 배포된 WAR 실제 경로에서 상위로 탐색
+     * 2) user.dir 에서 상위로 탐색
+     */
+    private Path findEnvFile(ServletContext servletContext) {
+        String realPath = servletContext.getRealPath("/");
+        if (realPath != null) {
+            Path dir = Paths.get(realPath);
+            for (int i = 0; i < 4; i++) {
+                Path candidate = dir.resolve(".env");
+                if (Files.exists(candidate)) return candidate;
+                Path parent = dir.getParent();
+                if (parent == null) break;
+                dir = parent;
+            }
+        }
+        Path dir = Paths.get(System.getProperty("user.dir", "."));
+        for (int i = 0; i < 4; i++) {
+            Path candidate = dir.resolve(".env");
+            if (Files.exists(candidate)) return candidate;
+            Path parent = dir.getParent();
+            if (parent == null) break;
+            dir = parent;
+        }
+        return null;
     }
 }
