@@ -107,16 +107,18 @@ CREATE TABLE rent_transaction (
     CONSTRAINT fk_rent_region FOREIGN KEY (region_code) REFERENCES region (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='실거래 전월세(4종 통합)';
 
--- 수집 이력 (지역 268 × 6개월 × 4종 = 6,432행 고정)
+-- 수집 이력
 -- 최초 수집/증분 수집을 코드에서 분기하지 않고, 조합별 성공 여부로 판단하기 위한 테이블.
+-- 한 번 쌓인 이력은 지우지 않는다(지역 268 × 4종 × 누적 개월수만큼 늘어난다).
 CREATE TABLE rent_sync_log (
     region_code   VARCHAR(5)  NOT NULL COMMENT '지역코드(FK 미설정: 이력은 region 삭제와 무관하게 보존)',
     deal_ym       VARCHAR(6)  NOT NULL COMMENT '계약년월 YYYYMM',
     housing_type  VARCHAR(20) NOT NULL COMMENT 'APT / ROW_HOUSE / OFFICETEL / DETACHED',
-    status        VARCHAR(10) NOT NULL COMMENT 'SUCCESS / FAILED',
+    is_success    BOOLEAN     NOT NULL COMMENT '수집 성공 여부(false면 다음 실행에서 재시도)',
     inserted_cnt  INT         NOT NULL DEFAULT 0 COMMENT '마지막 적재 건수',
-    synced_at     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP
-                              ON UPDATE CURRENT_TIMESTAMP,
+    created_at    DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '최초 수집 시각',
+    updated_at    DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP
+                              ON UPDATE CURRENT_TIMESTAMP COMMENT '마지막 수집 시각',
     PRIMARY KEY (region_code, deal_ym, housing_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='지역-연월-유형 단위 수집 이력';
 

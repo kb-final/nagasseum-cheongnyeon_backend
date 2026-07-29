@@ -28,7 +28,6 @@ public class RentTransaction {
     private String dealDay;
     private String contractType;
     private String contractTerm;
-    private String dedupKey;
     private String json;
     private LocalDateTime createdAt;
 }
