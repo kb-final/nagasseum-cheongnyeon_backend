@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.client.RestTemplate;
 
 import javax.sql.DataSource;
+import org.springframework.web.client.RestTemplate;
 
 /**
  * 공통 인프라 빈 설정 (DataSource, MyBatis, Redis, 트랜잭션).

@@ -5,3 +5,5 @@ target/
 .env
 .DS_Store
 logs/
+.claude/
+CLAUDE.md

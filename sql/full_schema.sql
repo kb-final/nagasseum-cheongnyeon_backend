@@ -1,5 +1,5 @@
 -- =====================================================================
--- 나갔음 청년 - 전체 스키마 (19개 테이블)
+-- 나갔음 청년 - 전체 스키마 (20개 테이블)
 -- MySQL 8.0 / utf8mb4 / 금액은 BIGINT(원 단위) / 타임존 KST
 -- 생성 순서: 참조되는(부모) 테이블 → 참조하는(자식) 테이블
 -- =====================================================================
@@ -98,15 +98,29 @@ CREATE TABLE rent_transaction (
     deal_day       VARCHAR(2)    NOT NULL COMMENT '계약일',
     contract_type  VARCHAR(20)   NULL     COMMENT '갱신 / 신규(구 데이터는 빈 값)',
     contract_term  VARCHAR(30)   NULL     COMMENT '계약기간(구 데이터는 빈 값)',
-    dedup_key      CHAR(64)      NOT NULL COMMENT '중복방지 해시(SHA-256)',
     json           JSON          NOT NULL COMMENT '국토부 원본 응답',
     created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_rent_dedup (dedup_key),
-    KEY idx_rent_search (region_code, housing_type, deal_type, deal_ym),
-    KEY idx_rent_ym (deal_ym),
+    -- (지역, 연월, 유형) 단위 재적재 시 DELETE 대상을 구간으로 좁힌다.
+    -- 최좌측 프리픽스가 region_code라 fk_rent_region의 인덱스 요건도 함께 충족.
+    KEY idx_rent_reload (region_code, deal_ym, housing_type),
     CONSTRAINT fk_rent_region FOREIGN KEY (region_code) REFERENCES region (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='실거래 전월세(4종 통합)';
+
+-- 수집 이력
+-- 최초 수집/증분 수집을 코드에서 분기하지 않고, 조합별 성공 여부로 판단하기 위한 테이블.
+-- 한 번 쌓인 이력은 지우지 않는다(지역 268 × 4종 × 누적 개월수만큼 늘어난다).
+CREATE TABLE rent_sync_log (
+    region_code   VARCHAR(5)  NOT NULL COMMENT '지역코드(FK 미설정: 이력은 region 삭제와 무관하게 보존)',
+    deal_ym       VARCHAR(6)  NOT NULL COMMENT '계약년월 YYYYMM',
+    housing_type  VARCHAR(20) NOT NULL COMMENT 'APT / ROW_HOUSE / OFFICETEL / DETACHED',
+    is_success    BOOLEAN     NOT NULL COMMENT '수집 성공 여부(false면 다음 실행에서 재시도)',
+    inserted_cnt  INT         NOT NULL DEFAULT 0 COMMENT '마지막 적재 건수',
+    created_at    DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '최초 수집 시각',
+    updated_at    DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP
+                              ON UPDATE CURRENT_TIMESTAMP COMMENT '마지막 수집 시각',
+    PRIMARY KEY (region_code, deal_ym, housing_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='지역-연월-유형 단위 수집 이력';
 
 -- =====================================================================
 -- [회원 종속]

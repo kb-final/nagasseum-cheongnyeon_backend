@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.property.mapper.RentSyncLogMapper">
+
+    <select id="findAll" resultType="com.team.independence.property.domain.RentSyncLog">
+        SELECT region_code, deal_ym, housing_type, is_success, inserted_cnt
+          FROM rent_sync_log
+    </select>
+
+    <insert id="upsert" parameterType="com.team.independence.property.domain.RentSyncLog">
+        INSERT INTO rent_sync_log (
+            region_code, deal_ym, housing_type, is_success, inserted_cnt
+        ) VALUES (
+            #{regionCode}, #{dealYm}, #{housingType}, #{isSuccess}, #{insertedCnt}
+        )
+        ON DUPLICATE KEY UPDATE
+            is_success   = VALUES(is_success),
+            inserted_cnt = VALUES(inserted_cnt),
+            -- 값이 그대로면 MySQL이 UPDATE를 no-op으로 처리해 ON UPDATE CURRENT_TIMESTAMP가
+            -- 발동하지 않는다. 건수가 안 변해도 수집 시각은 남겨야 하므로 명시적으로 갱신한다.
+            updated_at   = CURRENT_TIMESTAMP
+    </insert>
+
+</mapper>
