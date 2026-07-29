@@ -3,6 +3,8 @@ package com.team.independence.member.mapper;
 import com.team.independence.member.domain.Member;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.util.Optional;
+
 /**
  * DB 접근 인터페이스. 실제 SQL은 짝이 되는 XML에 있다.
  *   → src/main/resources/mybatis/mapper/member/MemberMapper.xml
@@ -13,8 +15,11 @@ import org.apache.ibatis.annotations.Mapper;
 public interface MemberMapper {
 
     /** PK로 회원 조회 */
-    Member findById(Long id);
+    Optional<Member> findById(Long id);
 
     /** 카카오 고유 ID로 회원 조회 */
-    Member findByKakaoId(String kakaoId);
+    Optional<Member> findByKakaoId(String kakaoId);
+
+    /** 신규 회원 등록 (생성된 PK를 member.id에 반영) */
+    void insert(Member member);
 }

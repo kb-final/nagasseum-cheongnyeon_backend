@@ -9,6 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.util.Optional;
+
 /**
  * ★ 팀원들이 복제할 표준 패턴 ★
  *  - 생성자 주입(@RequiredArgsConstructor + final)
@@ -25,10 +28,29 @@ public class MemberServiceImpl implements MemberService {
     @Override
     @Transactional(readOnly = true)
     public MemberResponse getMember(Long id) {
-        Member member = memberMapper.findById(id);
-        if (member == null) {
-            throw new BusinessException(ErrorCode.MEMBER_NOT_FOUND);
-        }
-        return MemberResponse.from(member);
+        return memberMapper.findById(id)
+                .map(MemberResponse::from)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Long> findMemberIdByKakaoId(String kakaoId) {
+        return memberMapper.findByKakaoId(kakaoId).map(Member::getId);
+    }
+
+    @Override
+    @Transactional
+    public Long createMember(String kakaoId, String nickname, LocalDate birthDate) {
+        memberMapper.findByKakaoId(kakaoId)
+                .ifPresent(m -> { throw new BusinessException(ErrorCode.MEMBER_ALREADY_EXISTS); });
+
+        Member member = Member.builder()
+                .kakaoId(kakaoId)
+                .nickname(nickname)
+                .birthDate(birthDate)
+                .build();
+        memberMapper.insert(member);
+        return member.getId();
     }
 }
