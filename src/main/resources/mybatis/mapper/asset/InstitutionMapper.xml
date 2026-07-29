@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.asset.mapper.InstitutionMapper">
+
+    <resultMap id="institutionMap" type="com.team.independence.asset.domain.Institution">
+        <id     property="code"            column="code"/>
+        <result property="name"            column="name"/>
+        <result property="institutionType" column="institution_type"/>
+        <result property="businessType"    column="business_type"/>
+        <result property="loginType"       column="login_type"/>
+        <result property="productLabel"    column="product_label"/>
+        <result property="logoUrl"         column="logo_url"/>
+        <result property="displayOrder"    column="display_order"/>
+        <result property="isActive"        column="is_active"/>
+    </resultMap>
+
+    <select id="findAllActive" resultMap="institutionMap">
+        SELECT code, name, institution_type, business_type, login_type,
+               product_label, logo_url, display_order, is_active
+          FROM institution
+         WHERE is_active = TRUE
+         ORDER BY display_order
+    </select>
+
+    <select id="findByCode" parameterType="string" resultMap="institutionMap">
+        SELECT code, name, institution_type, business_type, login_type,
+               product_label, logo_url, display_order, is_active
+          FROM institution
+         WHERE code = #{code}
+    </select>
+
+</mapper>

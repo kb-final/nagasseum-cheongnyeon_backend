@@ -24,9 +24,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CodefClient {
 
-    // 계정 등록 데모 버전 Endpoint
     private static final String CREATE_PATH = "/v1/account/create";
     private static final String ADD_PATH = "/v1/account/add";
+    private static final String DELETE_PATH = "/v1/account/delete";
 
     private final CodefProperties properties;
     private final RestTemplate restTemplate;
@@ -45,6 +45,14 @@ public class CodefClient {
                 .accountList(List.of(item))
                 .build();
         return call(accessToken, ADD_PATH, body);
+    }
+
+    public CodefApiResponse deleteAccount(String accessToken, String connectedId, CodefAccountRequest.CodefAccountItem item) {
+        CodefAccountRequest body = CodefAccountRequest.builder()
+                .connectedId(connectedId)
+                .accountList(List.of(item))
+                .build();
+        return call(accessToken, DELETE_PATH, body);
     }
 
     private CodefApiResponse call(String accessToken, String path, CodefAccountRequest body) {
