@@ -6,6 +6,9 @@ import org.apache.ibatis.annotations.Mapper;
 import org.mybatis.spring.SqlSessionFactoryBean;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.factory.annotation.Value;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.context.annotation.*;
 import org.springframework.context.support.PropertySourcesPlaceholderConfigurer;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
@@ -37,6 +40,7 @@ import org.springframework.web.client.RestTemplate;
  */
 @Configuration
 @PropertySource("classpath:config/app.properties")
+@PropertySource(value = "file:${user.dir}/.env", ignoreResourceNotFound = true)
 @ComponentScan(
         basePackages = "com.team.independence",
         excludeFilters = {
@@ -136,5 +140,20 @@ public class RootConfig {
     @Bean
     public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory cf) {
         return new StringRedisTemplate(cf);
+    }
+
+    // ===== HTTP Client =====
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
+    }
+
+    // ===== ObjectMapper (루트 컨텍스트에 정의해야 AuthInterceptor 등 루트 빈에서 주입 가능) =====
+    @Bean
+    public ObjectMapper objectMapper() {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        return mapper;
     }
 }
