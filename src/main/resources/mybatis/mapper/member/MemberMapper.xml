@@ -35,4 +35,9 @@
          WHERE kakao_id = #{kakaoId}
     </select>
 
+    <insert id="insert" parameterType="com.team.independence.member.domain.Member" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO member (kakao_id, nickname, birth_date, created_at, updated_at)
+        VALUES (#{kakaoId}, #{nickname}, #{birthDate}, NOW(), NOW())
+    </insert>
+
 </mapper>

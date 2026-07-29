@@ -67,15 +67,6 @@ public class JwtUtil {
         return "REFRESH".equals(getClaims(token).get("type"));
     }
 
-    public boolean validate(String token) {
-        try {
-            getClaims(token);
-            return true;
-        } catch (JwtException | IllegalArgumentException e) {
-            return false;
-        }
-    }
-
     public void validateOrThrow(String token) {
         try {
             getClaims(token);
