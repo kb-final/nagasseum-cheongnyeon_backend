@@ -28,4 +28,8 @@
         VALUES (#{memberId}, #{connectedId}, 'ACTIVE')
     </insert>
 
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM connected_account WHERE id = #{id}
+    </delete>
+
 </mapper>
