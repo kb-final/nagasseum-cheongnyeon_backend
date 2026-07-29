@@ -2,6 +2,7 @@ package com.team.independence.property.service;
 
 import com.team.independence.config.RootConfig;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +13,13 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * 실제 MySQL과 국토부 API를 호출하는 통합 테스트라 CI에서는 실행할 수 없다.
+ * 로컬에서 확인할 때만 이 @Disabled를 잠시 주석 처리하고 돌린다.
+ *
+ * <p>사전 조건: docker compose up -d, 환경변수 MOLIT_SERVICE_KEY
+ */
+@Disabled("실제 DB와 국토부 API가 필요해 로컬에서만 실행")
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = RootConfig.class)
 class RentTransactionSyncServiceIntegrationTest {
