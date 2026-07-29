@@ -7,4 +7,5 @@ import org.apache.ibatis.annotations.Mapper;
 public interface ConnectedAccountMapper {
     ConnectedAccount findByMemberId(Long memberId);
     void insert(ConnectedAccount connectedAccount);
+    void deleteById(Long id);
 }

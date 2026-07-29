@@ -4,8 +4,12 @@ import com.team.independence.asset.domain.ConnectedAccount;
 import com.team.independence.asset.domain.ConnectedInstitution;
 import com.team.independence.asset.dto.AssetLinkRequest;
 import com.team.independence.asset.dto.AssetLinkResponse;
+import com.team.independence.asset.dto.LinkedOrganizationResponse;
+import com.team.independence.asset.dto.UnlinkOrganizationResponse;
+import com.team.independence.asset.domain.Institution;
 import com.team.independence.asset.mapper.ConnectedAccountMapper;
 import com.team.independence.asset.mapper.ConnectedInstitutionMapper;
+import com.team.independence.asset.mapper.InstitutionMapper;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.common.security.AesEncryptor;
@@ -21,6 +25,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -33,6 +38,7 @@ public class AssetServiceImpl implements AssetService {
 
     private final ConnectedAccountMapper connectedAccountMapper;
     private final ConnectedInstitutionMapper connectedInstitutionMapper;
+    private final InstitutionMapper institutionMapper;
     private final CodefClient codefClient;
     private final CodefTokenManager codefTokenManager;
     private final CodefProperties codefProperties;
@@ -125,5 +131,56 @@ public class AssetServiceImpl implements AssetService {
                 .institutionCode(request.getOrganization())
                 .build();
         connectedInstitutionMapper.insert(institution);
+    }
+
+    @Override
+    public List<LinkedOrganizationResponse> getConnections(Long memberId) {
+        ConnectedAccount account = connectedAccountMapper.findByMemberId(memberId);
+        if (account == null) {
+            return List.of();
+        }
+        return connectedInstitutionMapper.findAllWithOrganizationByConnectedAccountId(account.getId());
+    }
+
+    @Override
+    @Transactional
+    public UnlinkOrganizationResponse unlinkOrganization(Long memberId, String organizationCode) {
+        ConnectedAccount account = connectedAccountMapper.findByMemberId(memberId);
+        if (account == null) {
+            throw new BusinessException(ErrorCode.ASSET_ORGANIZATION_NOT_CONNECTED);
+        }
+
+        ConnectedInstitution institution = connectedInstitutionMapper
+                .findByConnectedAccountIdAndInstitutionCode(account.getId(), organizationCode);
+        if (institution == null) {
+            throw new BusinessException(ErrorCode.ASSET_ORGANIZATION_NOT_CONNECTED);
+        }
+
+        Institution institutionInfo = institutionMapper.findByCode(organizationCode);
+
+        String connectedId = aesEncryptor.decrypt(account.getConnectedId());
+        String accessToken = codefTokenManager.getAccessToken();
+
+        CodefAccountRequest.CodefAccountItem item = CodefAccountRequest.CodefAccountItem.builder()
+                .countryCode("KR")
+                .businessType(institutionInfo.getBusinessType())
+                .clientType("P")
+                .organization(organizationCode)
+                .loginType(institutionInfo.getLoginType())
+                .build();
+
+        // CODEF 삭제 성공 후에만 DB 삭제
+        codefClient.deleteAccount(accessToken, connectedId, item);
+
+        connectedInstitutionMapper.deleteByConnectedAccountIdAndInstitutionCode(account.getId(), organizationCode);
+
+        if (connectedInstitutionMapper.countByConnectedAccountId(account.getId()) == 0) {
+            connectedAccountMapper.deleteById(account.getId());
+        }
+
+        return UnlinkOrganizationResponse.builder()
+                .organizationCode(organizationCode)
+                .organizationName(institutionInfo.getName())
+                .build();
     }
 }
