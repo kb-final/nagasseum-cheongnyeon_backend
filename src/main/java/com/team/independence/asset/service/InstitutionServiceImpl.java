@@ -1,0 +1,29 @@
+package com.team.independence.asset.service;
+
+import com.team.independence.asset.domain.Institution;
+import com.team.independence.asset.dto.OrganizationResponse;
+import com.team.independence.asset.mapper.InstitutionMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class InstitutionServiceImpl implements InstitutionService {
+
+    private final InstitutionMapper institutionMapper;
+
+    @Override
+    public List<OrganizationResponse> getOrganizations() {
+        return institutionMapper.findAllActive().stream()
+                .map(OrganizationResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public Institution getByCode(String code) {
+        return institutionMapper.findByCode(code);
+    }
+}
