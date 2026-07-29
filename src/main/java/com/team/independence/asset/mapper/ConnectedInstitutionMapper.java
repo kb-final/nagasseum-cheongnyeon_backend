@@ -1,0 +1,17 @@
+package com.team.independence.asset.mapper;
+
+import com.team.independence.asset.domain.ConnectedInstitution;
+import com.team.independence.asset.dto.LinkedOrganizationResponse;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
+
+@Mapper
+public interface ConnectedInstitutionMapper {
+    void insert(ConnectedInstitution connectedInstitution);
+    List<LinkedOrganizationResponse> findAllWithOrganizationByConnectedAccountId(Long connectedAccountId);
+    ConnectedInstitution findByConnectedAccountIdAndInstitutionCode(@Param("connectedAccountId") Long connectedAccountId, @Param("institutionCode") String institutionCode);
+    void deleteByConnectedAccountIdAndInstitutionCode(@Param("connectedAccountId") Long connectedAccountId, @Param("institutionCode") String institutionCode);
+    int countByConnectedAccountId(Long connectedAccountId);
+}

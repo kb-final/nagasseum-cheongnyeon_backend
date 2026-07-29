@@ -22,6 +22,9 @@ public enum ErrorCode {
     // ===== 자산 ASSET_xxx =====
     ASSET_NOT_LINKED("ASSET_001", "자산 연동이 필요합니다.", HttpStatus.BAD_REQUEST),
     ASSET_SYNC_IN_PROGRESS("ASSET_002", "동기화가 이미 진행 중입니다.", HttpStatus.CONFLICT),
+    ASSET_RSA_ENCRYPT_FAILED("ASSET_003", "비밀번호 암호화에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
+    ASSET_CODEF_API_ERROR("ASSET_004", "금융 연동 서버 오류가 발생했습니다.", HttpStatus.BAD_GATEWAY),
+    ASSET_ORGANIZATION_NOT_CONNECTED("ASSET_005", "연동되지 않은 기관입니다.", HttpStatus.NOT_FOUND),
 
     // ===== 목표 GOAL_xxx =====
     GOAL_NOT_FOUND("GOAL_001", "목표를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),

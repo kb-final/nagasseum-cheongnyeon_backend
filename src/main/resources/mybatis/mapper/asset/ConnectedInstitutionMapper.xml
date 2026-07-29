@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.asset.mapper.ConnectedInstitutionMapper">
+
+    <resultMap id="connectedInstitutionMap" type="com.team.independence.asset.domain.ConnectedInstitution">
+        <id     property="id"                   column="id"/>
+        <result property="connectedAccountId"   column="connected_account_id"/>
+        <result property="institutionCode"      column="institution_code"/>
+        <result property="status"               column="status"/>
+        <result property="lastSyncedAt"         column="last_synced_at"/>
+        <result property="lastErrorCode"        column="last_error_code"/>
+        <result property="lastErrorMessage"     column="last_error_message"/>
+        <result property="lastAttemptedAt"      column="last_attempted_at"/>
+        <result property="createdAt"            column="created_at"/>
+        <result property="updatedAt"            column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="linkedOrgMap" type="com.team.independence.asset.dto.LinkedOrganizationResponse">
+        <result property="organizationCode" column="institution_code"/>
+        <result property="organizationName" column="name"/>
+        <result property="businessType"     column="business_type"/>
+        <result property="connectedAt"      column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.team.independence.asset.domain.ConnectedInstitution">
+        INSERT INTO connected_institution (connected_account_id, institution_code, status)
+        VALUES (#{connectedAccountId}, #{institutionCode}, 'ACTIVE')
+    </insert>
+
+    <select id="findAllWithOrganizationByConnectedAccountId" parameterType="long" resultMap="linkedOrgMap">
+        SELECT ci.institution_code, i.name, i.business_type, ci.created_at
+          FROM connected_institution ci
+          JOIN institution i ON ci.institution_code = i.code
+         WHERE ci.connected_account_id = #{connectedAccountId}
+         ORDER BY ci.created_at
+    </select>
+
+    <select id="findByConnectedAccountIdAndInstitutionCode" resultMap="connectedInstitutionMap">
+        SELECT id, connected_account_id, institution_code, status,
+               last_synced_at, last_error_code, last_error_message,
+               last_attempted_at, created_at, updated_at
+          FROM connected_institution
+         WHERE connected_account_id = #{connectedAccountId}
+           AND institution_code = #{institutionCode}
+    </select>
+
+    <delete id="deleteByConnectedAccountIdAndInstitutionCode">
+        DELETE FROM connected_institution
+         WHERE connected_account_id = #{connectedAccountId}
+           AND institution_code = #{institutionCode}
+    </delete>
+
+    <select id="countByConnectedAccountId" parameterType="long" resultType="int">
+        SELECT COUNT(*) FROM connected_institution
+         WHERE connected_account_id = #{connectedAccountId}
+    </select>
+
+</mapper>
