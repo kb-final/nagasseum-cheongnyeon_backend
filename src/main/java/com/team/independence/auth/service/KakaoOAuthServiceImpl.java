@@ -23,6 +23,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -61,8 +62,12 @@ public class KakaoOAuthServiceImpl implements KakaoOAuthService {
     @Override
     @Transactional
     public TokenResponse signup(SignupRequest request) {
-        LocalDate birthDate = LocalDate.parse(request.birthDate(),
-                DateTimeFormatter.ofPattern("yyMMdd"));
+        LocalDate birthDate;
+        try {
+            birthDate = LocalDate.parse(request.birthDate(), DateTimeFormatter.ofPattern("yyMMdd"));
+        } catch (DateTimeParseException e) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
 
         Long memberId = memberService.createMember(
                 request.kakaoId(), request.nickname(), birthDate, request.incomeBracket());
@@ -118,6 +123,33 @@ public class KakaoOAuthServiceImpl implements KakaoOAuthService {
             throw new BusinessException(ErrorCode.AUTH_KAKAO_API_ERROR);
         }
         return userInfo;
+    }
+
+    @Override
+    public TokenResponse refresh(String refreshToken) {
+        jwtUtil.validateOrThrow(refreshToken);
+
+        if (!jwtUtil.isRefreshToken(refreshToken)) {
+            throw new BusinessException(ErrorCode.AUTH_INVALID_TOKEN);
+        }
+
+        Long memberId = jwtUtil.getMemberId(refreshToken);
+
+        String stored = refreshTokenStore.find(memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AUTH_INVALID_TOKEN));
+
+        if (!stored.equals(refreshToken)) {
+            // 저장된 토큰과 불일치 → 탈취 후 재사용 시도
+            refreshTokenStore.delete(memberId);
+            throw new BusinessException(ErrorCode.AUTH_INVALID_TOKEN);
+        }
+
+        return issueTokens(memberId);
+    }
+
+    @Override
+    public void logout(Long memberId) {
+        refreshTokenStore.delete(memberId);
     }
 
     /** accessToken·refreshToken 발급. Redis에 저장하며 TTL로 만료를 관리한다. */
