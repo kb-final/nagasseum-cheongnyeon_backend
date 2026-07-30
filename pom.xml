@@ -132,6 +132,13 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- ===== Javax Annotation (@PostConstruct 등, JDK 11+에서 제거됨) ===== -->
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
+            <version>1.3.2</version>
+        </dependency>
+
         <!-- ===== Validation ===== -->
         <dependency>
             <groupId>org.hibernate.validator</groupId>

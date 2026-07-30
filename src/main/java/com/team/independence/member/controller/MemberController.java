@@ -1,26 +1,44 @@
 package com.team.independence.member.controller;
 
+import com.team.independence.common.annotation.LoginMember;
 import com.team.independence.common.response.ApiResponse;
-import com.team.independence.member.dto.MemberResponse;
+import com.team.independence.member.domain.Agreement;
+import com.team.independence.member.dto.AgreementUpdateRequest;
+import com.team.independence.member.dto.MemberProfileResponse;
+import com.team.independence.member.service.AgreementService;
 import com.team.independence.member.service.MemberService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-/**
- * ★ 팀원들이 복제할 표준 패턴 ★
- *  - @RestController + /api/v1/{도메인 복수형}
- *  - 비즈니스 로직 없음. Service 호출 후 ApiResponse로 감싸 반환만 한다.
- */
+import java.util.List;
+import java.util.stream.Collectors;
+
 @RestController
 @RequestMapping("/api/v1/members")
 @RequiredArgsConstructor
 public class MemberController {
 
     private final MemberService memberService;
+    private final AgreementService agreementService;
 
-    @GetMapping("/{id}")
-    public ApiResponse<MemberResponse> getMember(@PathVariable Long id) {
-        return ApiResponse.ok(memberService.getMember(id));
+    @GetMapping("/me")
+    public ApiResponse<MemberProfileResponse> getMe(@LoginMember Long memberId) {
+        return ApiResponse.ok(memberService.getMember(memberId));
+    }
+
+    @PatchMapping("/me/agreements")
+    public ApiResponse<Void> updateAgreements(
+            @LoginMember Long memberId,
+            @RequestBody AgreementUpdateRequest request) {
+        List<Agreement> agreements = request.agreements().stream()
+                .map(item -> Agreement.builder()
+                        .agreementType(item.agreementType())
+                        .agreed(item.agreed())
+                        .agreementVersion("v1.0")
+                        .build())
+                .collect(Collectors.toList());
+        agreementService.updateAll(memberId, agreements);
+        return ApiResponse.ok(null);
     }
 
     /** 서버 기동 확인용 (팀 온보딩 시 이 API로 환경 검증) */
