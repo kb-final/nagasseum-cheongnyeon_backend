@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.asset.mapper.AssetAccountMapper">
+
+    <resultMap id="assetAccountMap" type="com.team.independence.asset.domain.AssetAccount">
+        <id     property="id"                       column="id"/>
+        <result property="connectedInstitutionId"   column="connected_institution_id"/>
+        <result property="accountType"              column="account_type"/>
+        <result property="assetCategory"            column="asset_category"/>
+        <result property="accountDisplay"           column="account_display"/>
+        <result property="productName"              column="product_name"/>
+        <result property="currentValue"             column="current_value"/>
+        <result property="valuationAmount"          column="valuation_amount"/>
+        <result property="depositReceived"          column="deposit_received"/>
+        <result property="earningsRate"             column="earnings_rate"/>
+        <result property="maturityDate"             column="maturity_date"/>
+        <result property="rawResponse"              column="raw_response"/>
+        <result property="createdAt"                column="created_at"/>
+        <result property="updatedAt"                column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.team.independence.asset.domain.AssetAccount"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO asset_account
+            (connected_institution_id, account_type, asset_category,
+             account_display, product_name, current_value, raw_response)
+        VALUES
+            (#{connectedInstitutionId}, #{accountType}, #{assetCategory},
+             #{accountDisplay}, #{productName}, #{currentValue}, #{rawResponse})
+    </insert>
+
+    <insert id="insertAll">
+        INSERT INTO asset_account
+            (connected_institution_id, account_type, asset_category,
+             account_display, product_name, current_value, raw_response)
+        VALUES
+        <foreach collection="list" item="a" separator=",">
+            (#{a.connectedInstitutionId}, #{a.accountType}, #{a.assetCategory},
+             #{a.accountDisplay}, #{a.productName}, #{a.currentValue}, #{a.rawResponse})
+        </foreach>
+    </insert>
+
+    <delete id="deleteByConnectedInstitutionId" parameterType="long">
+        DELETE FROM asset_account WHERE connected_institution_id = #{connectedInstitutionId}
+    </delete>
+
+    <select id="findByConnectedInstitutionId" parameterType="long" resultMap="assetAccountMap">
+        SELECT id, connected_institution_id, account_type, asset_category,
+               account_display, product_name, current_value, valuation_amount,
+               deposit_received, earnings_rate, maturity_date, raw_response,
+               created_at, updated_at
+          FROM asset_account
+         WHERE connected_institution_id = #{connectedInstitutionId}
+    </select>
+
+    <resultMap id="assetAccountQueryMap" type="com.team.independence.asset.dto.AssetAccountQueryItem">
+        <result property="id"              column="id"/>
+        <result property="institutionName" column="institution_name"/>
+        <result property="accountType"     column="account_type"/>
+        <result property="assetCategory"   column="asset_category"/>
+        <result property="productName"     column="product_name"/>
+        <result property="accountDisplay"  column="account_display"/>
+        <result property="currentValue"    column="current_value"/>
+    </resultMap>
+
+    <select id="findWithInstitutionByMemberId" parameterType="long" resultMap="assetAccountQueryMap">
+        SELECT aa.id, i.name AS institution_name,
+               aa.account_type, aa.asset_category, aa.product_name,
+               aa.account_display, aa.current_value
+          FROM asset_account aa
+          JOIN connected_institution ci ON aa.connected_institution_id = ci.id
+          JOIN connected_account ca ON ci.connected_account_id = ca.id
+          JOIN institution i ON ci.institution_code = i.code
+         WHERE ca.member_id = #{memberId}
+         ORDER BY aa.asset_category, i.name
+    </select>
+
+    <select id="sumCurrentValueByMemberId" parameterType="long" resultType="java.lang.Long">
+        SELECT COALESCE(SUM(aa.current_value), 0)
+          FROM asset_account aa
+          JOIN connected_institution ci ON aa.connected_institution_id = ci.id
+          JOIN connected_account ca ON ci.connected_account_id = ca.id
+         WHERE ca.member_id = #{memberId}
+    </select>
+
+</mapper>
