@@ -4,6 +4,7 @@ import com.team.independence.asset.domain.ConnectedAccount;
 import com.team.independence.asset.domain.ConnectedInstitution;
 import com.team.independence.asset.dto.AssetLinkRequest;
 import com.team.independence.asset.dto.AssetLinkResponse;
+import com.team.independence.asset.dto.AssetNetWorthBreakdown;
 import com.team.independence.asset.dto.LinkedOrganizationResponse;
 import com.team.independence.asset.dto.UnlinkOrganizationResponse;
 import com.team.independence.asset.domain.Institution;
@@ -38,6 +39,9 @@ public class AssetServiceImpl implements AssetService {
 
     private static final String LOCK_KEY_PREFIX = "asset:link:lock:";
     private static final long LOCK_TTL_SECONDS = 30L;
+
+    /** asset_category=INVESTMENT 인정률. 국내/해외 구분 데이터가 없어 지금은 단일값(국내 기준) 적용. */
+    private static final double INVESTMENT_RECOGNITION_RATE = 0.75;
 
     private final ConnectedAccountMapper connectedAccountMapper;
     private final ConnectedInstitutionMapper connectedInstitutionMapper;
@@ -193,10 +197,22 @@ public class AssetServiceImpl implements AssetService {
 
     @Override
     @Transactional(readOnly = true)
-    public Long getNetAssets(Long memberId) {
-        long linkedAssets = assetAccountMapper.sumCurrentValueByMemberId(memberId);
+    public AssetNetWorthBreakdown getNetWorthBreakdown(Long memberId) {
+        long interestBearingAssets = assetAccountMapper.sumCurrentValueByMemberIdAndCategories(
+                memberId, List.of("DEPOSIT_SAVINGS"));
+        long investmentAssets = assetAccountMapper.sumCurrentValueByMemberIdAndCategories(
+                memberId, List.of("INVESTMENT"));
+        long cashAndEtcAssets = assetAccountMapper.sumCurrentValueByMemberIdAndCategories(
+                memberId, List.of("CASH", "ETC"));
         long manualAssets = manualAssetMapper.sumAmountByMemberId(memberId);
         long loanBalance = loanAccountMapper.sumLoanBalanceByMemberId(memberId);
-        return linkedAssets + manualAssets - loanBalance;
+
+        long investmentRecognized = Math.round(investmentAssets * INVESTMENT_RECOGNITION_RATE);
+        long flatRecognizedAssets = investmentRecognized + cashAndEtcAssets + manualAssets - loanBalance;
+
+        return AssetNetWorthBreakdown.builder()
+                .interestBearingAssets(interestBearingAssets)
+                .flatRecognizedAssets(flatRecognizedAssets)
+                .build();
     }
 }
