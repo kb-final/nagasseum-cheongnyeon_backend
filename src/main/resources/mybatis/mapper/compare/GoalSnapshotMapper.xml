@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  ★ 도메인별로 XML을 분리한다 (git 충돌 최소화).
+    각자 자기 도메인 폴더의 XML만 수정할 것.
+-->
+<mapper namespace="com.team.independence.compare.mapper.GoalSnapshotMapper">
+
+    <resultMap id="goalSnapshotMap" type="com.team.independence.compare.domain.GoalSnapshot">
+        <id     property="id"              column="id"/>
+        <result property="memberId"        column="member_id"/>
+        <result property="goalId"          column="goal_id"/>
+        <result property="regionCode"      column="region_code"/>
+        <result property="snapshotYm"      column="snapshot_ym"/>
+        <result property="age"             column="age"/>
+        <result property="netAssets"       column="net_assets"/>
+        <result property="goalType"        column="goal_type"/>
+        <result property="housingType"     column="housing_type"/>
+        <result property="dealType"        column="deal_type"/>
+        <result property="targetAmount"    column="target_amount"/>
+        <result property="achievementRate" column="achievement_rate"/>
+        <result property="prepMonths"      column="prep_months"/>
+        <result property="monthlySaving"   column="monthly_saving"/>
+        <result property="createdAt"       column="created_at"/>
+    </resultMap>
+
+    <!--
+      코호트 조건. 모든 집계 쿼리가 이 조건을 공유하므로 sql 조각으로 빼둔다.
+      idx_goal_snapshot_cohort (snapshot_ym, net_assets, age) 를 타도록 순서를 맞췄다.
+    -->
+    <sql id="cohortWhere">
+        WHERE snapshot_ym = #{snapshotYm}
+        AND net_assets BETWEEN #{netAssetsMin} AND #{netAssetsMax}
+        AND age        BETWEEN #{ageMin}       AND #{ageMax}
+    </sql>
+
+    <select id="findLatestSnapshotYm" resultType="string">
+        SELECT MAX(snapshot_ym)
+        FROM goal_snapshot
+    </select>
+
+    <select id="findByMemberAndYm" resultMap="goalSnapshotMap">
+        SELECT id, member_id, goal_id, region_code, snapshot_ym,
+               age, net_assets, goal_type, housing_type, deal_type,
+               target_amount, achievement_rate, prep_months, monthly_saving,
+               created_at
+        FROM goal_snapshot
+        WHERE member_id  = #{memberId}
+          AND snapshot_ym = #{snapshotYm}
+    </select>
+
+    <select id="countCohort" resultType="int">
+        SELECT COUNT(*)
+        FROM goal_snapshot
+        <include refid="cohortWhere"/>
+    </select>
+
+    <select id="countByDealType" resultType="com.team.independence.compare.dto.DealTypeCount">
+        SELECT deal_type AS dealType,
+        COUNT(*)  AS `count`
+        FROM goal_snapshot
+        <include refid="cohortWhere"/>
+        GROUP BY deal_type
+        ORDER BY COUNT(*) DESC
+    </select>
+
+    <select id="findAverages" resultType="com.team.independence.compare.dto.CohortAverages">
+        SELECT ROUND(AVG(target_amount))       AS averageTargetAmount,
+        ROUND(AVG(prep_months))         AS averagePrepMonths,
+        ROUND(AVG(achievement_rate), 1) AS cohortAverageRate
+        FROM goal_snapshot
+        <include refid="cohortWhere"/>
+    </select>
+
+    <!--
+      cohortWhere 안의 컬럼은 goal_snapshot에만 있어서 조인해도 이름이 겹치지 않는다.
+      (region은 code / sido / sigungu / full_name 뿐)
+    -->
+    <select id="countTopRegions" resultType="com.team.independence.compare.dto.RegionCount">
+        SELECT g.region_code AS regionCode,
+        r.sigungu     AS regionName,
+        COUNT(*)      AS `count`
+        FROM goal_snapshot g
+        JOIN region r ON r.code = g.region_code
+        <include refid="cohortWhere"/>
+        GROUP BY g.region_code, r.sigungu
+        ORDER BY COUNT(*) DESC, g.region_code
+        LIMIT 3
+    </select>
+
+    <!--
+      달성률을 10 단위로 나눈 구간 번호로 묶는다.
+      LEAST(..., 8) 로 80% 이상은 모두 마지막 구간(80~100%)에 넣는다.
+    -->
+    <select id="countByAchievementBucket"
+            resultType="com.team.independence.compare.dto.AchievementBucketCount">
+        SELECT LEAST(FLOOR(achievement_rate / 10), 8) AS bucketIndex,
+        COUNT(*)                               AS `count`
+        FROM goal_snapshot
+        <include refid="cohortWhere"/>
+        GROUP BY LEAST(FLOOR(achievement_rate / 10), 8)
+        ORDER BY bucketIndex
+    </select>
+
+    <!--
+      월 저축액을 오름차순으로 4등분(NTILE)한 뒤 가운데 두 덩어리만 남긴다.
+      코호트의 절반이 들어가는 구간이라 양 끝 극단값에 흔들리지 않는다.
+    -->
+    <select id="findSavingRange" resultType="com.team.independence.compare.dto.SavingRangeResult">
+        SELECT MIN(monthly_saving) AS cohortRangeMin,
+        MAX(monthly_saving) AS cohortRangeMax
+        FROM (
+        SELECT monthly_saving,
+        NTILE(4) OVER (ORDER BY monthly_saving) AS quartile
+        FROM goal_snapshot
+        <include refid="cohortWhere"/>
+        ) t
+        WHERE quartile IN (2, 3)
+    </select>
+
+    <!--
+      ─────────────────────────────────────────────────────────────
+       배치 전용. 매월 1일 스냅샷 생성.
+      ─────────────────────────────────────────────────────────────
+
+      한 방에 끝내는 이유: 회원을 자바로 돌면서 INSERT 하면 수천 번 왕복한다.
+      읽을 데이터가 전부 DB 안에 있으므로 DB에서 처리하는 편이 옳다.
+
+      ON DUPLICATE KEY UPDATE : uk_goal_snapshot_member_ym (member_id, snapshot_ym)에
+      걸려서, 같은 달에 다시 돌리면 새로 넣지 않고 최신 값으로 덮어쓴다.
+      배치가 실패해 다시 돌려야 할 때 안전하다.
+
+      회원당 목표가 여러 개일 수 있는데 uk 제약 때문에 한 건만 넣어야 한다.
+      가장 최근에 만든 ACTIVE 목표를 고른다.
+    -->
+    <insert id="insertSnapshots">
+        INSERT INTO goal_snapshot (
+        member_id, goal_id, region_code, snapshot_ym, age, net_assets,
+        goal_type, housing_type, deal_type, target_amount,
+        achievement_rate, prep_months, monthly_saving
+        )
+        SELECT
+        g.member_id,
+        g.id,
+        gh.region_code,
+        #{snapshotYm},
+        TIMESTAMPDIFF(YEAR, m.birth_date, #{baseDate}),
+        a.net_assets,
+        g.goal_type,
+        gh.housing_type,
+        gh.deal_type,
+        g.target_amount,
+        <!-- 달성률 = 순자산 / 목표금액. 0~100으로 자른다 -->
+        LEAST(100, GREATEST(0, ROUND(a.net_assets * 100 / g.target_amount, 2))),
+        <!-- 준비 기간 = 목표를 세운 날부터 희망 시점까지 -->
+        GREATEST(0, TIMESTAMPDIFF(MONTH, DATE(g.created_at), g.target_date)),
+        g.monthly_saving
+        FROM goal g
+        JOIN goal_housing   gh ON gh.goal_id   = g.id
+        JOIN member         m  ON m.id         = g.member_id
+        JOIN asset_snapshot a  ON a.member_id  = g.member_id
+        AND a.snapshot_ym = #{snapshotYm}
+        WHERE g.status = 'ACTIVE'
+        <!-- 0으로 나누기 방지 -->
+        AND g.target_amount > 0
+        <!-- 회원당 한 건. 가장 최근 목표만 -->
+        AND g.id = (SELECT MAX(g2.id)
+        FROM goal g2
+        WHERE g2.member_id = g.member_id
+        AND g2.status = 'ACTIVE')
+        ON DUPLICATE KEY UPDATE
+        goal_id          = VALUES(goal_id),
+        region_code      = VALUES(region_code),
+        age              = VALUES(age),
+        net_assets       = VALUES(net_assets),
+        goal_type        = VALUES(goal_type),
+        housing_type     = VALUES(housing_type),
+        deal_type        = VALUES(deal_type),
+        target_amount    = VALUES(target_amount),
+        achievement_rate = VALUES(achievement_rate),
+        prep_months      = VALUES(prep_months),
+        monthly_saving   = VALUES(monthly_saving)
+    </insert>
+
+</mapper>

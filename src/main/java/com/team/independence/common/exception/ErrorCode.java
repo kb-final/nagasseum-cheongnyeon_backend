@@ -29,6 +29,11 @@ public enum ErrorCode {
     // ===== 목표 GOAL_xxx =====
     GOAL_NOT_FOUND("GOAL_001", "목표를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
+    // ===== 또래 비교 COMPARE_xxx =====
+    COMPARE_SNAPSHOT_NOT_FOUND("COMPARE_001", "비교할 집계 데이터가 없습니다.", HttpStatus.NOT_FOUND),
+    COMPARE_INVALID_RANGE("COMPARE_002", "비교 기준 범위가 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
+    COMPARE_CONSENT_REQUIRED("COMPARE_003", "또래 비교 약관 동의가 필요합니다.", HttpStatus.FORBIDDEN),
+
     // ===== 정책 POLICY_xxx =====
     POLICY_NOT_FOUND("POLICY_001", "정책을 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
 
