@@ -2,6 +2,7 @@ package com.team.independence.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team.independence.auth.interceptor.AuthInterceptor;
+import com.team.independence.common.resolver.LoginMemberArgumentResolver;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
@@ -10,6 +11,7 @@ import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -35,10 +37,13 @@ public class WebConfig implements WebMvcConfigurer {
 
     private final AuthInterceptor authInterceptor;
     private final ObjectMapper objectMapper;
+    private final LoginMemberArgumentResolver loginMemberArgumentResolver;
 
-    public WebConfig(AuthInterceptor authInterceptor, ObjectMapper objectMapper) {
+    public WebConfig(AuthInterceptor authInterceptor, ObjectMapper objectMapper,
+                     LoginMemberArgumentResolver loginMemberArgumentResolver) {
         this.authInterceptor = authInterceptor;
         this.objectMapper = objectMapper;
+        this.loginMemberArgumentResolver = loginMemberArgumentResolver;
     }
 
     @Override
@@ -55,9 +60,14 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/api/**")
                 .excludePathPatterns(
-                        "/api/v1/oauth/**",       // 카카오 콜백은 인증 불필요
-                        "/api/v1/members/health"  // 헬스체크
+                        "/api/v1/oauth/**",
+                        "/api/v1/members/health"
                 );
+    }
+
+    @Override
+    public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
+        resolvers.add(loginMemberArgumentResolver);
     }
 
     /** LocalDate/LocalDateTime을 ISO-8601 문자열로 직렬화 */
