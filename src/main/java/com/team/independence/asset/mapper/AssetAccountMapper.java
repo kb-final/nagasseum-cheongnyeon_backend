@@ -16,5 +16,5 @@ public interface AssetAccountMapper {
     List<AssetAccount> findByConnectedInstitutionId(Long connectedInstitutionId);
     List<AssetAccountQueryItem> findWithInstitutionByMemberId(Long memberId);
     List<AssetAccountDetailItem> findAllDetailsByMemberId(Long memberId);
-    Long sumCurrentValueByMemberId(Long memberId);
+    Long sumCurrentValueByMemberId(@Param("memberId") Long memberId);
 }

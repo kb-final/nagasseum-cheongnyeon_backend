@@ -1,6 +1,7 @@
 package com.team.independence.goal.dto;
 
 import java.time.YearMonth;
+import javax.validation.Valid;
 import javax.validation.constraints.Future;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
@@ -14,27 +15,25 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class GoalDiagnosisRequest {
 
-    @NotBlank
-    private String sido;
-
-    @NotBlank
-    private String sigungu;
+    @Valid
+    @NotNull
+    private RegionCondition region;
 
     @NotBlank
     @Pattern(regexp = "APT|ROW_HOUSE|OFFICETEL|DETACHED")
-    private String housingType;
+    private String propertyType;
 
     @NotBlank
-    @Pattern(regexp = "전세|월세")
-    private String dealType;
+    @Pattern(regexp = "JEONSE|WOLSE")
+    private String tradeType;
 
     @NotNull
     @Positive
-    private Integer areaMin;
+    private Integer sizeMin;
 
     @NotNull
     @Positive
-    private Integer areaMax;
+    private Integer sizeMax;
 
     @NotNull
     @PositiveOrZero
@@ -52,10 +51,20 @@ public class GoalDiagnosisRequest {
 
     @NotNull
     @PositiveOrZero
-    private Long monthlySaving;
+    private Long monthlySavings;
 
     /** 희망 목표 시점(년/월만 입력, 일자 없음). JSON에서는 "yyyy-MM" 형식 */
     @NotNull
     @Future
     private YearMonth targetDate;
+
+    @Getter
+    @NoArgsConstructor
+    public static class RegionCondition {
+        @NotBlank
+        private String sido;
+
+        @NotBlank
+        private String sigungu;
+    }
 }

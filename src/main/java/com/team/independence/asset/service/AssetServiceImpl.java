@@ -7,9 +7,12 @@ import com.team.independence.asset.dto.AssetLinkResponse;
 import com.team.independence.asset.dto.LinkedOrganizationResponse;
 import com.team.independence.asset.dto.UnlinkOrganizationResponse;
 import com.team.independence.asset.domain.Institution;
+import com.team.independence.asset.mapper.AssetAccountMapper;
 import com.team.independence.asset.mapper.ConnectedAccountMapper;
 import com.team.independence.asset.mapper.ConnectedInstitutionMapper;
 import com.team.independence.asset.mapper.InstitutionMapper;
+import com.team.independence.asset.mapper.LoanAccountMapper;
+import com.team.independence.asset.mapper.ManualAssetMapper;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.common.security.AesEncryptor;
@@ -39,6 +42,9 @@ public class AssetServiceImpl implements AssetService {
     private final ConnectedAccountMapper connectedAccountMapper;
     private final ConnectedInstitutionMapper connectedInstitutionMapper;
     private final InstitutionMapper institutionMapper;
+    private final AssetAccountMapper assetAccountMapper;
+    private final LoanAccountMapper loanAccountMapper;
+    private final ManualAssetMapper manualAssetMapper;
     private final CodefClient codefClient;
     private final CodefTokenManager codefTokenManager;
     private final CodefProperties codefProperties;
@@ -183,5 +189,14 @@ public class AssetServiceImpl implements AssetService {
                 .organizationCode(organizationCode)
                 .organizationName(institutionInfo.getName())
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Long getNetAssets(Long memberId) {
+        long linkedAssets = assetAccountMapper.sumCurrentValueByMemberId(memberId);
+        long manualAssets = manualAssetMapper.sumAmountByMemberId(memberId);
+        long loanBalance = loanAccountMapper.sumLoanBalanceByMemberId(memberId);
+        return linkedAssets + manualAssets - loanBalance;
     }
 }
