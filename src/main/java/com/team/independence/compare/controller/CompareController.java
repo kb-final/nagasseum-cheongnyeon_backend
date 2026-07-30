@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.team.independence.common.annotation.LoginMember;
 import com.team.independence.common.response.ApiResponse;
 import com.team.independence.compare.dto.CompareResponse;
 import com.team.independence.compare.service.CompareService;
@@ -25,15 +26,17 @@ public class CompareController {
     private static final long DEFAULT_ASSET_RANGE = 10_000_000L;
     private static final int DEFAULT_AGE_RANGE = 2;
 
-    /** 인증 전 임시 회원. 프론트가 memberId를 안 보내므로 기본값으로 받는다 */
-    private static final long TEMP_MEMBER_ID = 1L;
-
     private final CompareService compareService;
 
-    // TODO: 인증 붙으면 memberId를 @RequestParam 대신 토큰에서 꺼내고 defaultValue를 지운다
+    /**
+     * 내 또래 비교 결과.
+     *
+     * <p>memberId는 요청에서 받지 않는다. AuthInterceptor가 토큰을 검증하고 넣어둔 값을
+     * {@code @LoginMember}가 꺼내온다. 파라미터로 받으면 남의 결과를 조회할 수 있다.
+     */
     @GetMapping("/comparison")
     public ApiResponse<CompareResponse> getComparison(
-            @RequestParam(required = false, defaultValue = "" + TEMP_MEMBER_ID) Long memberId,
+            @LoginMember Long memberId,
             @RequestParam(required = false, defaultValue = "" + DEFAULT_ASSET_RANGE) Long assetRange,
             @RequestParam(required = false, defaultValue = "" + DEFAULT_AGE_RANGE) Integer ageRange) {
         return ApiResponse.ok(compareService.getComparison(memberId, assetRange, ageRange));

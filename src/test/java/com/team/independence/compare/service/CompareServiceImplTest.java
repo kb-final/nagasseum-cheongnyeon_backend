@@ -28,6 +28,9 @@ import com.team.independence.compare.dto.DealTypeCount;
 import com.team.independence.compare.dto.RegionCount;
 import com.team.independence.compare.dto.SavingRangeResult;
 import com.team.independence.compare.mapper.GoalSnapshotMapper;
+import com.team.independence.member.domain.Agreement;
+import com.team.independence.member.domain.Agreement.AgreementType;
+import com.team.independence.member.service.AgreementService;
 
 /**
  * 또래 비교 집계 로직 테스트.
@@ -43,12 +46,14 @@ class CompareServiceImplTest {
     private static final Integer AGE_RANGE = 2;
 
     private FakeMapper mapper;
+    private FakeAgreementService agreementService;
     private CompareServiceImpl service;
 
     @BeforeEach
     void setUp() {
         mapper = new FakeMapper();
-        service = new CompareServiceImpl(mapper);
+        agreementService = new FakeAgreementService();
+        service = new CompareServiceImpl(mapper, agreementService);
     }
 
     // ------------------------------------------------------------------
@@ -245,6 +250,40 @@ class CompareServiceImplTest {
     }
 
     // ------------------------------------------------------------------
+    // 약관 동의
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("비교 데이터 제공에 동의하지 않았으면 거절한다")
+    void 미동의면_예외() {
+        agreementService.compareAgreed = false;
+
+        assertEquals(ErrorCode.COMPARE_CONSENT_REQUIRED,
+                assertThrows(BusinessException.class, this::call).getErrorCode());
+    }
+
+    @Test
+    @DisplayName("동의 기록이 아예 없으면 동의하지 않은 것으로 본다")
+    void 동의기록이_없으면_예외() {
+        // 개인정보라 '모르면 열어준다'가 아니라 '모르면 막는다'여야 한다.
+        agreementService.agreements = new ArrayList<>();
+
+        assertEquals(ErrorCode.COMPARE_CONSENT_REQUIRED,
+                assertThrows(BusinessException.class, this::call).getErrorCode());
+    }
+
+    @Test
+    @DisplayName("동의 검사는 범위 검사 다음에 한다")
+    void 범위가_틀리면_동의보다_먼저_걸린다() {
+        agreementService.compareAgreed = false;
+
+        // 둘 다 잘못됐을 때 어느 쪽 코드가 나가는지 고정해둔다.
+        assertEquals(ErrorCode.COMPARE_INVALID_RANGE,
+                assertThrows(BusinessException.class,
+                        () -> service.getComparison(MEMBER_ID, 999L, AGE_RANGE)).getErrorCode());
+    }
+
+    // ------------------------------------------------------------------
     // 비율 계산
     // ------------------------------------------------------------------
 
@@ -281,6 +320,40 @@ class CompareServiceImplTest {
         row.setBucketIndex(index);
         row.setCount(count);
         return row;
+    }
+
+    /** 동의 여부를 테스트가 정해주는 가짜 AgreementService */
+    private static class FakeAgreementService implements AgreementService {
+
+        private boolean compareAgreed = true;
+        private List<Agreement> agreements = null;
+
+        @Override
+        public List<Agreement> getAgreements(Long memberId) {
+            if (agreements != null) {
+                return agreements;
+            }
+            Agreement agreement = new Agreement();
+            agreement.setMemberId(memberId);
+            agreement.setAgreementType(AgreementType.COMPARE_DATA);
+            agreement.setAgreed(compareAgreed);
+            return Arrays.asList(agreement);
+        }
+
+        @Override
+        public void saveAll(Long memberId, List<Agreement> agreements) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void updateAll(Long memberId, List<Agreement> agreements) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void deleteByMemberId(Long memberId) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     /**

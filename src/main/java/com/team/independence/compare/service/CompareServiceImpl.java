@@ -23,6 +23,9 @@ import com.team.independence.compare.dto.DealTypeCount;
 import com.team.independence.compare.dto.RegionCount;
 import com.team.independence.compare.dto.SavingRangeResult;
 import com.team.independence.compare.mapper.GoalSnapshotMapper;
+import com.team.independence.member.domain.Agreement;
+import com.team.independence.member.domain.Agreement.AgreementType;
+import com.team.independence.member.service.AgreementService;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 
@@ -49,8 +52,10 @@ public class CompareServiceImpl implements CompareService {
     /**
      * 통계를 보여주기 위한 최소 코호트 인원. 이 수를 못 채우면 집계를 내리지 않는다.
      *
-     * <p>k-익명성 기준값이다. 인원이 적으면 통계가 특정 개인의 정보를 그대로 드러낸다.
-     * 팀에서 아직 확정 전이라 우선 10으로 두었다. 이 상수만 바꾸면 기준이 바뀐다.
+     * <p>기능명세서 데이터정책은 "코호트 10명 미만 시 미표시"라 하고,
+     * API 명세서는 minimumRequired 30을 예시로 든다. 두 문서가 어긋나 있어
+     * 팀에서 아직 확정하지 않았다. 우선 기능명세서를 따라 10으로 두고,
+     * 확정되면 이 상수만 고치면 되도록 한 곳에 모아둔다.
      */
     private static final int MINIMUM_COHORT_SIZE = 10;
 
@@ -76,9 +81,17 @@ public class CompareServiceImpl implements CompareService {
 
     private final GoalSnapshotMapper goalSnapshotMapper;
 
+    /**
+     * 약관 동의 확인용. member 도메인의 서비스 인터페이스만 쓴다.
+     *
+     * <p>남의 Mapper를 직접 부르지 않는다. 동의 저장 방식이 바뀌어도 이쪽은 안 바뀐다.
+     */
+    private final AgreementService agreementService;
+
     @Override
     public CompareResponse getComparison(Long memberId, Long assetRange, Integer ageRange) {
         validateRange(assetRange, ageRange);
+        validateConsent(memberId);
 
         String snapshotYm = goalSnapshotMapper.findLatestSnapshotYm();
         GoalSnapshot me = (snapshotYm == null)
@@ -123,6 +136,24 @@ public class CompareServiceImpl implements CompareService {
                         .cohortRangeMax(savingRange.getCohortRangeMax())
                         .build())
                 .build();
+    }
+
+    /**
+     * '비교 기능 데이터 제공' 약관 동의 검사.
+     *
+     * <p>프론트도 화면에서 막지만 API는 직접 호출할 수 있다. 개인정보를 다루는 기능이라
+     * 서버에서 한 번 더 막는다. 동의 기록이 아예 없으면 동의하지 않은 것으로 본다.
+     */
+    private void validateConsent(Long memberId) {
+        boolean agreed = agreementService.getAgreements(memberId).stream()
+                .filter(agreement -> AgreementType.COMPARE_DATA == agreement.getAgreementType())
+                .findFirst()
+                .map(Agreement::isAgreed)
+                .orElse(false);
+
+        if (!agreed) {
+            throw new BusinessException(ErrorCode.COMPARE_CONSENT_REQUIRED);
+        }
     }
 
     /**
