@@ -24,6 +24,25 @@
         <result property="connectedAt"      column="created_at"/>
     </resultMap>
 
+    <select id="findAllByConnectedAccountId" parameterType="long" resultMap="connectedInstitutionMap">
+        SELECT id, connected_account_id, institution_code, status,
+               last_synced_at, last_error_code, last_error_message,
+               last_attempted_at, created_at, updated_at
+          FROM connected_institution
+         WHERE connected_account_id = #{connectedAccountId}
+         ORDER BY created_at
+    </select>
+
+    <update id="updateSyncResult" parameterType="com.team.independence.asset.domain.ConnectedInstitution">
+        UPDATE connected_institution
+           SET status              = #{status},
+               last_synced_at      = #{lastSyncedAt},
+               last_error_code     = #{lastErrorCode},
+               last_error_message  = #{lastErrorMessage},
+               last_attempted_at   = #{lastAttemptedAt}
+         WHERE id = #{id}
+    </update>
+
     <insert id="insert" parameterType="com.team.independence.asset.domain.ConnectedInstitution">
         INSERT INTO connected_institution (connected_account_id, institution_code, status)
         VALUES (#{connectedAccountId}, #{institutionCode}, 'ACTIVE')

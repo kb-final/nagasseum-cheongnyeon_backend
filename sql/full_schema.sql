@@ -210,6 +210,7 @@ CREATE TABLE connected_account (
     id                BIGINT       NOT NULL AUTO_INCREMENT,
     member_id         BIGINT       NOT NULL COMMENT '회원 FK(1:1)',
     connected_id      VARCHAR(512) NOT NULL COMMENT 'CODEF Connected ID(암호화 필수)',
+    birth_date        VARCHAR(6)   NULL     COMMENT '생년월일 YYMMDD (계좌 조회 API 재사용)',
     connected_status  VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/EXPIRED/REVOKED',
     last_synced_at    DATETIME     NULL     COMMENT '마지막 동기화 성공 시각(최초 등록 시 NULL)',
     sync_status       VARCHAR(20)  NULL     COMMENT 'SUCCESS/FAILED/IN_PROGRESS',

@@ -10,8 +10,10 @@ import java.util.List;
 @Mapper
 public interface ConnectedInstitutionMapper {
     void insert(ConnectedInstitution connectedInstitution);
+    List<ConnectedInstitution> findAllByConnectedAccountId(Long connectedAccountId);
     List<LinkedOrganizationResponse> findAllWithOrganizationByConnectedAccountId(Long connectedAccountId);
     ConnectedInstitution findByConnectedAccountIdAndInstitutionCode(@Param("connectedAccountId") Long connectedAccountId, @Param("institutionCode") String institutionCode);
     void deleteByConnectedAccountIdAndInstitutionCode(@Param("connectedAccountId") Long connectedAccountId, @Param("institutionCode") String institutionCode);
     int countByConnectedAccountId(Long connectedAccountId);
+    void updateSyncResult(ConnectedInstitution connectedInstitution);
 }
