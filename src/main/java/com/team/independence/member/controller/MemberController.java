@@ -34,6 +34,7 @@ public class MemberController {
                 .map(item -> Agreement.builder()
                         .agreementType(item.agreementType())
                         .agreed(item.agreed())
+                        .agreementVersion("v1.0")
                         .build())
                 .collect(Collectors.toList());
         agreementService.updateAll(memberId, agreements);
