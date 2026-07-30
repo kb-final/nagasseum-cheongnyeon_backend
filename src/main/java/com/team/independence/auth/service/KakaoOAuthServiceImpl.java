@@ -9,11 +9,15 @@ import com.team.independence.auth.jwt.JwtUtil;
 import com.team.independence.auth.mapper.RefreshTokenMapper;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
+import com.team.independence.member.domain.Agreement;
+import com.team.independence.member.service.AgreementService;
 import com.team.independence.member.service.MemberService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
@@ -21,6 +25,8 @@ import org.springframework.web.client.RestTemplate;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +36,7 @@ public class KakaoOAuthServiceImpl implements KakaoOAuthService {
     private static final String KAKAO_USERINFO_URL = "https://kapi.kakao.com/v2/user/me";
 
     private final MemberService memberService;
+    private final AgreementService agreementService;
     private final RefreshTokenMapper refreshTokenMapper;
     private final JwtUtil jwtUtil;
     private final RestTemplate restTemplate;
@@ -67,12 +74,20 @@ public class KakaoOAuthServiceImpl implements KakaoOAuthService {
      * 이미 가입된 kakaoId이면 MEMBER_ALREADY_EXISTS 예외를 던진다.
      */
     @Override
+    @Transactional
     public TokenResponse signup(SignupRequest request) {
         LocalDate birthDate = LocalDate.parse(request.birthDate(),
                 DateTimeFormatter.ofPattern("yyMMdd"));
 
         Long memberId = memberService.createMember(
-                request.kakaoId(), request.nickname(), birthDate);
+                request.kakaoId(), request.nickname(), birthDate, request.incomeBracket());
+
+        if (request.agreements() != null && !request.agreements().isEmpty()) {
+            List<Agreement> agreements = request.agreements().stream()
+                    .map(SignupRequest.AgreementItem::toDomain)
+                    .collect(Collectors.toList());
+            agreementService.saveAll(memberId, agreements);
+        }
 
         return issueTokens(memberId);
     }

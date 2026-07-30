@@ -24,6 +24,7 @@ public enum ErrorCode {
     MEMBER_NOT_FOUND("MEMBER_001", "회원을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     MEMBER_WITHDRAWN("MEMBER_002", "탈퇴한 회원입니다.", HttpStatus.FORBIDDEN),
     MEMBER_ALREADY_EXISTS("MEMBER_003", "이미 가입된 회원입니다.", HttpStatus.CONFLICT),
+    AGREEMENT_NOT_FOUND("MEMBER_004", "약관 동의 정보를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
     // ===== 자산 ASSET_xxx =====
     ASSET_NOT_LINKED("ASSET_001", "자산 연동이 필요합니다.", HttpStatus.BAD_REQUEST),
