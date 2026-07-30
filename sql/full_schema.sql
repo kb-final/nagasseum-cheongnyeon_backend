@@ -89,7 +89,7 @@ CREATE TABLE rent_transaction (
     jibun          VARCHAR(30)   NULL     COMMENT '지번(단독/다가구 미제공)',
     complex_name   VARCHAR(100)  NULL     COMMENT '단지명(단독/다가구 미제공)',
     area           DECIMAL(10,2) NOT NULL COMMENT '전용면적 / 연면적(단독다가구)',
-    deal_type      VARCHAR(10)   NOT NULL COMMENT '전세 / 월세 (monthly_rent=0이면 전세)',
+    deal_type      VARCHAR(10)   NOT NULL COMMENT 'JEONSE / WOLSE (monthly_rent=0이면 JEONSE)',
     deposit        BIGINT        NOT NULL DEFAULT 0 COMMENT '보증금(원)',
     monthly_rent   BIGINT        NOT NULL DEFAULT 0 COMMENT '월세(원, 전세=0)',
     floor          INT           NULL     COMMENT '층(단독/다가구 미제공)',

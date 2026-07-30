@@ -1,5 +1,6 @@
 package com.team.independence.property.service;
 
+import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.domain.RentSyncLog;
 import com.team.independence.property.domain.RentTransaction;
 import com.team.independence.property.mapper.RentSyncLogMapper;
@@ -20,7 +21,7 @@ public class RentTransactionUnitSyncServiceImpl implements RentTransactionUnitSy
 
     @Override
     @Transactional
-    public void sync(String regionCode, String dealYm, String housingType,
+    public void sync(String regionCode, String dealYm, HousingType housingType,
                      List<RentTransaction> items) {
 
         int deleted = rentTransactionMapper.deleteByUnit(regionCode, dealYm, housingType);

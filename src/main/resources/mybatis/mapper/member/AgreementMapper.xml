@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.member.mapper.AgreementMapper">
+
+    <resultMap id="agreementMap" type="com.team.independence.member.domain.Agreement">
+        <id     property="id"               column="id"/>
+        <result property="memberId"         column="member_id"/>
+        <result property="agreementType"    column="agreement_type"/>
+        <result property="agreed"           column="is_agreed"/>
+        <result property="agreementVersion" column="agreement_version"/>
+        <result property="agreedAt"         column="agreed_at"/>
+    </resultMap>
+
+    <select id="findByMemberId" parameterType="long" resultMap="agreementMap">
+        SELECT id, member_id, agreement_type, is_agreed, agreement_version, agreed_at
+          FROM member_agreement
+         WHERE member_id = #{memberId}
+         ORDER BY agreement_type
+    </select>
+
+    <select id="findByMemberIdAndType" resultMap="agreementMap">
+        SELECT id, member_id, agreement_type, is_agreed, agreement_version, agreed_at
+          FROM member_agreement
+         WHERE member_id = #{memberId}
+           AND agreement_type = #{type}
+    </select>
+
+    <insert id="insertAll">
+        INSERT INTO member_agreement (member_id, agreement_type, is_agreed, agreement_version, agreed_at)
+        VALUES
+        <foreach collection="agreements" item="a" separator=",">
+            (#{memberId}, #{a.agreementType}, #{a.agreed}, #{a.agreementVersion}, NOW())
+        </foreach>
+    </insert>
+
+    <update id="updateAgreed">
+        UPDATE member_agreement
+           SET is_agreed = #{agreed},
+               agreed_at = NOW()
+         WHERE member_id = #{memberId}
+           AND agreement_type = #{type}
+    </update>
+
+    <delete id="deleteByMemberId" parameterType="long">
+        DELETE FROM member_agreement
+         WHERE member_id = #{memberId}
+    </delete>
+
+</mapper>

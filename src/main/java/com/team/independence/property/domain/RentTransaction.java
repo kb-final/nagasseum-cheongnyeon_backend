@@ -14,12 +14,12 @@ import lombok.NoArgsConstructor;
 public class RentTransaction {
     private Long id;
     private String regionCode;
-    private String housingType;
+    private HousingType housingType;
     private String dongName;
     private String jibun;
     private String complexName;
     private BigDecimal area;
-    private String dealType;
+    private DealType dealType;
     private Long deposit;
     private Long monthlyRent;
     private Integer floor;

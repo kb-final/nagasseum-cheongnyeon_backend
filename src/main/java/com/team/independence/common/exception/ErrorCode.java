@@ -15,9 +15,16 @@ public enum ErrorCode {
     INTERNAL_ERROR("COMMON_002", "서버 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
     UNAUTHORIZED("COMMON_003", "인증이 필요합니다.", HttpStatus.UNAUTHORIZED),
 
+    // ===== 인증 AUTH_xxx =====
+    AUTH_INVALID_TOKEN("AUTH_001", "유효하지 않은 토큰입니다.", HttpStatus.UNAUTHORIZED),
+    AUTH_EXPIRED_TOKEN("AUTH_002", "만료된 토큰입니다.", HttpStatus.UNAUTHORIZED),
+    AUTH_KAKAO_API_ERROR("AUTH_003", "카카오 API 호출에 실패했습니다.", HttpStatus.BAD_GATEWAY),
+
     // ===== 회원 MEMBER_xxx =====
     MEMBER_NOT_FOUND("MEMBER_001", "회원을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     MEMBER_WITHDRAWN("MEMBER_002", "탈퇴한 회원입니다.", HttpStatus.FORBIDDEN),
+    MEMBER_ALREADY_EXISTS("MEMBER_003", "이미 가입된 회원입니다.", HttpStatus.CONFLICT),
+    AGREEMENT_NOT_FOUND("MEMBER_004", "약관 동의 정보를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
     // ===== 자산 ASSET_xxx =====
     ASSET_NOT_LINKED("ASSET_001", "자산 연동이 필요합니다.", HttpStatus.BAD_REQUEST),
