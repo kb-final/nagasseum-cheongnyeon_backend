@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.asset.mapper.AssetSummaryMapper">
+
+    <resultMap id="assetSummaryMap" type="com.team.independence.asset.domain.AssetSummary">
+        <id     property="id"             column="id"/>
+        <result property="memberId"       column="member_id"/>
+        <result property="totalAssets"    column="total_assets"/>
+        <result property="loanBalance"    column="loan_balance"/>
+        <result property="monthlySavings" column="monthly_savings"/>
+        <result property="syncedAt"       column="synced_at"/>
+        <result property="createdAt"      column="created_at"/>
+        <result property="updatedAt"      column="updated_at"/>
+    </resultMap>
+
+    <select id="findByMemberId" parameterType="long" resultMap="assetSummaryMap">
+        SELECT id, member_id, total_assets, loan_balance, monthly_savings,
+               synced_at, created_at, updated_at
+          FROM asset_summary
+         WHERE member_id = #{memberId}
+    </select>
+
+    <insert id="upsert" parameterType="com.team.independence.asset.domain.AssetSummary">
+        INSERT INTO asset_summary (member_id, total_assets, loan_balance, synced_at)
+        VALUES (#{memberId}, #{totalAssets}, #{loanBalance}, #{syncedAt})
+        ON DUPLICATE KEY UPDATE
+            total_assets = VALUES(total_assets),
+            loan_balance = VALUES(loan_balance),
+            synced_at    = VALUES(synced_at)
+    </insert>
+
+</mapper>

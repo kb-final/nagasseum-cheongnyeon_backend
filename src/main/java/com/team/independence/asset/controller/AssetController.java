@@ -2,6 +2,8 @@ package com.team.independence.asset.controller;
 
 import com.team.independence.asset.dto.*;
 import com.team.independence.asset.service.AssetService;
+import com.team.independence.asset.service.AssetSummaryService;
+import com.team.independence.asset.service.AssetSyncService;
 import com.team.independence.asset.service.InstitutionService;
 import com.team.independence.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,8 @@ import java.util.List;
 public class AssetController {
 
     private final AssetService assetService;
+    private final AssetSyncService assetSyncService;
+    private final AssetSummaryService assetSummaryService;
     private final InstitutionService institutionService;
 
     @PostMapping("/link")
@@ -33,6 +37,16 @@ public class AssetController {
     public ApiResponse<List<LinkedOrganizationResponse>> getConnections(
             @RequestParam Long memberId) {
         return ApiResponse.ok(assetService.getConnections(memberId));
+    }
+
+    @PostMapping("/sync")
+    public ApiResponse<AssetSyncResponse> syncAccounts(@RequestParam Long memberId) {
+        return ApiResponse.ok(assetSyncService.syncAccounts(memberId));
+    }
+
+    @GetMapping("/summary/{memberId}")
+    public ApiResponse<AssetSummaryResponse> getSummary(@PathVariable Long memberId) {
+        return ApiResponse.ok(assetSummaryService.getSummary(memberId));
     }
 
     @DeleteMapping("/connections/organizations/{organizationCode}")
