@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.property.mapper.RentTransactionMapper">
+
+    <insert id="insert" parameterType="com.team.independence.property.domain.RentTransaction">
+        INSERT INTO rent_transaction (
+            region_code, housing_type, dong_name, jibun, complex_name,
+            area, deal_type, deposit, monthly_rent, floor, build_year,
+            deal_ym, deal_day, contract_type, contract_term, json
+        ) VALUES (
+            #{regionCode}, #{housingType}, #{dongName}, #{jibun}, #{complexName},
+            #{area}, #{dealType}, #{deposit}, #{monthlyRent}, #{floor}, #{buildYear},
+            #{dealYm}, #{dealDay}, #{contractType}, #{contractTerm}, #{json}
+        )
+    </insert>
+
+    <insert id="insertBatch" parameterType="list">
+        INSERT INTO rent_transaction (
+            region_code, housing_type, dong_name, jibun, complex_name,
+            area, deal_type, deposit, monthly_rent, floor, build_year,
+            deal_ym, deal_day, contract_type, contract_term, json
+        ) VALUES
+        <foreach collection="list" item="r" separator=",">
+        (
+            #{r.regionCode}, #{r.housingType}, #{r.dongName}, #{r.jibun}, #{r.complexName},
+            #{r.area}, #{r.dealType}, #{r.deposit}, #{r.monthlyRent}, #{r.floor}, #{r.buildYear},
+            #{r.dealYm}, #{r.dealDay}, #{r.contractType}, #{r.contractTerm}, #{r.json}
+        )
+        </foreach>
+    </insert>
+
+    <!-- idx_rent_reload (region_code, deal_ym, housing_type)를 그대로 타는 구간 삭제.
+         재적재 트랜잭션의 첫 단계이며, 인덱스가 없으면 유닛마다 풀스캔이 된다. -->
+    <delete id="deleteByUnit">
+        DELETE FROM rent_transaction
+         WHERE region_code = #{regionCode}
+           AND deal_ym = #{dealYm}
+           AND housing_type = #{housingType}
+    </delete>
+
+</mapper>
