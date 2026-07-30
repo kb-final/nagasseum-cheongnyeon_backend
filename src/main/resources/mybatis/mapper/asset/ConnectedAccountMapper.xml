@@ -8,6 +8,7 @@
         <id     property="id"              column="id"/>
         <result property="memberId"        column="member_id"/>
         <result property="connectedId"     column="connected_id"/>
+        <result property="birthDate"       column="birth_date"/>
         <result property="connectedStatus" column="connected_status"/>
         <result property="lastSyncedAt"    column="last_synced_at"/>
         <result property="syncStatus"      column="sync_status"/>
@@ -16,7 +17,7 @@
     </resultMap>
 
     <select id="findByMemberId" parameterType="long" resultMap="connectedAccountMap">
-        SELECT id, member_id, connected_id, connected_status,
+        SELECT id, member_id, connected_id, birth_date, connected_status,
                last_synced_at, sync_status, created_at, updated_at
           FROM connected_account
          WHERE member_id = #{memberId}
@@ -24,9 +25,16 @@
 
     <insert id="insert" parameterType="com.team.independence.asset.domain.ConnectedAccount"
             useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO connected_account (member_id, connected_id, connected_status)
-        VALUES (#{memberId}, #{connectedId}, 'ACTIVE')
+        INSERT INTO connected_account (member_id, connected_id, birth_date, connected_status)
+        VALUES (#{memberId}, #{connectedId}, #{birthDate}, 'ACTIVE')
     </insert>
+
+    <update id="updateSyncStatus" parameterType="com.team.independence.asset.domain.ConnectedAccount">
+        UPDATE connected_account
+           SET sync_status    = #{syncStatus},
+               last_synced_at = #{lastSyncedAt}
+         WHERE id = #{id}
+    </update>
 
     <delete id="deleteById" parameterType="long">
         DELETE FROM connected_account WHERE id = #{id}

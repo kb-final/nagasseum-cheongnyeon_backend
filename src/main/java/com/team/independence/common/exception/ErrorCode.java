@@ -32,6 +32,7 @@ public enum ErrorCode {
     ASSET_RSA_ENCRYPT_FAILED("ASSET_003", "비밀번호 암호화에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
     ASSET_CODEF_API_ERROR("ASSET_004", "금융 연동 서버 오류가 발생했습니다.", HttpStatus.BAD_GATEWAY),
     ASSET_ORGANIZATION_NOT_CONNECTED("ASSET_005", "연동되지 않은 기관입니다.", HttpStatus.NOT_FOUND),
+    ASSET_SUMMARY_NOT_FOUND("ASSET_006", "자산 연동 정보가 없습니다. 먼저 금융기관을 연동해주세요.", HttpStatus.NOT_FOUND),
 
     // ===== 목표 GOAL_xxx =====
     GOAL_NOT_FOUND("GOAL_001", "목표를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),

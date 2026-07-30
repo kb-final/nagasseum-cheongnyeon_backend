@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.asset.mapper.LoanAccountMapper">
+
+    <resultMap id="loanAccountMap" type="com.team.independence.asset.domain.LoanAccount">
+        <id     property="id"                       column="id"/>
+        <result property="connectedInstitutionId"   column="connected_institution_id"/>
+        <result property="loanName"                 column="loan_name"/>
+        <result property="accountDisplay"           column="account_display"/>
+        <result property="loanBalance"              column="loan_balance"/>
+        <result property="rawResponse"              column="raw_response"/>
+        <result property="createdAt"                column="created_at"/>
+        <result property="updatedAt"                column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.team.independence.asset.domain.LoanAccount"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO loan_account
+            (connected_institution_id, loan_name, account_display, loan_balance, raw_response)
+        VALUES
+            (#{connectedInstitutionId}, #{loanName}, #{accountDisplay}, #{loanBalance}, #{rawResponse})
+    </insert>
+
+    <insert id="insertAll">
+        INSERT INTO loan_account
+            (connected_institution_id, loan_name, account_display, loan_balance, raw_response)
+        VALUES
+        <foreach collection="list" item="l" separator=",">
+            (#{l.connectedInstitutionId}, #{l.loanName}, #{l.accountDisplay}, #{l.loanBalance}, #{l.rawResponse})
+        </foreach>
+    </insert>
+
+    <delete id="deleteByConnectedInstitutionId" parameterType="long">
+        DELETE FROM loan_account WHERE connected_institution_id = #{connectedInstitutionId}
+    </delete>
+
+    <select id="findByConnectedInstitutionId" parameterType="long" resultMap="loanAccountMap">
+        SELECT id, connected_institution_id, loan_name, account_display,
+               loan_balance, raw_response, created_at, updated_at
+          FROM loan_account
+         WHERE connected_institution_id = #{connectedInstitutionId}
+    </select>
+
+    <resultMap id="loanAccountQueryMap" type="com.team.independence.asset.dto.LoanAccountQueryItem">
+        <result property="id"              column="id"/>
+        <result property="institutionName" column="institution_name"/>
+        <result property="loanName"        column="loan_name"/>
+        <result property="accountDisplay"  column="account_display"/>
+        <result property="loanBalance"     column="loan_balance"/>
+    </resultMap>
+
+    <select id="findWithInstitutionByMemberId" parameterType="long" resultMap="loanAccountQueryMap">
+        SELECT la.id, i.name AS institution_name,
+               la.loan_name, la.account_display, la.loan_balance
+          FROM loan_account la
+          JOIN connected_institution ci ON la.connected_institution_id = ci.id
+          JOIN connected_account ca ON ci.connected_account_id = ca.id
+          JOIN institution i ON ci.institution_code = i.code
+         WHERE ca.member_id = #{memberId}
+         ORDER BY i.name
+    </select>
+
+    <select id="sumLoanBalanceByMemberId" parameterType="long" resultType="java.lang.Long">
+        SELECT COALESCE(SUM(la.loan_balance), 0)
+          FROM loan_account la
+          JOIN connected_institution ci ON la.connected_institution_id = ci.id
+          JOIN connected_account ca ON ci.connected_account_id = ca.id
+         WHERE ca.member_id = #{memberId}
+    </select>
+
+</mapper>

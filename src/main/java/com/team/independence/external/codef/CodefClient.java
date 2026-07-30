@@ -5,6 +5,8 @@ import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.external.codef.dto.CodefAccountRequest;
 import com.team.independence.external.codef.dto.CodefApiResponse;
+import com.team.independence.external.codef.dto.CodefBankAccountResponse;
+import com.team.independence.external.codef.dto.CodefBankInquiryRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
@@ -27,6 +29,7 @@ public class CodefClient {
     private static final String CREATE_PATH = "/v1/account/create";
     private static final String ADD_PATH = "/v1/account/add";
     private static final String DELETE_PATH = "/v1/account/delete";
+    private static final String BANK_ACCOUNT_LIST_PATH = "/v1/kr/bank/p/account/account-list";
 
     private final CodefProperties properties;
     private final RestTemplate restTemplate;
@@ -45,6 +48,42 @@ public class CodefClient {
                 .accountList(List.of(item))
                 .build();
         return call(accessToken, ADD_PATH, body);
+    }
+
+    public CodefBankAccountResponse getBankAccountList(String accessToken, String connectedId,
+                                                       String organization, String birthDate) {
+        CodefBankInquiryRequest body = CodefBankInquiryRequest.builder()
+                .connectedId(connectedId)
+                .organization(organization)
+                .birthDate(birthDate)
+                .build();
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(accessToken);
+
+            HttpEntity<CodefBankInquiryRequest> request = new HttpEntity<>(body, headers);
+
+            log.debug("CODEF 계좌조회 요청: org={}, connectedId={}...",
+                    organization, connectedId.substring(0, Math.min(8, connectedId.length())));
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    properties.getApiDomain() + BANK_ACCOUNT_LIST_PATH,
+                    HttpMethod.POST,
+                    request,
+                    String.class
+            );
+
+            log.debug("CODEF 계좌조회 원본 응답: {}", response.getBody());
+            String decoded = URLDecoder.decode(response.getBody(), StandardCharsets.UTF_8);
+            CodefBankAccountResponse result = objectMapper.readValue(decoded, CodefBankAccountResponse.class);
+            log.debug("CODEF 계좌조회 결과: code={}", result.getResultCode());
+            return result;
+
+        } catch (Exception e) {
+            log.error("CODEF 계좌조회 실패: org={}", organization, e);
+            throw new BusinessException(ErrorCode.ASSET_CODEF_API_ERROR);
+        }
     }
 
     public CodefApiResponse deleteAccount(String accessToken, String connectedId, CodefAccountRequest.CodefAccountItem item) {

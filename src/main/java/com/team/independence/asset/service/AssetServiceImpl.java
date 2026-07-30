@@ -98,6 +98,7 @@ public class AssetServiceImpl implements AssetService {
         ConnectedAccount account = ConnectedAccount.builder()
                 .memberId(memberId)
                 .connectedId(aesEncryptor.encrypt(connectedId))
+                .birthDate(request.getBirthDate())
                 .build();
         connectedAccountMapper.insert(account);
 

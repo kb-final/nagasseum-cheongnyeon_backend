@@ -1,0 +1,285 @@
+package com.team.independence.asset.service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team.independence.asset.domain.AssetAccount;
+import com.team.independence.asset.domain.ConnectedAccount;
+import com.team.independence.asset.domain.ConnectedInstitution;
+import com.team.independence.asset.domain.LoanAccount;
+import com.team.independence.asset.dto.AssetSyncResponse;
+import com.team.independence.asset.dto.AssetSyncResponse.InstitutionSyncResult;
+import com.team.independence.asset.domain.AssetSummary;
+import com.team.independence.asset.mapper.AssetAccountMapper;
+import com.team.independence.asset.mapper.AssetSummaryMapper;
+import com.team.independence.asset.mapper.ConnectedAccountMapper;
+import com.team.independence.asset.mapper.ConnectedInstitutionMapper;
+import com.team.independence.asset.mapper.InstitutionMapper;
+import com.team.independence.asset.domain.Institution;
+import com.team.independence.asset.mapper.LoanAccountMapper;
+import com.team.independence.common.exception.BusinessException;
+import com.team.independence.common.exception.ErrorCode;
+import com.team.independence.common.security.AesEncryptor;
+import com.team.independence.external.codef.CodefClient;
+import com.team.independence.external.codef.CodefTokenManager;
+import com.team.independence.external.codef.dto.CodefBankAccountResponse;
+import com.team.independence.external.codef.dto.CodefBankAccountResponse.CodefDepositItem;
+import com.team.independence.external.codef.dto.CodefBankAccountResponse.CodefLoanItem;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class AssetSyncServiceImpl implements AssetSyncService {
+
+    private final ConnectedAccountMapper connectedAccountMapper;
+    private final ConnectedInstitutionMapper connectedInstitutionMapper;
+    private final InstitutionMapper institutionMapper;
+    private final AssetAccountMapper assetAccountMapper;
+    private final LoanAccountMapper loanAccountMapper;
+    private final AssetSummaryMapper assetSummaryMapper;
+    private final CodefClient codefClient;
+    private final CodefTokenManager codefTokenManager;
+    private final AesEncryptor aesEncryptor;
+    private final ObjectMapper objectMapper;
+
+    @Override
+    @Transactional
+    public AssetSyncResponse syncAccounts(Long memberId) {
+        ConnectedAccount connectedAccount = connectedAccountMapper.findByMemberId(memberId);
+        if (connectedAccount == null) {
+            throw new BusinessException(ErrorCode.ASSET_NOT_LINKED);
+        }
+
+        String connectedId = aesEncryptor.decrypt(connectedAccount.getConnectedId());
+        String birthDate = connectedAccount.getBirthDate();
+        String accessToken = codefTokenManager.getAccessToken();
+
+        List<ConnectedInstitution> institutions =
+                connectedInstitutionMapper.findAllByConnectedAccountId(connectedAccount.getId());
+
+        List<InstitutionSyncResult> results = new ArrayList<>();
+        int syncedCount = 0;
+        int failedCount = 0;
+
+        for (ConnectedInstitution institution : institutions) {
+            InstitutionSyncResult result = syncInstitution(
+                    institution, connectedId, birthDate, accessToken);
+            results.add(result);
+            if (result.isSuccess()) syncedCount++;
+            else failedCount++;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        connectedAccount.setSyncStatus(failedCount == 0 ? "SUCCESS" : syncedCount > 0 ? "PARTIAL" : "FAILED");
+        connectedAccount.setLastSyncedAt(now);
+        connectedAccountMapper.updateSyncStatus(connectedAccount);
+
+        // 자산 합계 캐시 갱신
+        Long totalAssets = assetAccountMapper.sumCurrentValueByMemberId(memberId);
+        Long loanBalance = loanAccountMapper.sumLoanBalanceByMemberId(memberId);
+        assetSummaryMapper.upsert(AssetSummary.builder()
+                .memberId(memberId)
+                .totalAssets(totalAssets != null ? totalAssets : 0L)
+                .loanBalance(loanBalance != null ? loanBalance : 0L)
+                .syncedAt(now)
+                .build());
+
+        return AssetSyncResponse.builder()
+                .syncedCount(syncedCount)
+                .failedCount(failedCount)
+                .institutions(results)
+                .build();
+    }
+
+    private InstitutionSyncResult syncInstitution(ConnectedInstitution institution,
+                                                   String connectedId,
+                                                   String birthDate,
+                                                   String accessToken) {
+        String institutionCode = institution.getInstitutionCode();
+        Institution institutionInfo = institutionMapper.findByCode(institutionCode);
+        String orgName = institutionInfo != null ? institutionInfo.getName() : institutionCode;
+
+        try {
+            CodefBankAccountResponse response =
+                    codefClient.getBankAccountList(accessToken, connectedId, institutionCode, birthDate);
+
+            if (!response.isSuccess()) {
+                return recordFailure(institution, orgName,
+                        response.getResultCode(), response.getResultMessage());
+            }
+
+            CodefBankAccountResponse.CodefBankData data = response.getData();
+            List<AssetAccount> assetAccounts = parseAssetAccounts(institution.getId(), data);
+            List<LoanAccount> loanAccounts = parseLoanAccounts(institution.getId(), data);
+
+            // 동기화: 기존 계좌 전체 삭제 후 재적재
+            assetAccountMapper.deleteByConnectedInstitutionId(institution.getId());
+            loanAccountMapper.deleteByConnectedInstitutionId(institution.getId());
+
+            if (!assetAccounts.isEmpty()) {
+                assetAccountMapper.insertAll(assetAccounts);
+            }
+            if (!loanAccounts.isEmpty()) {
+                loanAccountMapper.insertAll(loanAccounts);
+            }
+
+            institution.setStatus("ACTIVE");
+            institution.setLastSyncedAt(LocalDateTime.now());
+            institution.setLastAttemptedAt(LocalDateTime.now());
+            institution.setLastErrorCode(null);
+            institution.setLastErrorMessage(null);
+            connectedInstitutionMapper.updateSyncResult(institution);
+
+            log.info("계좌 동기화 완료: org={}, 자산계좌={}, 대출계좌={}",
+                    institutionCode, assetAccounts.size(), loanAccounts.size());
+
+            return InstitutionSyncResult.builder()
+                    .organizationCode(institutionCode)
+                    .organizationName(orgName)
+                    .success(true)
+                    .assetAccountCount(assetAccounts.size())
+                    .loanAccountCount(loanAccounts.size())
+                    .build();
+
+        } catch (Exception e) {
+            log.error("계좌 동기화 실패: org={}", institutionCode, e);
+            return recordFailure(institution, orgName, "SYNC_ERROR", e.getMessage());
+        }
+    }
+
+    private List<AssetAccount> parseAssetAccounts(Long connectedInstitutionId,
+                                                   CodefBankAccountResponse.CodefBankData data) {
+        List<AssetAccount> accounts = new ArrayList<>();
+
+        for (CodefDepositItem item : data.getResDepositTrust()) {
+            if (isExcluded(item)) continue;
+
+            String accountType = classifyDepositType(item);
+            String assetCategory = toAssetCategory(accountType);
+            Long balance = parseAmount(item.getResAccountBalance());
+
+            accounts.add(AssetAccount.builder()
+                    .connectedInstitutionId(connectedInstitutionId)
+                    .accountType(accountType)
+                    .assetCategory(assetCategory)
+                    .accountDisplay(item.getResAccountDisplay())
+                    .productName(item.getResAccountName())
+                    .currentValue(balance)
+                    .rawResponse(toJson(item))
+                    .build());
+        }
+
+        for (CodefBankAccountResponse.CodefFundItem item : data.getResFund()) {
+            Long balance = parseAmount(item.getResAccountBalance());
+            accounts.add(AssetAccount.builder()
+                    .connectedInstitutionId(connectedInstitutionId)
+                    .accountType("FUND")
+                    .assetCategory("INVESTMENT")
+                    .accountDisplay(item.getResAccountDisplay())
+                    .productName(item.getResAccountName())
+                    .currentValue(balance)
+                    .rawResponse(toJson(item))
+                    .build());
+        }
+
+        return accounts;
+    }
+
+    private List<LoanAccount> parseLoanAccounts(Long connectedInstitutionId,
+                                                 CodefBankAccountResponse.CodefBankData data) {
+        List<LoanAccount> loans = new ArrayList<>();
+
+        for (CodefLoanItem item : data.getResLoan()) {
+            Long balance = parseAmount(item.getResLoanBalance());
+            loans.add(LoanAccount.builder()
+                    .connectedInstitutionId(connectedInstitutionId)
+                    .loanName(item.getResAccountName())
+                    .accountDisplay(item.getResAccountDisplay())
+                    .loanBalance(balance != null ? balance : 0L)
+                    .rawResponse(toJson(item))
+                    .build());
+        }
+
+        return loans;
+    }
+
+    /**
+     * 마이너스통장 또는 외화 계좌는 제외
+     */
+    private boolean isExcluded(CodefDepositItem item) {
+        if ("1".equals(item.getResOverdraftAcctYN())) return true;
+        if (item.getResAccountCurrency() != null && !"KRW".equals(item.getResAccountCurrency())) return true;
+        return false;
+    }
+
+    /**
+     * resAccountDeposit 코드 → 계좌 유형
+     * 12코드(적금, 청약 혼용)는 상품명으로 구분
+     * 주택청약종합저축은 법적으로 정해진 단일 상품명이므로 안전한 판별 기준
+     */
+    private String classifyDepositType(CodefDepositItem item) {
+        String depositCode = item.getResAccountDeposit();
+        if ("11".equals(depositCode)) return "DEMAND";
+        if ("13".equals(depositCode)) return "DEPOSIT";
+        if ("12".equals(depositCode)) {
+            String name = item.getResAccountName();
+            if (name != null && name.contains("청약")) return "SUBSCRIPTION";
+            return "SAVINGS";
+        }
+        return "DEPOSIT";
+    }
+
+    private String toAssetCategory(String accountType) {
+        switch (accountType) {
+            case "DEMAND": return "CASH";
+            case "SUBSCRIPTION": return "SUBSCRIPTION";
+            case "FUND":
+            case "STOCK": return "INVESTMENT";
+            default: return "DEPOSIT_SAVINGS";
+        }
+    }
+
+    private Long parseAmount(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            log.warn("금액 파싱 실패: '{}'", value);
+            return null;
+        }
+    }
+
+    private String toJson(Object obj) {
+        try {
+            return objectMapper.writeValueAsString(obj);
+        } catch (JsonProcessingException e) {
+            return "{}";
+        }
+    }
+
+    private InstitutionSyncResult recordFailure(ConnectedInstitution institution,
+                                                 String orgName,
+                                                 String errorCode,
+                                                 String errorMessage) {
+        institution.setStatus("ERROR");
+        institution.setLastAttemptedAt(LocalDateTime.now());
+        institution.setLastErrorCode(errorCode);
+        institution.setLastErrorMessage(errorMessage);
+        connectedInstitutionMapper.updateSyncResult(institution);
+
+        return InstitutionSyncResult.builder()
+                .organizationCode(institution.getInstitutionCode())
+                .organizationName(orgName)
+                .success(false)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+    }
+}
