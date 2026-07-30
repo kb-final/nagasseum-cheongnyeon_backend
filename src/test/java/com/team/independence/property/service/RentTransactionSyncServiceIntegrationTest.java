@@ -1,6 +1,7 @@
 package com.team.independence.property.service;
 
 import com.team.independence.config.RootConfig;
+import com.team.independence.property.domain.HousingType;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,7 @@ class RentTransactionSyncServiceIntegrationTest {
 
     @Test
     void collectAndSync_저장확인() {
-        rentTransactionSyncService.collectAndSync("11110", "201512", "APT");
+        rentTransactionSyncService.collectAndSync("11110", "201512", HousingType.APT);
 
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         Integer count = jdbc.queryForObject(
@@ -49,13 +50,13 @@ class RentTransactionSyncServiceIntegrationTest {
     void collectAndSync_두_번_실행해도_건수_동일() {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
-        rentTransactionSyncService.collectAndSync("11110", "201512", "APT");
+        rentTransactionSyncService.collectAndSync("11110", "201512", HousingType.APT);
         Integer first = jdbc.queryForObject(
             "SELECT COUNT(*) FROM rent_transaction WHERE region_code = ? AND deal_ym = ? AND housing_type = ?",
             Integer.class, "11110", "201512", "APT"
         );
 
-        rentTransactionSyncService.collectAndSync("11110", "201512", "APT");
+        rentTransactionSyncService.collectAndSync("11110", "201512", HousingType.APT);
         Integer second = jdbc.queryForObject(
             "SELECT COUNT(*) FROM rent_transaction WHERE region_code = ? AND deal_ym = ? AND housing_type = ?",
             Integer.class, "11110", "201512", "APT"

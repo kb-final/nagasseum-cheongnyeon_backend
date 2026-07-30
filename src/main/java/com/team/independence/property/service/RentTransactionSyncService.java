@@ -1,5 +1,7 @@
 package com.team.independence.property.service;
 
+import com.team.independence.property.domain.HousingType;
+
 /**
  * 국토부 전월세 실거래 API에서 거래 내역을 수집한다.
  *
@@ -23,5 +25,5 @@ public interface RentTransactionSyncService {
      * 이 메서드에는 {@code @Transactional}을 붙이면 안 된다 — 외부 API 응답을 기다리는 동안
      * DB 커넥션을 점유하게 된다.
      */
-    void collectAndSync(String regionCode, String dealYm, String housingType);
+    void collectAndSync(String regionCode, String dealYm, HousingType housingType);
 }

@@ -1,5 +1,6 @@
 package com.team.independence.property.service;
 
+import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.domain.RentTransaction;
 import java.util.List;
 
@@ -18,5 +19,5 @@ public interface RentTransactionUnitSyncService {
     /**
      * @param items 이미 파싱이 끝난 거래 목록. HTTP 호출은 트랜잭션 밖에서 끝내고 결과만 넘긴다.
      */
-    void sync(String regionCode, String dealYm, String housingType, List<RentTransaction> items);
+    void sync(String regionCode, String dealYm, HousingType housingType, List<RentTransaction> items);
 }
