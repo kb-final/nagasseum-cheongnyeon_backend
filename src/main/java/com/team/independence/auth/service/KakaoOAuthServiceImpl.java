@@ -6,13 +6,12 @@ import com.team.independence.auth.dto.KakaoUserInfo;
 import com.team.independence.auth.dto.SignupRequest;
 import com.team.independence.auth.dto.TokenResponse;
 import com.team.independence.auth.jwt.JwtUtil;
-import com.team.independence.auth.mapper.RefreshTokenMapper;
+import com.team.independence.auth.repository.RefreshTokenStore;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.member.domain.Agreement;
 import com.team.independence.member.service.AgreementService;
 import com.team.independence.member.service.MemberService;
-
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -23,7 +22,6 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -37,7 +35,7 @@ public class KakaoOAuthServiceImpl implements KakaoOAuthService {
 
     private final MemberService memberService;
     private final AgreementService agreementService;
-    private final RefreshTokenMapper refreshTokenMapper;
+    private final RefreshTokenStore refreshTokenStore;
     private final JwtUtil jwtUtil;
     private final RestTemplate restTemplate;
 
@@ -50,13 +48,6 @@ public class KakaoOAuthServiceImpl implements KakaoOAuthService {
     @Value("${kakao.redirect.uri}")
     private String redirectUri;
 
-    /**
-     * 카카오 인가 코드로 사용자 정보를 조회한 뒤 로그인/회원가입 여부를 판단한다.
-     * <p>
-     * DB에 kakaoId가 존재하면 JWT를 발급(LOGIN),
-     * 존재하지 않으면 kakaoId·닉네임만 반환해 추가 정보 입력을 유도(SIGNUP_REQUIRED).
-     * 외부 API 호출이 포함되므로 트랜잭션을 열지 않는다.
-     */
     @Override
     public KakaoCallbackResponse handleCallback(String code) {
         KakaoUserInfo userInfo = fetchKakaoUserInfo(code, redirectUri);
@@ -67,12 +58,6 @@ public class KakaoOAuthServiceImpl implements KakaoOAuthService {
                         userInfo.getKakaoId(), userInfo.getNickname()));
     }
 
-    /**
-     * 신규 회원을 생성하고 JWT를 발급한다.
-     * <p>
-     * birthDate는 YYMMDD 6자리로 받아 LocalDate로 변환한다.
-     * 이미 가입된 kakaoId이면 MEMBER_ALREADY_EXISTS 예외를 던진다.
-     */
     @Override
     @Transactional
     public TokenResponse signup(SignupRequest request) {
@@ -97,10 +82,6 @@ public class KakaoOAuthServiceImpl implements KakaoOAuthService {
         return getUserInfo(kakaoToken.accessToken());
     }
 
-    /**
-     * 카카오 인가 코드를 액세스 토큰으로 교환한다.
-     * redirect_uri는 인가 요청 시 사용한 값과 반드시 일치해야 한다.
-     */
     private KakaoTokenResponse exchangeCodeForToken(String code, String redirectUri) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
@@ -139,19 +120,12 @@ public class KakaoOAuthServiceImpl implements KakaoOAuthService {
         return userInfo;
     }
 
-    /**
-     * accessToken·refreshToken을 발급하고 refreshToken을 DB에 저장한다.
-     * 기존 refreshToken은 교체(deleteByMemberId 후 save)한다.
-     */
+    /** accessToken·refreshToken 발급. Redis에 저장하며 TTL로 만료를 관리한다. */
     private TokenResponse issueTokens(Long memberId) {
         String accessToken  = jwtUtil.createAccessToken(memberId);
         String refreshToken = jwtUtil.createRefreshToken(memberId);
 
-        LocalDateTime expiresAt = LocalDateTime.now()
-                .plusSeconds(jwtUtil.getRefreshTokenValidityMs() / 1000);
-
-        refreshTokenMapper.deleteByMemberId(memberId);
-        refreshTokenMapper.save(memberId, refreshToken, expiresAt);
+        refreshTokenStore.save(memberId, refreshToken);
 
         return new TokenResponse(accessToken, refreshToken, memberId);
     }
