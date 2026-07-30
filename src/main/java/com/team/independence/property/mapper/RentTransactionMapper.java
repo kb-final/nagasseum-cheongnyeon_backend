@@ -4,6 +4,7 @@ import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.domain.RentTransaction;
 import com.team.independence.property.dto.RentMedianAmount;
 import com.team.independence.property.dto.RentMedianRequest;
+import java.math.BigDecimal;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -30,4 +31,11 @@ public interface RentTransactionMapper {
                                                 @Param("areaMaxSqm") long areaMaxSqm,
                                                 @Param("startYm") String startYm,
                                                 @Param("endYm") String endYm);
+
+    /** 조건에 맞는 보증금(deposit)을 오름차순 정렬해 반환 (백분위수 계산용) */
+    List<Long> findDeposits(@Param("regionCode") String regionCode,
+                            @Param("housingType") String housingType,
+                            @Param("dealType") String dealType,
+                            @Param("areaMin") BigDecimal areaMin,
+                            @Param("areaMax") BigDecimal areaMax);
 }
