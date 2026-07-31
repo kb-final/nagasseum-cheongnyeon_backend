@@ -7,6 +7,7 @@ import com.team.independence.member.domain.Agreement.AgreementType;
 import com.team.independence.member.dto.AgreementSingleUpdateRequest;
 import com.team.independence.member.dto.AgreementUpdateRequest;
 import com.team.independence.member.dto.MemberProfileResponse;
+import com.team.independence.member.dto.MemberUpdateRequest;
 import com.team.independence.member.service.AgreementService;
 import com.team.independence.member.service.MemberService;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,14 @@ public class MemberController {
     @GetMapping("/me")
     public ApiResponse<MemberProfileResponse> getMe(@LoginMember Long memberId) {
         return ApiResponse.ok(memberService.getMember(memberId));
+    }
+
+    @PatchMapping("/me")
+    public ApiResponse<Void> updateMe(
+            @LoginMember Long memberId,
+            @RequestBody MemberUpdateRequest request) {
+        memberService.updateMember(memberId, request.nickname(), request.incomeBracket());
+        return ApiResponse.ok(null);
     }
 
     @PatchMapping("/me/agreements")
