@@ -3,8 +3,11 @@ package com.team.independence.member.controller;
 import com.team.independence.common.annotation.LoginMember;
 import com.team.independence.common.response.ApiResponse;
 import com.team.independence.member.domain.Agreement;
+import com.team.independence.member.domain.Agreement.AgreementType;
+import com.team.independence.member.dto.AgreementSingleUpdateRequest;
 import com.team.independence.member.dto.AgreementUpdateRequest;
 import com.team.independence.member.dto.MemberProfileResponse;
+import com.team.independence.member.dto.MemberUpdateRequest;
 import com.team.independence.member.service.AgreementService;
 import com.team.independence.member.service.MemberService;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +29,14 @@ public class MemberController {
         return ApiResponse.ok(memberService.getMember(memberId));
     }
 
+    @PatchMapping("/me")
+    public ApiResponse<Void> updateMe(
+            @LoginMember Long memberId,
+            @RequestBody MemberUpdateRequest request) {
+        memberService.updateMember(memberId, request.nickname(), request.incomeBracket());
+        return ApiResponse.ok(null);
+    }
+
     @PatchMapping("/me/agreements")
     public ApiResponse<Void> updateAgreements(
             @LoginMember Long memberId,
@@ -38,6 +49,15 @@ public class MemberController {
                         .build())
                 .collect(Collectors.toList());
         agreementService.updateAll(memberId, agreements);
+        return ApiResponse.ok(null);
+    }
+
+    @PatchMapping("/me/agreements/{type}")
+    public ApiResponse<Void> updateAgreement(
+            @LoginMember Long memberId,
+            @PathVariable AgreementType type,
+            @RequestBody AgreementSingleUpdateRequest request) {
+        agreementService.updateOne(memberId, type, request.agreed());
         return ApiResponse.ok(null);
     }
 

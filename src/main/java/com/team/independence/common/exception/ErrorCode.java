@@ -43,7 +43,10 @@ public enum ErrorCode {
     COMPARE_CONSENT_REQUIRED("COMPARE_003", "또래 비교 약관 동의가 필요합니다.", HttpStatus.FORBIDDEN),
 
     // ===== 정책 POLICY_xxx =====
-    POLICY_NOT_FOUND("POLICY_001", "정책을 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
+    POLICY_NOT_FOUND("POLICY_001", "정책을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+
+    // ===== 부동산 PROPERTY_xxx =====
+    REGION_NOT_FOUND("PROPERTY_001", "존재하지 않는 지역 코드입니다.", HttpStatus.NOT_FOUND);
 
     private final String code;
     private final String message;

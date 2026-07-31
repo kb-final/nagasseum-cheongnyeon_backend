@@ -6,6 +6,7 @@ import com.team.independence.common.resolver.LoginMemberArgumentResolver;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.format.FormatterRegistry;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
@@ -69,6 +70,12 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
         resolvers.add(loginMemberArgumentResolver);
+    }
+
+    @Override
+    public void addFormatters(FormatterRegistry registry) {
+        registry.addConverter(String.class, com.team.independence.member.domain.Agreement.AgreementType.class,
+                source -> com.team.independence.member.domain.Agreement.AgreementType.valueOf(source.toUpperCase()));
     }
 
     /** LocalDate/LocalDateTime을 ISO-8601 문자열로 직렬화 */

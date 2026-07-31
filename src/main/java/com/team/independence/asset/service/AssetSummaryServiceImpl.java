@@ -40,7 +40,7 @@ public class AssetSummaryServiceImpl implements AssetSummaryService {
         long investmentTotal = 0L;
 
         for (AssetAccountQueryItem account : accounts) {
-            long balance = account.getCurrentValue() != null ? account.getCurrentValue() : 0L;
+            long balance = computeBalance(account);
             AccountItem item = AccountItem.builder()
                     .institutionName(account.getInstitutionName())
                     .accountType(toResponseAccountType(account.getAccountType()))
@@ -92,6 +92,20 @@ public class AssetSummaryServiceImpl implements AssetSummaryService {
                         .build())
                 .loans(loanItems)
                 .build();
+    }
+
+    /**
+     * STOCK: valuationAmount × 70% + depositReceived
+     * 나머지: current_value 그대로
+     */
+    private long computeBalance(AssetAccountQueryItem account) {
+        String type = account.getAccountType();
+        if (("STOCK".equals(type) || "FUND".equals(type)) && account.getValuationAmount() != null) {
+            long valuation = account.getValuationAmount();
+            long deposit = account.getDepositReceived() != null ? account.getDepositReceived() : 0L;
+            return Math.round(valuation * 0.7) + deposit;
+        }
+        return account.getCurrentValue() != null ? account.getCurrentValue() : 0L;
     }
 
     /**

@@ -40,6 +40,14 @@ public class AgreementServiceImpl implements AgreementService {
 
     @Override
     @Transactional
+    public void updateOne(Long memberId, Agreement.AgreementType type, boolean agreed) {
+        agreementMapper.findByMemberIdAndType(memberId, type)
+                .orElseThrow(() -> new BusinessException(ErrorCode.AGREEMENT_NOT_FOUND));
+        agreementMapper.updateAgreed(memberId, type, agreed);
+    }
+
+    @Override
+    @Transactional
     public void deleteByMemberId(Long memberId) {
         agreementMapper.deleteByMemberId(memberId);
     }
