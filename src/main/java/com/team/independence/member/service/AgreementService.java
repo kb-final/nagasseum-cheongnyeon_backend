@@ -15,6 +15,9 @@ public interface AgreementService {
     /** 동의 항목 일괄 변경 (저장하기 버튼) */
     void updateAll(Long memberId, List<Agreement> agreements);
 
+    /** 단일 동의 항목 변경 */
+    void updateOne(Long memberId, Agreement.AgreementType type, boolean agreed);
+
     /** 회원 탈퇴 시 전체 삭제 */
     void deleteByMemberId(Long memberId);
 }

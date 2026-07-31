@@ -22,4 +22,7 @@ public interface MemberMapper {
 
     /** 신규 회원 등록 (생성된 PK를 member.id에 반영) */
     void insert(Member member);
+
+    /** 닉네임·소득분위 수정 (null 필드는 UPDATE 제외) */
+    void update(Member member);
 }

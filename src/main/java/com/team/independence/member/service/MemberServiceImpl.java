@@ -40,6 +40,20 @@ public class MemberServiceImpl implements MemberService {
 
     @Override
     @Transactional
+    public void updateMember(Long memberId, String nickname, IncomeBracket incomeBracket) {
+        memberMapper.findById(memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+
+        Member member = Member.builder()
+                .id(memberId)
+                .nickname(nickname)
+                .incomeBracket(incomeBracket)
+                .build();
+        memberMapper.update(member);
+    }
+
+    @Override
+    @Transactional
     public Long createMember(String kakaoId, String nickname, LocalDate birthDate, IncomeBracket incomeBracket) {
         memberMapper.findByKakaoId(kakaoId)
                 .ifPresent(m -> { throw new BusinessException(ErrorCode.MEMBER_ALREADY_EXISTS); });
