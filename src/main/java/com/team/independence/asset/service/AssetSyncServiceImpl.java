@@ -24,11 +24,16 @@ import com.team.independence.external.codef.CodefTokenManager;
 import com.team.independence.external.codef.dto.CodefBankAccountResponse;
 import com.team.independence.external.codef.dto.CodefBankAccountResponse.CodefDepositItem;
 import com.team.independence.external.codef.dto.CodefBankAccountResponse.CodefLoanItem;
+import com.team.independence.external.codef.dto.CodefStockAccountResponse;
+import com.team.independence.external.codef.dto.CodefStockAccountResponse.CodefStockAccountItem;
+import com.team.independence.external.codef.dto.CodefStockFinancialAssetsResponse;
+import com.team.independence.external.codef.dto.CodefStockFinancialAssetsResponse.CodefStockItem;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -105,52 +110,147 @@ public class AssetSyncServiceImpl implements AssetSyncService {
         String institutionCode = institution.getInstitutionCode();
         Institution institutionInfo = institutionMapper.findByCode(institutionCode);
         String orgName = institutionInfo != null ? institutionInfo.getName() : institutionCode;
+        String businessType = institutionInfo != null ? institutionInfo.getBusinessType() : "BK";
 
         try {
-            CodefBankAccountResponse response =
-                    codefClient.getBankAccountList(accessToken, connectedId, institutionCode, birthDate);
-
-            if (!response.isSuccess()) {
-                return recordFailure(institution, orgName,
-                        response.getResultCode(), response.getResultMessage());
+            if ("ST".equals(businessType)) {
+                return syncStockInstitution(institution, connectedId, accessToken, institutionCode, orgName);
             }
-
-            CodefBankAccountResponse.CodefBankData data = response.getData();
-            List<AssetAccount> assetAccounts = parseAssetAccounts(institution.getId(), data);
-            List<LoanAccount> loanAccounts = parseLoanAccounts(institution.getId(), data);
-
-            // 동기화: 기존 계좌 전체 삭제 후 재적재
-            assetAccountMapper.deleteByConnectedInstitutionId(institution.getId());
-            loanAccountMapper.deleteByConnectedInstitutionId(institution.getId());
-
-            if (!assetAccounts.isEmpty()) {
-                assetAccountMapper.insertAll(assetAccounts);
-            }
-            if (!loanAccounts.isEmpty()) {
-                loanAccountMapper.insertAll(loanAccounts);
-            }
-
-            institution.setStatus("ACTIVE");
-            institution.setLastSyncedAt(LocalDateTime.now());
-            institution.setLastAttemptedAt(LocalDateTime.now());
-            institution.setLastErrorCode(null);
-            institution.setLastErrorMessage(null);
-            connectedInstitutionMapper.updateSyncResult(institution);
-
-            log.info("계좌 동기화 완료: org={}, 자산계좌={}, 대출계좌={}",
-                    institutionCode, assetAccounts.size(), loanAccounts.size());
-
-            return InstitutionSyncResult.builder()
-                    .organizationCode(institutionCode)
-                    .organizationName(orgName)
-                    .success(true)
-                    .assetAccountCount(assetAccounts.size())
-                    .loanAccountCount(loanAccounts.size())
-                    .build();
-
+            return syncBankInstitution(institution, connectedId, birthDate, accessToken, institutionCode, orgName);
         } catch (Exception e) {
             log.error("계좌 동기화 실패: org={}", institutionCode, e);
             return recordFailure(institution, orgName, "SYNC_ERROR", e.getMessage());
+        }
+    }
+
+    private InstitutionSyncResult syncBankInstitution(ConnectedInstitution institution,
+                                                       String connectedId, String birthDate,
+                                                       String accessToken,
+                                                       String institutionCode, String orgName) {
+        CodefBankAccountResponse response =
+                codefClient.getBankAccountList(accessToken, connectedId, institutionCode, birthDate);
+
+        if (!response.isSuccess()) {
+            return recordFailure(institution, orgName, response.getResultCode(), response.getResultMessage());
+        }
+
+        CodefBankAccountResponse.CodefBankData data = response.getData();
+        List<AssetAccount> assetAccounts = parseAssetAccounts(institution.getId(), data);
+        List<LoanAccount> loanAccounts = parseLoanAccounts(institution.getId(), data);
+
+        saveAccounts(institution, assetAccounts, loanAccounts);
+
+        log.info("은행 계좌 동기화 완료: org={}, 자산계좌={}, 대출계좌={}",
+                institutionCode, assetAccounts.size(), loanAccounts.size());
+
+        return InstitutionSyncResult.builder()
+                .organizationCode(institutionCode)
+                .organizationName(orgName)
+                .success(true)
+                .assetAccountCount(assetAccounts.size())
+                .loanAccountCount(loanAccounts.size())
+                .build();
+    }
+
+    private InstitutionSyncResult syncStockInstitution(ConnectedInstitution institution,
+                                                        String connectedId, String accessToken,
+                                                        String institutionCode, String orgName) {
+        CodefStockAccountResponse accountListResponse =
+                codefClient.getStockAccountList(accessToken, connectedId, institutionCode);
+
+        if (!accountListResponse.isSuccess()) {
+            return recordFailure(institution, orgName,
+                    accountListResponse.getResultCode(), accountListResponse.getResultMessage());
+        }
+
+        List<AssetAccount> assetAccounts = new ArrayList<>();
+        for (CodefStockAccountItem account : accountListResponse.getData()) {
+            // 외화 계좌 제외
+            if (account.getResDepositReceivedF() != null && !account.getResDepositReceivedF().isBlank()) {
+                log.debug("외화 계좌 제외: {}", account.getResAccountDisplay());
+                continue;
+            }
+
+            CodefStockFinancialAssetsResponse assetsResponse =
+                    codefClient.getStockFinancialAssets(accessToken, connectedId, institutionCode,
+                            account.getResAccount());
+
+            String accountType = classifyStockAccountType(account.getResAccountName(),
+                    assetsResponse.isSuccess() ? assetsResponse.getData().getResItemList() : List.of());
+
+            Long valuationAmt = parseAmount(account.getResValuationAmt());
+            Long depositReceived = parseAmount(account.getResDepositReceived());
+            Long currentValue = (valuationAmt != null || depositReceived != null)
+                    ? (valuationAmt != null ? valuationAmt : 0L) + (depositReceived != null ? depositReceived : 0L)
+                    : null;
+            BigDecimal earningsRate = parseRate(account.getResEarningsRate());
+
+            assetAccounts.add(AssetAccount.builder()
+                    .connectedInstitutionId(institution.getId())
+                    .accountType(accountType)
+                    .assetCategory("INVESTMENT")
+                    .accountDisplay(account.getResAccountDisplay())
+                    .productName(account.getResAccountName())
+                    .currentValue(currentValue)
+                    .valuationAmount(valuationAmt)
+                    .depositReceived(depositReceived)
+                    .earningsRate(earningsRate)
+                    .rawResponse(toJson(account))
+                    .build());
+        }
+
+        saveAccounts(institution, assetAccounts, List.of());
+
+        log.info("증권 계좌 동기화 완료: org={}, 자산계좌={}", institutionCode, assetAccounts.size());
+
+        return InstitutionSyncResult.builder()
+                .organizationCode(institutionCode)
+                .organizationName(orgName)
+                .success(true)
+                .assetAccountCount(assetAccounts.size())
+                .loanAccountCount(0)
+                .build();
+    }
+
+    private void saveAccounts(ConnectedInstitution institution,
+                               List<AssetAccount> assetAccounts, List<LoanAccount> loanAccounts) {
+        assetAccountMapper.deleteByConnectedInstitutionId(institution.getId());
+        loanAccountMapper.deleteByConnectedInstitutionId(institution.getId());
+
+        if (!assetAccounts.isEmpty()) assetAccountMapper.insertAll(assetAccounts);
+        if (!loanAccounts.isEmpty()) loanAccountMapper.insertAll(loanAccounts);
+
+        institution.setStatus("ACTIVE");
+        institution.setLastSyncedAt(LocalDateTime.now());
+        institution.setLastAttemptedAt(LocalDateTime.now());
+        institution.setLastErrorCode(null);
+        institution.setLastErrorMessage(null);
+        connectedInstitutionMapper.updateSyncResult(institution);
+    }
+
+    /**
+     * 증권 계좌 유형 분류
+     * CMA 계좌명 우선 → 보유종목 상품유형코드 순서로 판별
+     * 01=주식(STOCK), 02=펀드(FUND), 03=CMA(DEMAND)
+     */
+    private String classifyStockAccountType(String accountName, List<CodefStockItem> items) {
+        if (accountName != null && accountName.contains("CMA")) return "DEMAND";
+
+        for (CodefStockItem item : items) {
+            String code = item.getResProductTypeCd();
+            if ("01".equals(code)) return "STOCK";
+            if ("02".equals(code)) return "FUND";
+            if ("03".equals(code)) return "DEMAND";
+        }
+        return "STOCK";
+    }
+
+    private BigDecimal parseRate(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return new BigDecimal(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
