@@ -15,4 +15,6 @@ public class AssetAccountQueryItem {
     private String productName;
     private String accountDisplay;
     private Long currentValue;
+    private Long valuationAmount;
+    private Long depositReceived;
 }

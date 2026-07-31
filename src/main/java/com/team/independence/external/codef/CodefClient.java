@@ -7,6 +7,10 @@ import com.team.independence.external.codef.dto.CodefAccountRequest;
 import com.team.independence.external.codef.dto.CodefApiResponse;
 import com.team.independence.external.codef.dto.CodefBankAccountResponse;
 import com.team.independence.external.codef.dto.CodefBankInquiryRequest;
+import com.team.independence.external.codef.dto.CodefStockAccountResponse;
+import com.team.independence.external.codef.dto.CodefStockFinancialAssetsRequest;
+import com.team.independence.external.codef.dto.CodefStockFinancialAssetsResponse;
+import com.team.independence.external.codef.dto.CodefStockInquiryRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
@@ -30,6 +34,8 @@ public class CodefClient {
     private static final String ADD_PATH = "/v1/account/add";
     private static final String DELETE_PATH = "/v1/account/delete";
     private static final String BANK_ACCOUNT_LIST_PATH = "/v1/kr/bank/p/account/account-list";
+    private static final String STOCK_ACCOUNT_LIST_PATH = "/v1/kr/stock/a/account/account-list";
+    private static final String STOCK_FINANCIAL_ASSETS_PATH = "/v1/kr/stock/a/account/financial-assets";
 
     private final CodefProperties properties;
     private final RestTemplate restTemplate;
@@ -82,6 +88,63 @@ public class CodefClient {
 
         } catch (Exception e) {
             log.error("CODEF 계좌조회 실패: org={}", organization, e);
+            throw new BusinessException(ErrorCode.ASSET_CODEF_API_ERROR);
+        }
+    }
+
+    public CodefStockAccountResponse getStockAccountList(String accessToken, String connectedId, String organization) {
+        CodefStockInquiryRequest body = CodefStockInquiryRequest.builder()
+                .connectedId(connectedId)
+                .organization(organization)
+                .build();
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(accessToken);
+
+            HttpEntity<CodefStockInquiryRequest> request = new HttpEntity<>(body, headers);
+            log.debug("CODEF 증권 계좌목록 요청: org={}", organization);
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    properties.getApiDomain() + STOCK_ACCOUNT_LIST_PATH,
+                    HttpMethod.POST, request, String.class);
+
+            String decoded = URLDecoder.decode(response.getBody(), StandardCharsets.UTF_8);
+            log.debug("CODEF 증권 계좌목록 응답: {}", decoded);
+            return objectMapper.readValue(decoded, CodefStockAccountResponse.class);
+
+        } catch (Exception e) {
+            log.error("CODEF 증권 계좌목록 조회 실패: org={}", organization, e);
+            throw new BusinessException(ErrorCode.ASSET_CODEF_API_ERROR);
+        }
+    }
+
+    public CodefStockFinancialAssetsResponse getStockFinancialAssets(String accessToken, String connectedId,
+                                                                      String organization, String account) {
+        CodefStockFinancialAssetsRequest body = CodefStockFinancialAssetsRequest.builder()
+                .connectedId(connectedId)
+                .organization(organization)
+                .account(account)
+                .build();
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(accessToken);
+
+            HttpEntity<CodefStockFinancialAssetsRequest> request = new HttpEntity<>(body, headers);
+            log.debug("CODEF 종합자산 요청: org={}, account={}...", organization,
+                    account.substring(0, Math.min(4, account.length())));
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    properties.getApiDomain() + STOCK_FINANCIAL_ASSETS_PATH,
+                    HttpMethod.POST, request, String.class);
+
+            String decoded = URLDecoder.decode(response.getBody(), StandardCharsets.UTF_8);
+            log.debug("CODEF 종합자산 응답: {}", decoded);
+            return objectMapper.readValue(decoded, CodefStockFinancialAssetsResponse.class);
+
+        } catch (Exception e) {
+            log.error("CODEF 종합자산 조회 실패: org={}, account={}", organization, account, e);
             throw new BusinessException(ErrorCode.ASSET_CODEF_API_ERROR);
         }
     }
