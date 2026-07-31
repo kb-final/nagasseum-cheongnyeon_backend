@@ -34,11 +34,13 @@
     <insert id="insertAll">
         INSERT INTO asset_account
             (connected_institution_id, account_type, asset_category,
-             account_display, product_name, current_value, raw_response)
+             account_display, product_name, current_value,
+             valuation_amount, deposit_received, raw_response)
         VALUES
         <foreach collection="list" item="a" separator=",">
             (#{a.connectedInstitutionId}, #{a.accountType}, #{a.assetCategory},
-             #{a.accountDisplay}, #{a.productName}, #{a.currentValue}, #{a.rawResponse})
+             #{a.accountDisplay}, #{a.productName}, #{a.currentValue},
+             #{a.valuationAmount}, #{a.depositReceived}, #{a.rawResponse})
         </foreach>
     </insert>
 
@@ -56,19 +58,22 @@
     </select>
 
     <resultMap id="assetAccountQueryMap" type="com.team.independence.asset.dto.AssetAccountQueryItem">
-        <result property="id"              column="id"/>
-        <result property="institutionName" column="institution_name"/>
-        <result property="accountType"     column="account_type"/>
-        <result property="assetCategory"   column="asset_category"/>
-        <result property="productName"     column="product_name"/>
-        <result property="accountDisplay"  column="account_display"/>
-        <result property="currentValue"    column="current_value"/>
+        <result property="id"               column="id"/>
+        <result property="institutionName"  column="institution_name"/>
+        <result property="accountType"      column="account_type"/>
+        <result property="assetCategory"    column="asset_category"/>
+        <result property="productName"      column="product_name"/>
+        <result property="accountDisplay"   column="account_display"/>
+        <result property="currentValue"     column="current_value"/>
+        <result property="valuationAmount"  column="valuation_amount"/>
+        <result property="depositReceived"  column="deposit_received"/>
     </resultMap>
 
     <select id="findWithInstitutionByMemberId" parameterType="long" resultMap="assetAccountQueryMap">
         SELECT aa.id, i.name AS institution_name,
                aa.account_type, aa.asset_category, aa.product_name,
-               aa.account_display, aa.current_value
+               aa.account_display, aa.current_value,
+               aa.valuation_amount, aa.deposit_received
           FROM asset_account aa
           JOIN connected_institution ci ON aa.connected_institution_id = ci.id
           JOIN connected_account ca ON ci.connected_account_id = ca.id
