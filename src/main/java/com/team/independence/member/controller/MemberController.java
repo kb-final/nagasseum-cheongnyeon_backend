@@ -3,6 +3,8 @@ package com.team.independence.member.controller;
 import com.team.independence.common.annotation.LoginMember;
 import com.team.independence.common.response.ApiResponse;
 import com.team.independence.member.domain.Agreement;
+import com.team.independence.member.domain.Agreement.AgreementType;
+import com.team.independence.member.dto.AgreementSingleUpdateRequest;
 import com.team.independence.member.dto.AgreementUpdateRequest;
 import com.team.independence.member.dto.MemberProfileResponse;
 import com.team.independence.member.service.AgreementService;
@@ -38,6 +40,15 @@ public class MemberController {
                         .build())
                 .collect(Collectors.toList());
         agreementService.updateAll(memberId, agreements);
+        return ApiResponse.ok(null);
+    }
+
+    @PatchMapping("/me/agreements/{type}")
+    public ApiResponse<Void> updateAgreement(
+            @LoginMember Long memberId,
+            @PathVariable AgreementType type,
+            @RequestBody AgreementSingleUpdateRequest request) {
+        agreementService.updateOne(memberId, type, request.agreed());
         return ApiResponse.ok(null);
     }
 
