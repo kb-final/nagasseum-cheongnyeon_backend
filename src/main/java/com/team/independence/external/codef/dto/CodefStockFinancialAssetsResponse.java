@@ -12,12 +12,14 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class CodefStockFinancialAssetsResponse {
 
+    private static final String SUCCESS_CODE = "CF-00000";
+
     private CodefResult result;
     private CodefAssetsData data;
     private String connectedId;
 
     public boolean isSuccess() {
-        return result != null && "CF-00000".equals(result.getCode());
+        return result != null && SUCCESS_CODE.equals(result.getCode());
     }
 
     public String getResultCode() {

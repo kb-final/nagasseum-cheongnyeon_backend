@@ -43,6 +43,20 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AssetSyncServiceImpl implements AssetSyncService {
 
+    private static final String BUSINESS_TYPE_STOCK = "ST";
+    private static final String BUSINESS_TYPE_BANK = "BK";
+
+    private static final String DEPOSIT_CODE_DEMAND = "11";
+    private static final String DEPOSIT_CODE_SAVINGS = "12";
+    private static final String DEPOSIT_CODE_DEPOSIT = "13";
+
+    private static final String PRODUCT_TYPE_STOCK = "01";
+    private static final String PRODUCT_TYPE_FUND = "02";
+    private static final String PRODUCT_TYPE_DEMAND = "03";
+
+    private static final String CURRENCY_KRW = "KRW";
+    private static final String OVERDRAFT_FLAG = "1";
+
     private final ConnectedAccountMapper connectedAccountMapper;
     private final ConnectedInstitutionMapper connectedInstitutionMapper;
     private final InstitutionMapper institutionMapper;
@@ -110,10 +124,10 @@ public class AssetSyncServiceImpl implements AssetSyncService {
         String institutionCode = institution.getInstitutionCode();
         Institution institutionInfo = institutionMapper.findByCode(institutionCode);
         String orgName = institutionInfo != null ? institutionInfo.getName() : institutionCode;
-        String businessType = institutionInfo != null ? institutionInfo.getBusinessType() : "BK";
+        String businessType = institutionInfo != null ? institutionInfo.getBusinessType() : BUSINESS_TYPE_BANK;
 
         try {
-            if ("ST".equals(businessType)) {
+            if (BUSINESS_TYPE_STOCK.equals(businessType)) {
                 return syncStockInstitution(institution, connectedId, accessToken, institutionCode, orgName);
             }
             return syncBankInstitution(institution, connectedId, birthDate, accessToken, institutionCode, orgName);
@@ -238,9 +252,9 @@ public class AssetSyncServiceImpl implements AssetSyncService {
 
         for (CodefStockItem item : items) {
             String code = item.getResProductTypeCd();
-            if ("01".equals(code)) return "STOCK";
-            if ("02".equals(code)) return "FUND";
-            if ("03".equals(code)) return "DEMAND";
+            if (PRODUCT_TYPE_STOCK.equals(code)) return "STOCK";
+            if (PRODUCT_TYPE_FUND.equals(code)) return "FUND";
+            if (PRODUCT_TYPE_DEMAND.equals(code)) return "DEMAND";
         }
         return "STOCK";
     }
@@ -314,8 +328,8 @@ public class AssetSyncServiceImpl implements AssetSyncService {
      * 마이너스통장 또는 외화 계좌는 제외
      */
     private boolean isExcluded(CodefDepositItem item) {
-        if ("1".equals(item.getResOverdraftAcctYN())) return true;
-        if (item.getResAccountCurrency() != null && !"KRW".equals(item.getResAccountCurrency())) return true;
+        if (OVERDRAFT_FLAG.equals(item.getResOverdraftAcctYN())) return true;
+        if (item.getResAccountCurrency() != null && !CURRENCY_KRW.equals(item.getResAccountCurrency())) return true;
         return false;
     }
 
@@ -326,9 +340,9 @@ public class AssetSyncServiceImpl implements AssetSyncService {
      */
     private String classifyDepositType(CodefDepositItem item) {
         String depositCode = item.getResAccountDeposit();
-        if ("11".equals(depositCode)) return "DEMAND";
-        if ("13".equals(depositCode)) return "DEPOSIT";
-        if ("12".equals(depositCode)) {
+        if (DEPOSIT_CODE_DEMAND.equals(depositCode)) return "DEMAND";
+        if (DEPOSIT_CODE_DEPOSIT.equals(depositCode)) return "DEPOSIT";
+        if (DEPOSIT_CODE_SAVINGS.equals(depositCode)) {
             String name = item.getResAccountName();
             if (name != null && name.contains("청약")) return "SUBSCRIPTION";
             return "SAVINGS";
