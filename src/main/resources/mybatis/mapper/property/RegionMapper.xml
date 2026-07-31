@@ -8,4 +8,10 @@
         SELECT code FROM region
     </select>
 
+    <select id="findFullNameByCode" resultType="string">
+        SELECT full_name
+          FROM region
+         WHERE code = #{code}
+    </select>
+
 </mapper>
