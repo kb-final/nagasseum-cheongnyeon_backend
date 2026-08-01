@@ -351,6 +351,11 @@ class CompareServiceImplTest {
         }
 
         @Override
+        public void updateOne(Long memberId, AgreementType type, boolean agreed) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public void deleteByMemberId(Long memberId) {
             throw new UnsupportedOperationException();
         }
