@@ -14,8 +14,9 @@ import lombok.Setter;
  * <p>코호트 인원이 최소 기준에 못 미치면 cohort를 뺀 모든 필드가 null로 나간다.
  * 그래서 숫자도 int/long이 아니라 래퍼 타입(Integer/Long/Double)을 쓴다.
  *
- * <p>Lombok 조합 이유: MyBatis가 결과를 setter로 채우므로 @Setter와 기본 생성자가 필요하고,
- * Service에서 조립할 때는 @Builder가 읽기 쉽다.
+ * <p>Lombok 조합 이유: Service가 @Builder로 조립하고 Jackson이 @Getter로 직렬화한다.
+ * @Setter와 생성자들은 MyBatis가 채우는 DTO(DealTypeCount 등)와 형태를 맞춰둔 것으로,
+ * 이 클래스 자체는 MyBatis가 건드리지 않는다.
  */
 @Getter
 @Setter

@@ -106,7 +106,8 @@
 
     <!--
       월 저축액을 오름차순으로 4등분(NTILE)한 뒤 가운데 두 덩어리만 남긴다.
-      코호트의 절반이 들어가는 구간이라 양 끝 극단값에 흔들리지 않는다.
+      코호트의 약 절반이 들어가는 구간이라 양 끝 극단값에 흔들리지 않는다.
+      (NTILE은 나눠떨어지지 않으면 앞쪽 그룹부터 한 건씩 더 담아서 정확히 50%는 아니다)
     -->
     <select id="findSavingRange" resultType="com.team.independence.compare.dto.SavingRangeResult">
         SELECT MIN(monthly_saving) AS cohortRangeMin,

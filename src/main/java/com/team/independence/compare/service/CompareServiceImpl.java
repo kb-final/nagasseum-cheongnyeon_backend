@@ -248,7 +248,12 @@ public class CompareServiceImpl implements CompareService {
                                                             int cohortSize, double myRate) {
         int[] counts = new int[BUCKET_SIZE];
         for (AchievementBucketCount row : goalSnapshotMapper.countByAchievementBucket(condition)) {
-            counts[row.getBucketIndex()] = row.getCount();
+            // 쿼리의 LEAST(..., 8)가 상한을 막고 배치가 달성률을 0~100으로 저장하지만,
+            // 그 중 하나만 바뀌어도 여기서 배열 밖을 짚어 500이 난다. 값을 그대로 믿지 않는다.
+            int index = row.getBucketIndex();
+            if (index >= 0 && index < BUCKET_SIZE) {
+                counts[index] = row.getCount();
+            }
         }
 
         int myIndex = bucketIndexOf(myRate);
@@ -295,6 +300,4 @@ public class CompareServiceImpl implements CompareService {
         }
         return Math.round(count * 1000.0 / total) / 10.0;
     }
-
-
 }
