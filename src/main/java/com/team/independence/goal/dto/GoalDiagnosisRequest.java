@@ -17,7 +17,7 @@ public class GoalDiagnosisRequest {
 
     @Valid
     @NotNull
-    private RegionCondition region;
+    private RegionInfo region;
 
     @NotBlank
     @Pattern(regexp = "APT|ROW_HOUSE|OFFICETEL|DETACHED")
@@ -60,7 +60,7 @@ public class GoalDiagnosisRequest {
 
     @Getter
     @NoArgsConstructor
-    public static class RegionCondition {
+    public static class RegionInfo {
         @NotBlank
         private String sido;
 
