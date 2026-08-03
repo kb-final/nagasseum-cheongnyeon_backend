@@ -1,6 +1,7 @@
 package com.team.independence.asset.mapper;
 
 import com.team.independence.asset.domain.LoanAccount;
+import com.team.independence.asset.dto.LoanAccountDetailItem;
 import com.team.independence.asset.dto.LoanAccountQueryItem;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -14,5 +15,6 @@ public interface LoanAccountMapper {
     void deleteByConnectedInstitutionId(Long connectedInstitutionId);
     List<LoanAccount> findByConnectedInstitutionId(Long connectedInstitutionId);
     List<LoanAccountQueryItem> findWithInstitutionByMemberId(Long memberId);
+    List<LoanAccountDetailItem> findAllDetailsByMemberId(Long memberId);
     Long sumLoanBalanceByMemberId(Long memberId);
 }
