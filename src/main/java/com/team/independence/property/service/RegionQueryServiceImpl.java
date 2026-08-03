@@ -18,7 +18,7 @@ public class RegionQueryServiceImpl implements RegionQueryService {
     public String resolveRegionCode(String sido, String sigungu) {
         String regionCode = regionMapper.findCodeBySidoAndSigungu(sido, sigungu);
         if (regionCode == null) {
-            throw new BusinessException(ErrorCode.PROPERTY_REGION_NOT_FOUND);
+            throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
         }
         return regionCode;
     }

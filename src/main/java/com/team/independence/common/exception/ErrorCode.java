@@ -39,9 +39,6 @@ public enum ErrorCode {
     GOAL_NOT_FOUND("GOAL_001", "목표를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     GOAL_INVALID_CONDITION("GOAL_002", "희망 조건 범위가 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
 
-    // ===== 매물 PROPERTY_xxx =====
-    PROPERTY_REGION_NOT_FOUND("PROPERTY_001", "존재하지 않는 지역입니다.", HttpStatus.BAD_REQUEST),
-
     // ===== 또래 비교 COMPARE_xxx =====
     COMPARE_SNAPSHOT_NOT_FOUND("COMPARE_001", "비교할 집계 데이터가 없습니다.", HttpStatus.NOT_FOUND),
     COMPARE_INVALID_RANGE("COMPARE_002", "비교 기준 범위가 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
@@ -50,7 +47,7 @@ public enum ErrorCode {
     // ===== 정책 POLICY_xxx =====
     POLICY_NOT_FOUND("POLICY_001", "정책을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
-    // ===== 부동산 PROPERTY_xxx =====
+    // ===== 매물 PROPERTY_xxx =====
     REGION_NOT_FOUND("PROPERTY_001", "존재하지 않는 지역 코드입니다.", HttpStatus.NOT_FOUND);
 
     private final String code;
