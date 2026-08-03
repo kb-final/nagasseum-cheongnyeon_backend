@@ -20,6 +20,7 @@ import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.common.security.AesEncryptor;
 import com.team.independence.external.codef.CodefClient;
+import com.team.independence.external.slack.SlackNotifier;
 import com.team.independence.external.codef.CodefTokenManager;
 import com.team.independence.external.codef.dto.CodefBankAccountResponse;
 import com.team.independence.external.codef.dto.CodefBankAccountResponse.CodefDepositItem;
@@ -69,6 +70,36 @@ public class AssetSyncServiceImpl implements AssetSyncService {
     private final CodefTokenManager codefTokenManager;
     private final AesEncryptor aesEncryptor;
     private final ObjectMapper objectMapper;
+    private final SlackNotifier slackNotifier;
+
+    @Override
+    public void syncAll() {
+        List<Long> memberIds = connectedAccountMapper.findAllMemberIds();
+        log.info("[배치] 자산 동기화 대상 회원 수: {}", memberIds.size());
+
+        List<SyncFailure> failures = new ArrayList<>();
+        for (Long memberId : memberIds) {
+            try {
+                syncAccounts(memberId);
+            } catch (Exception e) {
+                log.error("[배치] 회원 자산 동기화 실패: memberId={}", memberId, e);
+                failures.add(new SyncFailure(memberId, e));
+            }
+        }
+
+        if (!failures.isEmpty()) {
+            StringBuilder sb = new StringBuilder("[자산 동기화 배치 실패] ")
+                    .append(failures.size()).append("건\n");
+            for (SyncFailure f : failures) {
+                sb.append("• memberId=").append(f.memberId)
+                  .append(" / ").append(f.reason).append("\n");
+            }
+            slackNotifier.sendBatchFailureSummary(sb.toString().trim());
+        }
+
+        log.info("[배치] 자산 동기화 완료 — 성공: {}, 실패: {}",
+                memberIds.size() - failures.size(), failures.size());
+    }
 
     @Override
     @Transactional
@@ -397,6 +428,16 @@ public class AssetSyncServiceImpl implements AssetSyncService {
             return objectMapper.writeValueAsString(obj);
         } catch (JsonProcessingException e) {
             return "{}";
+        }
+    }
+
+    private static class SyncFailure {
+        final Long memberId;
+        final String reason;
+
+        SyncFailure(Long memberId, Throwable e) {
+            this.memberId = memberId;
+            this.reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
         }
     }
 

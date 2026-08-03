@@ -23,6 +23,10 @@
          WHERE member_id = #{memberId}
     </select>
 
+    <select id="findAllMemberIds" resultType="java.lang.Long">
+        SELECT member_id FROM connected_account WHERE connected_status = 'ACTIVE'
+    </select>
+
     <insert id="insert" parameterType="com.team.independence.asset.domain.ConnectedAccount"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO connected_account (member_id, connected_id, birth_date, connected_status)
