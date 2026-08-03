@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.asset.mapper.ManualAssetMapper">
+
+    <resultMap id="manualAssetMap" type="com.team.independence.asset.domain.ManualAsset">
+        <id     property="id"         column="id"/>
+        <result property="memberId"   column="member_id"/>
+        <result property="assetType"  column="asset_type"/>
+        <result property="amount"     column="amount"/>
+        <result property="createdAt"  column="created_at"/>
+        <result property="updatedAt"  column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.team.independence.asset.domain.ManualAsset"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO manual_assets (member_id, asset_type, amount)
+        VALUES (#{memberId}, #{assetType}, #{amount})
+    </insert>
+
+    <update id="update" parameterType="com.team.independence.asset.domain.ManualAsset">
+        UPDATE manual_assets
+           SET amount = #{amount}
+         WHERE id = #{id}
+    </update>
+
+    <delete id="delete" parameterType="long">
+        DELETE FROM manual_assets WHERE id = #{id}
+    </delete>
+
+    <select id="findById" parameterType="long" resultMap="manualAssetMap">
+        SELECT id, member_id, asset_type, amount, created_at, updated_at
+          FROM manual_assets
+         WHERE id = #{id}
+    </select>
+
+    <select id="findAllByMemberId" parameterType="long" resultMap="manualAssetMap">
+        SELECT id, member_id, asset_type, amount, created_at, updated_at
+          FROM manual_assets
+         WHERE member_id = #{memberId}
+         ORDER BY asset_type
+    </select>
+
+</mapper>
