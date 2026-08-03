@@ -1,8 +1,8 @@
 package com.team.independence.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.team.independence.auth.interceptor.AuthInterceptor;
 import com.team.independence.common.resolver.LoginMemberArgumentResolver;
+import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
@@ -36,11 +36,11 @@ import java.util.List;
         })
 public class WebConfig implements WebMvcConfigurer {
 
-    private final AuthInterceptor authInterceptor;
+    private final HandlerInterceptor authInterceptor;
     private final ObjectMapper objectMapper;
     private final LoginMemberArgumentResolver loginMemberArgumentResolver;
 
-    public WebConfig(AuthInterceptor authInterceptor, ObjectMapper objectMapper,
+    public WebConfig(HandlerInterceptor authInterceptor, ObjectMapper objectMapper,
                      LoginMemberArgumentResolver loginMemberArgumentResolver) {
         this.authInterceptor = authInterceptor;
         this.objectMapper = objectMapper;
@@ -50,7 +50,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
-                .allowedOrigins("http://localhost:5173")
+                .allowedOrigins("http://localhost:5173", "https://www.nagasseum.com")
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true);
