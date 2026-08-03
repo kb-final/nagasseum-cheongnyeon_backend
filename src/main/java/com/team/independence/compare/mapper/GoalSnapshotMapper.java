@@ -34,8 +34,7 @@ public interface GoalSnapshotMapper {
     /**
      * 거래 유형별 인원 수(많은 순).
      *
-     * <p>'기타' 병합은 여기서 하지 않는다. 인원이 적은 유형을 합치는 건
-     * 개인 역추적을 막기 위한 정책이라 서비스 계층에서 처리한다.
+     * <p>서비스는 이 순서를 그대로 순위로 쓴다.
      */
     List<DealTypeCount> countByDealType(CohortCondition condition);
 

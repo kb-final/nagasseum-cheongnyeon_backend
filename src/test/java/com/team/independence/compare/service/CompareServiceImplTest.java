@@ -57,58 +57,40 @@ class CompareServiceImplTest {
     }
 
     // ------------------------------------------------------------------
-    // 거래 유형 병합
+    // 거래 유형 분포
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("인원이 2명 이하인 거래 유형은 기타로 합친다")
-    void 소수_거래유형은_기타로_병합된다() {
+    @DisplayName("인원이 1명인 거래 유형도 합치지 않고 그대로 내려준다")
+    void 소수_유형도_그대로_내려준다() {
         mapper.cohortCount = 20;
         mapper.dealTypes = Arrays.asList(
-                dealType("JEONSE", 16),
-                dealType("WOLSE", 2),
-                dealType("MAEMAE", 2));
+                dealType("JEONSE", 18),
+                dealType("WOLSE", 1),
+                dealType("MAEMAE", 1));
 
-        CompareResponse response = call();
-        List<DealTypeItem> items = response.getDealTypeDistribution().getItems();
+        List<DealTypeItem> items = call().getDealTypeDistribution().getItems();
 
-        // 월세 2명 + 매매 2명 → 기타 4명. 원래 유형은 사라져야 한다.
-        assertEquals(2, items.size());
-        assertEquals("JEONSE", items.get(0).getDealType());
-        assertEquals("ETC", items.get(1).getDealType());
-        assertEquals("기타", items.get(1).getLabel());
-        assertEquals(20.0, items.get(1).getRatio(), 0.0001);
+        // 코호트 최소 인원을 이미 통과한 뒤라 유형이 1명이어도 그 사람이 특정되지 않는다.
+        assertEquals(3, items.size());
+        assertTrue(items.stream().noneMatch(i -> "ETC".equals(i.getDealType())));
+        assertEquals("WOLSE", items.get(1).getDealType());
+        assertEquals(2, items.get(1).getRank().intValue());
     }
 
     @Test
-    @DisplayName("병합된 기타가 1위가 되면 순위도 다시 매긴다")
-    void 기타가_가장_많으면_1위가_된다() {
-        mapper.cohortCount = 10;
-        mapper.dealTypes = Arrays.asList(
-                dealType("JEONSE", 4),
-                dealType("WOLSE", 2),
-                dealType("MAEMAE", 2),
-                dealType("BUNYANG", 2));
-
-        CompareResponse response = call();
-        List<DealTypeItem> items = response.getDealTypeDistribution().getItems();
-
-        // 기타 6명 > 전세 4명. 쿼리 정렬만 믿으면 전세가 1위로 남는다.
-        assertEquals("ETC", items.get(0).getDealType());
-        assertEquals(1, items.get(0).getRank().intValue());
-        assertEquals("ETC", response.getDealTypeDistribution().getTopDealType());
-    }
-
-    @Test
-    @DisplayName("합칠 유형이 없으면 기타 항목을 만들지 않는다")
-    void 병합대상이_없으면_기타는_없다() {
+    @DisplayName("순위는 쿼리가 준 순서를 그대로 따른다")
+    void 순위는_쿼리_순서를_따른다() {
         mapper.cohortCount = 10;
         mapper.dealTypes = Arrays.asList(dealType("JEONSE", 7), dealType("WOLSE", 3));
 
         List<DealTypeItem> items = call().getDealTypeDistribution().getItems();
 
-        assertEquals(2, items.size());
-        assertTrue(items.stream().noneMatch(i -> "ETC".equals(i.getDealType())));
+        assertEquals("JEONSE", items.get(0).getDealType());
+        assertEquals("전세", items.get(0).getLabel());
+        assertEquals(1, items.get(0).getRank().intValue());
+        assertEquals(70.0, items.get(0).getRatio(), 0.0001);
+        assertEquals("JEONSE", call().getDealTypeDistribution().getTopDealType());
     }
 
     // ------------------------------------------------------------------

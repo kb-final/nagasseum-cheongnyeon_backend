@@ -41,15 +41,6 @@ import lombok.RequiredArgsConstructor;
 public class CompareServiceImpl implements CompareService {
 
     /**
-     * 이 인원 이하인 거래 유형은 '기타'로 합친다.
-     *
-     * <p>기능명세서: "특정 유형이 1~2명뿐인 경우 해당 유형은 기타로 병합 (역추적 방지)"
-     */
-    private static final int MERGE_THRESHOLD = 2;
-
-    private static final String ETC = "ETC";
-
-    /**
      * 통계를 보여주기 위한 최소 코호트 인원. 이 수를 못 채우면 집계를 내리지 않는다.
      *
      * <p>기능명세서 데이터정책은 "코호트 10명 미만 시 미표시"라 하고,
@@ -76,7 +67,6 @@ public class CompareServiceImpl implements CompareService {
     static {
         DEAL_TYPE_LABELS.put("JEONSE", "전세");
         DEAL_TYPE_LABELS.put("WOLSE", "월세");
-        DEAL_TYPE_LABELS.put(ETC, "기타");
     }
 
     private final GoalSnapshotMapper goalSnapshotMapper;
@@ -194,36 +184,20 @@ public class CompareServiceImpl implements CompareService {
     }
 
     /**
-     * 목표 유형 분포. 인원이 적은 유형은 '기타'로 합친 뒤 비율과 순위를 매긴다.
+     * 목표 유형 분포. 인원이 많은 순으로 비율과 순위를 매긴다.
      *
-     * <p>합치는 이유는 통계 정확도가 아니라 개인정보 보호다. 어떤 유형이 1명뿐이면
-     * 그 사람의 목표가 그대로 드러나기 때문이다.
+     * <p>인원이 적은 유형을 '기타'로 합치지 않는다. 코호트 최소 인원(k-익명성)을
+     * 이미 통과한 뒤라 유형이 1명이어도 그 사람이 특정되지 않고, 오히려 합치면
+     * 분포를 읽기 어렵다는 리뷰 의견을 따랐다. (PR 리뷰 2026-08-03)
+     *
+     * <p>정렬은 쿼리의 ORDER BY에 맡긴다. 합쳐서 끼어드는 항목이 없어졌다.
      */
     private DealTypeDistribution buildDealTypeDistribution(CohortCondition condition, int cohortSize) {
         List<DealTypeCount> counts = goalSnapshotMapper.countByDealType(condition);
 
-        List<DealTypeCount> kept = new ArrayList<>();
-        int etcCount = 0;
-        for (DealTypeCount row : counts) {
-            if (row.getCount() <= MERGE_THRESHOLD) {
-                etcCount += row.getCount();
-            } else {
-                kept.add(row);
-            }
-        }
-        if (etcCount > 0) {
-            DealTypeCount etc = new DealTypeCount();
-            etc.setDealType(ETC);
-            etc.setCount(etcCount);
-            kept.add(etc);
-        }
-
-        // 쿼리가 이미 많은 순으로 주지만, 합쳐진 '기타'가 끼어들 수 있어 다시 정렬한다.
-        kept.sort((a, b) -> Integer.compare(b.getCount(), a.getCount()));
-
         List<DealTypeItem> items = new ArrayList<>();
-        for (int i = 0; i < kept.size(); i++) {
-            DealTypeCount row = kept.get(i);
+        for (int i = 0; i < counts.size(); i++) {
+            DealTypeCount row = counts.get(i);
             items.add(DealTypeItem.builder()
                     .dealType(row.getDealType())
                     .label(DEAL_TYPE_LABELS.getOrDefault(row.getDealType(), row.getDealType()))
