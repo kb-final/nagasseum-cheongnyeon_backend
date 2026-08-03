@@ -4,4 +4,5 @@ import com.team.independence.asset.dto.AssetSyncResponse;
 
 public interface AssetSyncService {
     AssetSyncResponse syncAccounts(Long memberId);
+    void syncAll();
 }
