@@ -21,8 +21,11 @@ public class AssetAccount {
     private Long currentValue;  // 현재가치 (NULL = 기준가 미공시)
     private Long valuationAmount;  // 증권 평가금액
     private Long depositReceived;  // 예수금
+    private Long valuationPl;  // 평가손익 (증권)
+    private Long purchaseAmount;  // 매입금액 (증권)
     private BigDecimal earningsRate;  // 수익률 (%)
-    private LocalDate maturityDate;  // 만기일
+    private LocalDate startDate;  // 계좌 개설일 (은행)
+    private LocalDate maturityDate;  // 만기일 (은행)
     private String rawResponse;  // CODEF 원본 응답 (JSON)
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
