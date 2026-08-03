@@ -6,11 +6,12 @@ import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
-import com.team.independence.property.dto.RentMarketStatsResponse;
+import com.team.independence.property.domain.DealType;
+import com.team.independence.property.domain.HousingType;
+import com.team.independence.property.dto.RentMedianRequest;
+import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.service.RegionQueryService;
-import com.team.independence.property.service.RentMarketQueryService;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,7 +19,7 @@ import org.springframework.stereotype.Service;
 /**
  * 프론트 희망조건 입력을 검증·정규화하고 region_code까지 붙여 돌려준다.
  * 순자산 중 예적금만 연 5% 복리로 굴리고(나머지는 인정률만 반영한 원금 그대로) + 월저축액 예상값으로
- * budget을, 조건에 맞는 실거래 보증금 백분위수를 marketStats로 계산해 반환.
+ * budget을, 조건에 맞는 실거래 보증금 4분위값을 marketStats로 계산해 반환.
  * budget과 median을 비교해 status/shortfall을 매기고, 부족(INSUFFICIENT)할 때
  * 저축액 증가/기간 연장/평수 축소 3가지 조정 제안을 함께 계산한다.
  * 목표 저장은 다음 단계에서 추가.
@@ -27,19 +28,12 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class GoalServiceImpl implements GoalService {
 
-    private static final String TRADE_TYPE_JEONSE_EN = "JEONSE";
-    private static final String TRADE_TYPE_JEONSE_KR = "전세";
-    private static final String TRADE_TYPE_WOLSE_KR = "월세";
-
     private static final String STATUS_ACHIEVABLE = "ACHIEVABLE";
     private static final String STATUS_INSUFFICIENT = "INSUFFICIENT";
     private static final String STATUS_NO_DATA = "NO_DATA";
 
     /** 예산 계산에 적용하는 연 이자율(고정 상수). 실제 상품 금리 연동 없이 5%로 가정. */
     private static final double ANNUAL_INTEREST_RATE = 0.05;
-
-    /** 평 → ㎡ 변환 계수 */
-    private static final BigDecimal PYEONG_TO_SQM = BigDecimal.valueOf(3.3058);
 
     /** 기간 연장 제안 탐색 상한(개월) */
     private static final long EXTEND_PERIOD_MAX_MONTHS = 240;
@@ -48,7 +42,7 @@ public class GoalServiceImpl implements GoalService {
 
     private final RegionQueryService regionQueryService;
     private final AssetService assetService; // 자산 정보 조회
-    private final RentMarketQueryService rentMarketQueryService; // 조건에 맞는 실거래가 조회
+    private final RentMedianService rentMedianService; // 조건에 맞는 실거래 4분위값 조회
 
     @Override
     public GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request) {
@@ -56,17 +50,17 @@ public class GoalServiceImpl implements GoalService {
         validateRange(request.getSizeMin(), request.getSizeMax());
         validateRange(request.getDepositMin(), request.getDepositMax());
 
-        // 거래 유형 한글로 변환
-        String tradeTypeKr = toKoreanTradeType(request.getTradeType());
+        HousingType housingType = HousingType.valueOf(request.getPropertyType());
+        DealType dealType = DealType.valueOf(request.getTradeType());
 
         /*
         * 월세 범위 정규화
         *
         * 월세면 입력된 월세 값을 사용하고, null이면 0으로 처리
         * */
-        long monthlyRentMin = normalizeMonthlyRent(tradeTypeKr, request.getMonthlyRentMin());
-        long monthlyRentMax = normalizeMonthlyRent(tradeTypeKr, request.getMonthlyRentMax());
-        if (!TRADE_TYPE_JEONSE_KR.equals(tradeTypeKr)) {
+        long monthlyRentMin = normalizeMonthlyRent(dealType, request.getMonthlyRentMin());
+        long monthlyRentMax = normalizeMonthlyRent(dealType, request.getMonthlyRentMax());
+        if (dealType == DealType.WOLSE) {
             validateRange(monthlyRentMin, monthlyRentMax);
         }
 
@@ -86,30 +80,35 @@ public class GoalServiceImpl implements GoalService {
         long projectedSavings = calculateProjectedSavings(request.getMonthlySavings(), months);
         long totalBudget = recognizedAssets + projectedSavings;
 
-        // 사용자 희망 조건에 맞는 실거래 통계를 조회
-        RentMarketStatsResponse marketStats = rentMarketQueryService.getMarketStats(
-                regionCode, request.getPropertyType(), tradeTypeKr,
-                toSqm(request.getSizeMin()), toSqm(request.getSizeMax()));
+        // 사용자 희망 조건에 맞는 실거래 4분위값을 조회
+        RentMedianResponse marketStats = rentMedianService.getMedian(buildMedianRequest(
+                regionCode, housingType, dealType,
+                request.getSizeMin(), request.getSizeMax(),
+                request.getDepositMin(), request.getDepositMax(),
+                request.getMonthlyRentMin(), request.getMonthlyRentMax()));
 
         // 총 예산과 중앙값을 비교해 목표 달성 상태를 결정
         String status = determineStatus(marketStats, totalBudget);
 
         // 예산이 부족한 경우에만 부족 금액 계산
         Long shortfall = STATUS_INSUFFICIENT.equals(status)
-                ? marketStats.getMedian() - totalBudget
+                ? marketStats.getDeposit().getMedian() - totalBudget
                 : null;
 
         // 예산이 부족한 경우 조정 제안 생성
         GoalDiagnosisResponse.AdjustmentSuggestions adjustmentSuggestions = null;
         if (STATUS_INSUFFICIENT.equals(status)) {
+            long median = marketStats.getDeposit().getMedian();
             adjustmentSuggestions = GoalDiagnosisResponse.AdjustmentSuggestions.builder()
                     .increaseSavings(calculateIncreaseSavingsSuggestion(
-                            marketStats.getMedian(), recognizedAssets, request.getMonthlySavings(), months))
+                            median, recognizedAssets, request.getMonthlySavings(), months))
                     .extendPeriod(calculateExtendPeriodSuggestion(
                             interestBearingAssets, flatRecognizedAssets, request.getMonthlySavings(), months,
-                            marketStats.getMedian(), request.getTargetDate()))
+                            median, request.getTargetDate()))
                     .reduceSize(calculateReduceSizeSuggestion(
-                            regionCode, request.getPropertyType(), tradeTypeKr,
+                            regionCode, housingType, dealType,
+                            request.getDepositMin(), request.getDepositMax(),
+                            request.getMonthlyRentMin(), request.getMonthlyRentMax(),
                             request.getSizeMin(), request.getSizeMax(), totalBudget))
                     .build();
         }
@@ -136,15 +135,32 @@ public class GoalServiceImpl implements GoalService {
                         .projectedSavings(projectedSavings)
                         .build())
                 .marketStats(GoalDiagnosisResponse.MarketStats.builder()
-                        .p25(marketStats.getP25())
-                        .median(marketStats.getMedian())
-                        .p75(marketStats.getP75())
+                        .p25(marketStats.getDeposit().getQ1())
+                        .median(marketStats.getDeposit().getMedian())
+                        .p75(marketStats.getDeposit().getQ3())
                         .sampleCount(marketStats.getSampleCount())
                         .build())
                 .status(status)
                 .shortfall(shortfall)
                 .adjustmentSuggestions(adjustmentSuggestions)
                 .build();
+    }
+
+    /** RentMedianService 호출용 요청 조립. sizeMin/sizeMax는 평 단위 그대로 넘기면 내부에서 ㎡로 환산한다. */
+    private RentMedianRequest buildMedianRequest(String regionCode, HousingType housingType, DealType dealType,
+            int sizeMin, int sizeMax, long depositMin, long depositMax,
+            Long monthlyRentMin, Long monthlyRentMax) {
+        RentMedianRequest medianRequest = new RentMedianRequest();
+        medianRequest.setRegionCode(regionCode);
+        medianRequest.setHousingType(housingType);
+        medianRequest.setDealType(dealType);
+        medianRequest.setAreaMin(sizeMin);
+        medianRequest.setAreaMax(sizeMax);
+        medianRequest.setDepositMin(depositMin);
+        medianRequest.setDepositMax(depositMax);
+        medianRequest.setMonthlyRentMin(monthlyRentMin);
+        medianRequest.setMonthlyRentMax(monthlyRentMax);
+        return medianRequest;
     }
 
     /** 같은 개월수 기준, budget이 median에 도달하도록 월저축액을 역산 */
@@ -198,7 +214,8 @@ public class GoalServiceImpl implements GoalService {
 
     /** sizeMin은 고정, sizeMax만 1평씩 줄여가며 median이 budget 이내로 들어오는 첫 지점을 탐색(최대 REDUCE_SIZE_MAX_STEPS평) */
     private GoalDiagnosisResponse.ReduceSizeSuggestion calculateReduceSizeSuggestion(
-            String regionCode, String propertyType, String tradeTypeKr,
+            String regionCode, HousingType housingType, DealType dealType,
+            long depositMin, long depositMax, Long monthlyRentMin, Long monthlyRentMax,
             int sizeMin, int sizeMax, long totalBudget) {
 
         // 최대 10평까지 줄이되, 최대 평수가 최소 평수보다 작아지지는 않게 함
@@ -207,11 +224,12 @@ public class GoalServiceImpl implements GoalService {
         // 최대 희망 평수를 1평씩 줄이면 실거래 통계를 다시 조회
         for (int step = 1; step <= maxSteps; step++) {
             int candidateSizeMax = sizeMax - step;
-            RentMarketStatsResponse stats = rentMarketQueryService.getMarketStats(
-                    regionCode, propertyType, tradeTypeKr, toSqm(sizeMin), toSqm(candidateSizeMax));
+            RentMedianResponse stats = rentMedianService.getMedian(buildMedianRequest(
+                    regionCode, housingType, dealType, sizeMin, candidateSizeMax,
+                    depositMin, depositMax, monthlyRentMin, monthlyRentMax));
 
             // 실거래 데이터가 존재하고 해당 평수 범위의 중앙값이 현재 예산 이하면 해당 평수를 반환
-            if (stats.getSampleCount() > 0 && stats.getMedian() <= totalBudget) {
+            if (stats.getSampleCount() > 0 && stats.getDeposit().getMedian() <= totalBudget) {
                 return GoalDiagnosisResponse.ReduceSizeSuggestion.builder()
                         .deltaSizeMax(candidateSizeMax - sizeMax)
                         .newSizeMax(candidateSizeMax)
@@ -222,23 +240,11 @@ public class GoalServiceImpl implements GoalService {
     }
 
     /** 데이터가 없으면 NO_DATA, budget이 중앙값 이상이면 ACHIEVABLE, 아니면 INSUFFICIENT */
-    private String determineStatus(RentMarketStatsResponse marketStats, long totalBudget) {
+    private String determineStatus(RentMedianResponse marketStats, long totalBudget) {
         if (marketStats.getSampleCount() == 0) {
             return STATUS_NO_DATA;
         }
-        return totalBudget >= marketStats.getMedian() ? STATUS_ACHIEVABLE : STATUS_INSUFFICIENT;
-    }
-
-    /** 평(pyeong) → ㎡ 변환 */
-    private BigDecimal toSqm(Integer pyeong) {
-        return BigDecimal.valueOf(pyeong).multiply(PYEONG_TO_SQM).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private String toKoreanTradeType(String tradeTypeEn) {
-        if (TRADE_TYPE_JEONSE_EN.equals(tradeTypeEn)) {
-            return TRADE_TYPE_JEONSE_KR;
-        }
-        return TRADE_TYPE_WOLSE_KR;
+        return totalBudget >= marketStats.getDeposit().getMedian() ? STATUS_ACHIEVABLE : STATUS_INSUFFICIENT;
     }
 
     /** 목표시점까지 남은 개월수. 이미 지난 달이면 0으로 clamp. */
@@ -272,8 +278,8 @@ public class GoalServiceImpl implements GoalService {
     }
 
     /** 전세면 월세 입력값과 무관하게 0으로 고정 */
-    private long normalizeMonthlyRent(String tradeTypeKr, Long monthlyRent) {
-        if (TRADE_TYPE_JEONSE_KR.equals(tradeTypeKr)) {
+    private long normalizeMonthlyRent(DealType dealType, Long monthlyRent) {
+        if (dealType == DealType.JEONSE) {
             return 0L;
         }
         return monthlyRent != null ? monthlyRent : 0L;

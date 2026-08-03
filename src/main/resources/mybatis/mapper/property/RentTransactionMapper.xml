@@ -40,16 +40,6 @@
            AND housing_type = #{housingType}
     </delete>
 
-    <select id="findDeposits" resultType="long">
-        SELECT deposit
-          FROM rent_transaction
-         WHERE region_code = #{regionCode}
-           AND housing_type = #{housingType}
-           AND deal_type = #{dealType}
-           AND area BETWEEN #{areaMin} AND #{areaMax}
-         ORDER BY deposit ASC
-    </select>
-
     <!-- 분위값 계산용 금액 조회. 집계는 애플리케이션에서 하므로 원본 금액만 뽑는다.
          deposit = 0 은 보증금 없이 기록된 이상치라 집계에서 제외한다. -->
     <select id="findAmountsForMedian" resultType="com.team.independence.property.dto.RentMedianAmount">

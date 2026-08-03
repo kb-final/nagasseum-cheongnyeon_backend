@@ -14,4 +14,10 @@
            AND sigungu = #{sigungu}
     </select>
 
+    <select id="findFullNameByCode" resultType="string">
+        SELECT full_name
+        FROM region
+        WHERE code = #{code}
+    </select>
+
 </mapper>
