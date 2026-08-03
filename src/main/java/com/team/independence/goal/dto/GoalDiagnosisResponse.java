@@ -28,7 +28,7 @@ public class GoalDiagnosisResponse {
     private BudgetResult budget;
     private MarketStats marketStats;
 
-    /** "ACHIEVABLE" | "INSUFFICIENT" | "NO_DATA" */
+    /** "ACHIEVABLE" | "INSUFFICIENT" (실거래 데이터가 없으면 GOAL_NO_MARKET_DATA로 에러 처리되어 이 필드까지 오지 않음) */
     private String status;
     /** INSUFFICIENT일 때만 (median - totalBudget), 그 외 null */
     private Long shortfall;

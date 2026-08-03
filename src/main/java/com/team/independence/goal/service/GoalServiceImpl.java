@@ -38,7 +38,6 @@ public class GoalServiceImpl implements GoalService {
 
     private static final String STATUS_ACHIEVABLE = "ACHIEVABLE";
     private static final String STATUS_INSUFFICIENT = "INSUFFICIENT";
-    private static final String STATUS_NO_DATA = "NO_DATA";
 
     private static final String GOAL_TYPE_HOUSING = "HOUSING";
     private static final String GOAL_STATUS_ACTIVE = "ACTIVE";
@@ -60,12 +59,14 @@ public class GoalServiceImpl implements GoalService {
     @Override
     public GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request) {
         // 희망 조건 범위 검증
+        validateMonthlySavings(request.getMonthlySavings());
         validateRange(request.getSizeMin(), request.getSizeMax());
         validateRange(request.getDepositMin(), request.getDepositMax());
         validateTargetDate(request.getTargetDate());
 
         HousingType housingType = HousingType.valueOf(request.getPropertyType());
         DealType dealType = DealType.valueOf(request.getTradeType());
+        validateMonthlyRentRequired(dealType, request.getMonthlyRentMax());
 
         /*
         * 월세 범위 정규화
@@ -101,6 +102,10 @@ public class GoalServiceImpl implements GoalService {
                 request.getSizeMin(), request.getSizeMax(),
                 request.getDepositMin(), request.getDepositMax(),
                 request.getMonthlyRentMin(), request.getMonthlyRentMax()));
+
+        if (marketStats.getSampleCount() == 0) {
+            throw new BusinessException(ErrorCode.GOAL_NO_MARKET_DATA);
+        }
 
         // 총 예산과 중앙값을 비교해 목표 달성 상태를 결정
         String status = determineStatus(marketStats, totalBudget);
@@ -165,12 +170,14 @@ public class GoalServiceImpl implements GoalService {
     @Transactional
     public GoalResponse createGoal(Long memberId, GoalCreateRequest request) {
         // 희망 조건 범위 검증(진단과 동일 규칙)
+        validateMonthlySavings(request.getMonthlySavings());
         validateRange(request.getSizeMin(), request.getSizeMax());
         validateRange(request.getDepositMin(), request.getDepositMax());
         validateTargetDate(request.getTargetDate());
 
         HousingType housingType = HousingType.valueOf(request.getPropertyType());
         DealType dealType = DealType.valueOf(request.getTradeType());
+        validateMonthlyRentRequired(dealType, request.getMonthlyRentMax());
 
         long monthlyRentMin = normalizeMonthlyRent(dealType, request.getMonthlyRentMin());
         long monthlyRentMax = normalizeMonthlyRent(dealType, request.getMonthlyRentMax());
@@ -323,11 +330,8 @@ public class GoalServiceImpl implements GoalService {
         return null;
     }
 
-    /** 데이터가 없으면 NO_DATA, budget이 중앙값 이상이면 ACHIEVABLE, 아니면 INSUFFICIENT */
+    /** budget이 중앙값 이상이면 ACHIEVABLE, 아니면 INSUFFICIENT (데이터 없는 경우는 GOAL_NO_MARKET_DATA로 이미 걸러짐) */
     private String determineStatus(RentMedianResponse marketStats, long totalBudget) {
-        if (marketStats.getSampleCount() == 0) {
-            return STATUS_NO_DATA;
-        }
         return totalBudget >= marketStats.getDeposit().getMedian() ? STATUS_ACHIEVABLE : STATUS_INSUFFICIENT;
     }
 
@@ -371,19 +375,31 @@ public class GoalServiceImpl implements GoalService {
 
     private void validateRange(int min, int max) {
         if (min > max) {
-            throw new BusinessException(ErrorCode.GOAL_INVALID_CONDITION);
+            throw new BusinessException(ErrorCode.GOAL_INVALID_RANGE);
         }
     }
 
     private void validateRange(long min, long max) {
         if (min > max) {
-            throw new BusinessException(ErrorCode.GOAL_INVALID_CONDITION);
+            throw new BusinessException(ErrorCode.GOAL_INVALID_RANGE);
         }
     }
 
     private void validateTargetDate(YearMonth targetDate) {
         if (!targetDate.isAfter(YearMonth.now())) {
             throw new BusinessException(ErrorCode.GOAL_INVALID_DATE);
+        }
+    }
+
+    private void validateMonthlySavings(long monthlySavings) {
+        if (monthlySavings <= 0) {
+            throw new BusinessException(ErrorCode.GOAL_MONTHLY_SAVINGS_ZERO);
+        }
+    }
+
+    private void validateMonthlyRentRequired(DealType dealType, Long monthlyRentMax) {
+        if (dealType == DealType.WOLSE && monthlyRentMax == null) {
+            throw new BusinessException(ErrorCode.GOAL_MONTHLY_RENT_REQUIRED);
         }
     }
 }

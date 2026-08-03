@@ -51,8 +51,8 @@ public class GoalCreateRequest {
     /** 월세 아니면 무시(서버에서 0으로 정규화) */
     private Long monthlyRentMax;
 
+    /** 0 이하 여부는 GoalServiceImpl에서 검증(GOAL_MONTHLY_SAVINGS_ZERO) */
     @NotNull
-    @PositiveOrZero
     private Long monthlySavings;
 
     /** 미래 여부는 GoalServiceImpl에서 검증(GOAL_INVALID_DATE) */
