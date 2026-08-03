@@ -3,9 +3,10 @@ package com.team.independence.auth.interceptor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team.independence.auth.jwt.JwtUtil;
 import com.team.independence.common.exception.BusinessException;
+import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -14,38 +15,28 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 @Component
+@Profile("!local")
 @RequiredArgsConstructor
-public class AuthInterceptor implements HandlerInterceptor {
-
-    private static final Long DEV_MEMBER_ID = 1L;
+public class ProdAuthInterceptor implements HandlerInterceptor {
 
     private final JwtUtil jwtUtil;
     private final ObjectMapper objectMapper;
 
-    @Value("${kakao.auth.enabled:false}")
-    private boolean kakaoAuthEnabled;
-
     @Override
     public boolean preHandle(
             @NonNull HttpServletRequest request,
-            @NonNull HttpServletResponse response, @NonNull Object handler) throws Exception {
-        if (!kakaoAuthEnabled) {
-            request.setAttribute("memberId", DEV_MEMBER_ID);
-            return true;
-        }
-
+            @NonNull HttpServletResponse response,
+            @NonNull Object handler) throws Exception {
         String token = extractToken(request);
         if (token == null) {
-            writeError(response, new BusinessException(
-                    com.team.independence.common.exception.ErrorCode.UNAUTHORIZED));
+            writeError(response, new BusinessException(ErrorCode.UNAUTHORIZED));
             return false;
         }
 
         try {
             jwtUtil.validateOrThrow(token);
             if (!jwtUtil.isAccessToken(token)) {
-                writeError(response, new BusinessException(
-                        com.team.independence.common.exception.ErrorCode.AUTH_INVALID_TOKEN));
+                writeError(response, new BusinessException(ErrorCode.AUTH_INVALID_TOKEN));
                 return false;
             }
             request.setAttribute("memberId", jwtUtil.getMemberId(token));
