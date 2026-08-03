@@ -14,11 +14,9 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * 또래 비교 API.
- *
- * <p>비교 도메인이지만 경로는 /api/v1/goals 아래다(명세서 기준). /api/v1/compare 아님.
  */
 @RestController
-@RequestMapping("/api/v1/goals")
+@RequestMapping("/api/v1/comparison")
 @RequiredArgsConstructor
 public class CompareController {
 
@@ -34,7 +32,7 @@ public class CompareController {
      * <p>memberId는 요청에서 받지 않는다. AuthInterceptor가 토큰을 검증하고 넣어둔 값을
      * {@code @LoginMember}가 꺼내온다. 파라미터로 받으면 남의 결과를 조회할 수 있다.
      */
-    @GetMapping("/comparison")
+    @GetMapping
     public ApiResponse<CompareResponse> getComparison(
             @LoginMember Long memberId,
             @RequestParam(required = false, defaultValue = "" + DEFAULT_ASSET_RANGE) Long assetRange,
