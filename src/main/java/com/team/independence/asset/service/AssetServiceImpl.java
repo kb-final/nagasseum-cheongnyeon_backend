@@ -198,6 +198,14 @@ public class AssetServiceImpl implements AssetService {
 
     @Override
     @Transactional(readOnly = true)
+    public void validateConnectedAccountExists(Long memberId) {
+        if (connectedAccountMapper.findByMemberId(memberId) == null) {
+            throw new BusinessException(ErrorCode.ASSET_CONNECTION_REQUIRED);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public AssetNetWorthBreakdown getNetWorthBreakdown(Long memberId) {
         long interestBearingAssets = assetAccountMapper.sumCurrentValueByMemberIdAndCategories(
                 memberId, List.of("DEPOSIT_SAVINGS"));

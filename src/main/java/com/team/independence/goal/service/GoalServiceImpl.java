@@ -4,17 +4,25 @@ import com.team.independence.asset.dto.AssetNetWorthBreakdown;
 import com.team.independence.asset.service.AssetService;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
+import com.team.independence.goal.domain.Goal;
+import com.team.independence.goal.domain.GoalHousing;
+import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
+import com.team.independence.goal.dto.GoalResponse;
+import com.team.independence.goal.mapper.GoalHousingMapper;
+import com.team.independence.goal.mapper.GoalMapper;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.service.RegionQueryService;
 import com.team.independence.property.service.RentMedianService;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 프론트 희망조건 입력을 검증·정규화하고 region_code까지 붙여 돌려준다.
@@ -32,6 +40,9 @@ public class GoalServiceImpl implements GoalService {
     private static final String STATUS_INSUFFICIENT = "INSUFFICIENT";
     private static final String STATUS_NO_DATA = "NO_DATA";
 
+    private static final String GOAL_TYPE_HOUSING = "HOUSING";
+    private static final String GOAL_STATUS_ACTIVE = "ACTIVE";
+
     /** 예산 계산에 적용하는 연 이자율(고정 상수). 실제 상품 금리 연동 없이 5%로 가정. */
     private static final double ANNUAL_INTEREST_RATE = 0.05;
 
@@ -43,12 +54,15 @@ public class GoalServiceImpl implements GoalService {
     private final RegionQueryService regionQueryService;
     private final AssetService assetService; // 자산 정보 조회
     private final RentMedianService rentMedianService; // 조건에 맞는 실거래 4분위값 조회
+    private final GoalMapper goalMapper;
+    private final GoalHousingMapper goalHousingMapper;
 
     @Override
     public GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request) {
         // 희망 조건 범위 검증
         validateRange(request.getSizeMin(), request.getSizeMax());
         validateRange(request.getDepositMin(), request.getDepositMax());
+        validateTargetDate(request.getTargetDate());
 
         HousingType housingType = HousingType.valueOf(request.getPropertyType());
         DealType dealType = DealType.valueOf(request.getTradeType());
@@ -68,7 +82,8 @@ public class GoalServiceImpl implements GoalService {
         String regionCode = regionQueryService.resolveRegionCode(
                 request.getRegion().getSido(), request.getRegion().getSigungu());
 
-        // 순 자산 구성 정보 조회
+        // 자산 연동 여부 확인 후 순 자산 구성 정보 조회
+        assetService.validateConnectedAccountExists(memberId);
         AssetNetWorthBreakdown netWorth = assetService.getNetWorthBreakdown(memberId);
         long interestBearingAssets = netWorth.getInterestBearingAssets(); // 목표 시점까지 이자를 적용할 자산 (예적금)
         long flatRecognizedAssets = netWorth.getFlatRecognizedAssets(); // 인정 금액만 반영할 자산
@@ -143,6 +158,75 @@ public class GoalServiceImpl implements GoalService {
                 .status(status)
                 .shortfall(shortfall)
                 .adjustmentSuggestions(adjustmentSuggestions)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public GoalResponse createGoal(Long memberId, GoalCreateRequest request) {
+        // 희망 조건 범위 검증(진단과 동일 규칙)
+        validateRange(request.getSizeMin(), request.getSizeMax());
+        validateRange(request.getDepositMin(), request.getDepositMax());
+        validateTargetDate(request.getTargetDate());
+
+        HousingType housingType = HousingType.valueOf(request.getPropertyType());
+        DealType dealType = DealType.valueOf(request.getTradeType());
+
+        long monthlyRentMin = normalizeMonthlyRent(dealType, request.getMonthlyRentMin());
+        long monthlyRentMax = normalizeMonthlyRent(dealType, request.getMonthlyRentMax());
+        if (dealType == DealType.WOLSE) {
+            validateRange(monthlyRentMin, monthlyRentMax);
+        }
+
+        assetService.validateConnectedAccountExists(memberId);
+
+        // 동시 ACTIVE 목표는 1개만 허용 — 이미 있으면 저장을 거부(수정/삭제 후 재시도 유도)
+        if (goalMapper.existsActiveByMemberId(memberId)) {
+            throw new BusinessException(ErrorCode.GOAL_ALREADY_EXISTS);
+        }
+
+        Goal goal = Goal.builder()
+                .memberId(memberId)
+                .goalType(GOAL_TYPE_HOUSING)
+                .targetAmount(request.getTargetAmount())
+                .targetRentMiddleAmount(request.getTargetRentMiddleAmount())
+                .targetDate(request.getTargetDate().atDay(1))
+                .monthlySaving(request.getMonthlySavings())
+                .status(GOAL_STATUS_ACTIVE)
+                .build();
+        goalMapper.insert(goal);
+
+        GoalHousing goalHousing = GoalHousing.builder()
+                .goalId(goal.getId())
+                .regionCode(request.getRegionCode())
+                .housingType(housingType)
+                .dealType(dealType)
+                .areaMin(request.getSizeMin())
+                .areaMax(request.getSizeMax())
+                .depositMin(request.getDepositMin())
+                .depositMax(request.getDepositMax())
+                .monthlyRentMin(monthlyRentMin)
+                .monthlyRentMax(monthlyRentMax)
+                .build();
+        goalHousingMapper.insert(goalHousing);
+
+        return GoalResponse.builder()
+                .goalId(goal.getId())
+                .status(goal.getStatus())
+                .regionCode(request.getRegionCode())
+                .propertyType(request.getPropertyType())
+                .tradeType(request.getTradeType())
+                .sizeMin(request.getSizeMin())
+                .sizeMax(request.getSizeMax())
+                .depositMin(request.getDepositMin())
+                .depositMax(request.getDepositMax())
+                .monthlyRentMin(monthlyRentMin)
+                .monthlyRentMax(monthlyRentMax)
+                .monthlySavings(request.getMonthlySavings())
+                .targetDate(request.getTargetDate())
+                .targetAmount(request.getTargetAmount())
+                .targetRentMiddleAmount(request.getTargetRentMiddleAmount())
+                .createdAt(LocalDateTime.now())
                 .build();
     }
 
@@ -294,6 +378,12 @@ public class GoalServiceImpl implements GoalService {
     private void validateRange(long min, long max) {
         if (min > max) {
             throw new BusinessException(ErrorCode.GOAL_INVALID_CONDITION);
+        }
+    }
+
+    private void validateTargetDate(YearMonth targetDate) {
+        if (!targetDate.isAfter(YearMonth.now())) {
+            throw new BusinessException(ErrorCode.GOAL_INVALID_DATE);
         }
     }
 }

@@ -19,4 +19,7 @@ public interface AssetService {
      * flatRecognizedAssets로 원금 그대로 반환한다. 청약(SUBSCRIPTION)은 계산에서 제외.
      */
     AssetNetWorthBreakdown getNetWorthBreakdown(Long memberId);
+
+    /** 자산 연동 여부를 검증한다. 연동된 계좌가 없으면 ASSET_CONNECTION_REQUIRED. */
+    void validateConnectedAccountExists(Long memberId);
 }

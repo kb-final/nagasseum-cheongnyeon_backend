@@ -1,7 +1,6 @@
 package com.team.independence.goal.dto;
 
 import java.time.YearMonth;
-import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Pattern;
@@ -10,13 +9,17 @@ import javax.validation.constraints.PositiveOrZero;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+/**
+ * 목표 진단 결과를 저장한다. 진단 응답을 그대로 echo해서 받으므로,
+ * targetAmount(totalBudget)와 targetRentMiddleAmount(median)는 서버가 재계산하지 않고
+ * 프론트가 보내준 값을 "설정 시점" 값으로 그대로 고정한다.
+ */
 @Getter
 @NoArgsConstructor
-public class GoalDiagnosisRequest {
+public class GoalCreateRequest {
 
-    @Valid
-    @NotNull
-    private RegionInfo region;
+    @NotBlank
+    private String regionCode;
 
     @NotBlank
     @Pattern(regexp = "APT|ROW_HOUSE|OFFICETEL|DETACHED")
@@ -52,20 +55,17 @@ public class GoalDiagnosisRequest {
     @PositiveOrZero
     private Long monthlySavings;
 
-    /**
-     * 희망 목표 시점(년/월만 입력, 일자 없음). JSON에서는 "yyyy-MM" 형식.
-     * 미래 여부는 GoalServiceImpl에서 검증(GOAL_INVALID_DATE)
-     */
+    /** 미래 여부는 GoalServiceImpl에서 검증(GOAL_INVALID_DATE) */
     @NotNull
     private YearMonth targetDate;
 
-    @Getter
-    @NoArgsConstructor
-    public static class RegionInfo {
-        @NotBlank
-        private String sido;
+    /** 진단 응답의 budget.totalBudget */
+    @NotNull
+    @Positive
+    private Long targetAmount;
 
-        @NotBlank
-        private String sigungu;
-    }
+    /** 진단 응답의 marketStats.median (설정 시점 매물 중앙값) */
+    @NotNull
+    @Positive
+    private Long targetRentMiddleAmount;
 }
