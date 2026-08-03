@@ -2,6 +2,7 @@ package com.team.independence.asset.service;
 
 import com.team.independence.asset.domain.ConnectedAccount;
 import com.team.independence.asset.domain.ConnectedInstitution;
+import com.team.independence.asset.dto.AssetAccountQueryItem;
 import com.team.independence.asset.dto.AssetLinkRequest;
 import com.team.independence.asset.dto.AssetLinkResponse;
 import com.team.independence.asset.dto.AssetNetWorthBreakdown;
@@ -40,8 +41,8 @@ public class AssetServiceImpl implements AssetService {
     private static final String LOCK_KEY_PREFIX = "asset:link:lock:";
     private static final long LOCK_TTL_SECONDS = 30L;
 
-    /** asset_category=INVESTMENT 인정률. 국내/해외 구분 데이터가 없어 지금은 단일값(국내 기준) 적용. */
-    private static final double INVESTMENT_RECOGNITION_RATE = 0.75;
+    /** STOCK/FUND 계좌 평가금액 인정률. 자산 요약 API(AssetSummaryServiceImpl)와 동일 기준. */
+    private static final double INVESTMENT_RECOGNITION_RATE = 0.7;
 
     private final ConnectedAccountMapper connectedAccountMapper;
     private final ConnectedInstitutionMapper connectedInstitutionMapper;
@@ -200,19 +201,39 @@ public class AssetServiceImpl implements AssetService {
     public AssetNetWorthBreakdown getNetWorthBreakdown(Long memberId) {
         long interestBearingAssets = assetAccountMapper.sumCurrentValueByMemberIdAndCategories(
                 memberId, List.of("DEPOSIT_SAVINGS"));
-        long investmentAssets = assetAccountMapper.sumCurrentValueByMemberIdAndCategories(
-                memberId, List.of("INVESTMENT"));
+        long investmentRecognized = investmentRecognizedAmount(memberId);
         long cashAndEtcAssets = assetAccountMapper.sumCurrentValueByMemberIdAndCategories(
                 memberId, List.of("CASH", "ETC"));
         long manualAssets = manualAssetMapper.sumAmountByMemberId(memberId);
         long loanBalance = loanAccountMapper.sumLoanBalanceByMemberId(memberId);
 
-        long investmentRecognized = Math.round(investmentAssets * INVESTMENT_RECOGNITION_RATE);
         long flatRecognizedAssets = investmentRecognized + cashAndEtcAssets + manualAssets - loanBalance;
 
         return AssetNetWorthBreakdown.builder()
                 .interestBearingAssets(interestBearingAssets)
                 .flatRecognizedAssets(flatRecognizedAssets)
                 .build();
+    }
+
+    /**
+     * INVESTMENT 계좌 인정액 합계.
+     * STOCK/FUND(평가금액 있는 계좌)는 평가금액×70% + 입금대기금, 그 외(CMA 등)는 current_value 그대로.
+     * 자산 요약 API(AssetSummaryServiceImpl.computeBalance)와 동일한 계산 기준을 따른다.
+     */
+    private long investmentRecognizedAmount(Long memberId) {
+        long total = 0L;
+        for (AssetAccountQueryItem account : assetAccountMapper.findWithInstitutionByMemberId(memberId)) {
+            if (!"INVESTMENT".equals(account.getAssetCategory())) {
+                continue;
+            }
+            String type = account.getAccountType();
+            if (("STOCK".equals(type) || "FUND".equals(type)) && account.getValuationAmount() != null) {
+                long deposit = account.getDepositReceived() != null ? account.getDepositReceived() : 0L;
+                total += Math.round(account.getValuationAmount() * INVESTMENT_RECOGNITION_RATE) + deposit;
+            } else {
+                total += account.getCurrentValue() != null ? account.getCurrentValue() : 0L;
+            }
+        }
+        return total;
     }
 }
