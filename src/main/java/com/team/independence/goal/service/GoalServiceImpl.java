@@ -47,43 +47,59 @@ public class GoalServiceImpl implements GoalService {
     private static final int REDUCE_SIZE_MAX_STEPS = 10;
 
     private final RegionQueryService regionQueryService;
-    private final AssetService assetService;
-    private final RentMarketQueryService rentMarketQueryService;
+    private final AssetService assetService; // 자산 정보 조회
+    private final RentMarketQueryService rentMarketQueryService; // 조건에 맞는 실거래가 조회
 
     @Override
     public GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request) {
+        // 희망 조건 범위 검증
         validateRange(request.getSizeMin(), request.getSizeMax());
         validateRange(request.getDepositMin(), request.getDepositMax());
 
+        // 거래 유형 한글로 변환
         String tradeTypeKr = toKoreanTradeType(request.getTradeType());
 
+        /*
+        * 월세 범위 정규화
+        *
+        * 월세면 입력된 월세 값을 사용하고, null이면 0으로 처리
+        * */
         long monthlyRentMin = normalizeMonthlyRent(tradeTypeKr, request.getMonthlyRentMin());
         long monthlyRentMax = normalizeMonthlyRent(tradeTypeKr, request.getMonthlyRentMax());
         if (!TRADE_TYPE_JEONSE_KR.equals(tradeTypeKr)) {
             validateRange(monthlyRentMin, monthlyRentMax);
         }
 
+        // 지역 코드로 변경
         String regionCode = regionQueryService.resolveRegionCode(
                 request.getRegion().getSido(), request.getRegion().getSigungu());
 
+        // 순 자산 구성 정보 조회
         AssetNetWorthBreakdown netWorth = assetService.getNetWorthBreakdown(memberId);
-        long interestBearingAssets = netWorth.getInterestBearingAssets();
-        long flatRecognizedAssets = netWorth.getFlatRecognizedAssets();
+        long interestBearingAssets = netWorth.getInterestBearingAssets(); // 목표 시점까지 이자를 적용할 자산 (예적금)
+        long flatRecognizedAssets = netWorth.getFlatRecognizedAssets(); // 인정 금액만 반영할 자산
 
-        long months = monthsUntil(request.getTargetDate());
+        long months = monthsUntil(request.getTargetDate()); // 현재 시점부터 목표 시점까지 남은 개월 수 계산
+
+        // 목표 시점의 예상 인정 자산을 계산
         long recognizedAssets = calculateGrownAmount(interestBearingAssets, months) + flatRecognizedAssets;
         long projectedSavings = calculateProjectedSavings(request.getMonthlySavings(), months);
         long totalBudget = recognizedAssets + projectedSavings;
 
+        // 사용자 희망 조건에 맞는 실거래 통계를 조회
         RentMarketStatsResponse marketStats = rentMarketQueryService.getMarketStats(
                 regionCode, request.getPropertyType(), tradeTypeKr,
                 toSqm(request.getSizeMin()), toSqm(request.getSizeMax()));
 
+        // 총 예산과 중앙값을 비교해 목표 달성 상태를 결정
         String status = determineStatus(marketStats, totalBudget);
+
+        // 예산이 부족한 경우에만 부족 금액 계산
         Long shortfall = STATUS_INSUFFICIENT.equals(status)
                 ? marketStats.getMedian() - totalBudget
                 : null;
 
+        // 예산이 부족한 경우 조정 제안 생성
         GoalDiagnosisResponse.AdjustmentSuggestions adjustmentSuggestions = null;
         if (STATUS_INSUFFICIENT.equals(status)) {
             adjustmentSuggestions = GoalDiagnosisResponse.AdjustmentSuggestions.builder()
@@ -137,14 +153,22 @@ public class GoalServiceImpl implements GoalService {
         if (months == 0) {
             return null;
         }
+
+        // 연 5% 이자율을 월 복리 이자율로 변환
         double monthlyRate = monthlyInterestRate();
+
+        // 미래 가치 계수
         double annuityFactor = (Math.pow(1 + monthlyRate, months) - 1) / monthlyRate;
+
+        // 현재 인정 자산을 제외하고 저축으로 추가 확보해야 하는 금액
         long requiredSavings = median - recognizedAssets;
+
+        // 필요한 월 저축액 역산
         long adjustedMonthlySavings = Math.round(requiredSavings / annuityFactor);
 
         return GoalDiagnosisResponse.IncreaseSavingsSuggestion.builder()
-                .additionalMonthlySavings(adjustedMonthlySavings - monthlySavings)
-                .adjustedMonthlySavings(adjustedMonthlySavings)
+                .additionalMonthlySavings(adjustedMonthlySavings - monthlySavings) // 현재보다 매달 얼마를 더 저축해야 하는지
+                .adjustedMonthlySavings(adjustedMonthlySavings) // 조정 후 필요한 전체 월 저축액
                 .build();
     }
 
@@ -153,9 +177,14 @@ public class GoalServiceImpl implements GoalService {
     private GoalDiagnosisResponse.ExtendPeriodSuggestion calculateExtendPeriodSuggestion(
             long interestBearingAssets, long flatRecognizedAssets, long monthlySavings, long months,
             long median, YearMonth targetDate) {
+
+        // 현재 목표 기간보다 한 달 긴 시점부터 검사
         for (long n = months + 1; n <= EXTEND_PERIOD_MAX_MONTHS; n++) {
+            // 연장된 기간을 기준으로 자산의 미래 가치를 다시 계산
             long recognizedAssetsAtN = calculateGrownAmount(interestBearingAssets, n) + flatRecognizedAssets;
             long projected = recognizedAssetsAtN + calculateProjectedSavings(monthlySavings, n);
+
+            // 예상 총예산이 중앙값 이상이 되는 첫번째 시점을 찾으면 반환
             if (projected >= median) {
                 long additionalMonths = n - months;
                 return GoalDiagnosisResponse.ExtendPeriodSuggestion.builder()
@@ -171,11 +200,17 @@ public class GoalServiceImpl implements GoalService {
     private GoalDiagnosisResponse.ReduceSizeSuggestion calculateReduceSizeSuggestion(
             String regionCode, String propertyType, String tradeTypeKr,
             int sizeMin, int sizeMax, long totalBudget) {
+
+        // 최대 10평까지 줄이되, 최대 평수가 최소 평수보다 작아지지는 않게 함
         int maxSteps = Math.min(REDUCE_SIZE_MAX_STEPS, sizeMax - sizeMin);
+
+        // 최대 희망 평수를 1평씩 줄이면 실거래 통계를 다시 조회
         for (int step = 1; step <= maxSteps; step++) {
             int candidateSizeMax = sizeMax - step;
             RentMarketStatsResponse stats = rentMarketQueryService.getMarketStats(
                     regionCode, propertyType, tradeTypeKr, toSqm(sizeMin), toSqm(candidateSizeMax));
+
+            // 실거래 데이터가 존재하고 해당 평수 범위의 중앙값이 현재 예산 이하면 해당 평수를 반환
             if (stats.getSampleCount() > 0 && stats.getMedian() <= totalBudget) {
                 return GoalDiagnosisResponse.ReduceSizeSuggestion.builder()
                         .deltaSizeMax(candidateSizeMax - sizeMax)
