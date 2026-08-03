@@ -1,0 +1,24 @@
+fix: 지역 에러코드 중복(PROPERTY_001) 정리
+
+리베이스 과정에서 develop의 REGION_NOT_FOUND와 내가 추가한 PROPERTY_REGION_NOT_FOUND가 같은 코드(PROPERTY_001)로 중복 등록됨. 기존 develop 코드를 살리고 RegionQueryServiceImpl이 이i를 쓰도록 통일
+
+# Conflicts:
+#	src/main/java/com/team/independence/common/exception/ErrorCode.java
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# 대화형 리베이스 진행 중. 갈 위치는 4fd665c
+# Last commands done (9 commands done):
+#    pick d3cad34 # refactor: 목표 진단이 기존 RentMedianService를 재사용하도록 변경
+#    pick fdf0b3f # fix: 지역 에러코드 중복(PROPERTY_001) 정리
+# Next commands to do (4 remaining commands):
+#    pick 3483d3a # fix: 목표 진단 투자자산 인정률을 자산 요약 API와 동일 기준으로 통일
+#    pick 61f6e6f # fix: 응답 JSON의 날짜/시간 필드가 배열로 직렬화되는 문제 수정
+# 현재 'feature/diagnosis-result' 브랜치를 '4fd665c' 위로 리베이스하는 중입니다.
+#
+# 커밋할 변경 사항:
+#	수정함:        src/main/java/com/team/independence/common/exception/ErrorCode.java
+#	수정함:        src/main/java/com/team/independence/property/service/RegionQueryService.java
+#	수정함:        src/main/java/com/team/independence/property/service/RegionQueryServiceImpl.java
+#

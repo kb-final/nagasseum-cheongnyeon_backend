@@ -200,7 +200,7 @@ public class AssetServiceImpl implements AssetService {
     @Transactional(readOnly = true)
     public void validateConnectedAccountExists(Long memberId) {
         if (connectedAccountMapper.findByMemberId(memberId) == null) {
-            throw new BusinessException(ErrorCode.ASSET_CONNECTION_REQUIRED);
+            throw new BusinessException(ErrorCode.ASSET_NOT_LINKED);
         }
     }
 
