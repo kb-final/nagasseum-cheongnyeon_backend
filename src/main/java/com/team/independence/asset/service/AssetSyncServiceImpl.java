@@ -34,7 +34,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -198,6 +200,8 @@ public class AssetSyncServiceImpl implements AssetSyncService {
                     ? (valuationAmt != null ? valuationAmt : 0L) + (depositReceived != null ? depositReceived : 0L)
                     : null;
             BigDecimal earningsRate = parseRate(account.getResEarningsRate());
+            Long valuationPl = parseAmount(account.getResValuationPL());
+            Long purchaseAmount = parseAmount(account.getResPurchaseAmount());
 
             assetAccounts.add(AssetAccount.builder()
                     .connectedInstitutionId(institution.getId())
@@ -208,6 +212,8 @@ public class AssetSyncServiceImpl implements AssetSyncService {
                     .currentValue(currentValue)
                     .valuationAmount(valuationAmt)
                     .depositReceived(depositReceived)
+                    .valuationPl(valuationPl)
+                    .purchaseAmount(purchaseAmount)
                     .earningsRate(earningsRate)
                     .rawResponse(toJson(account))
                     .build());
@@ -286,6 +292,8 @@ public class AssetSyncServiceImpl implements AssetSyncService {
                     .accountDisplay(item.getResAccountDisplay())
                     .productName(item.getResAccountName())
                     .currentValue(balance)
+                    .startDate(parseDate(item.getResAccountStartDate()))
+                    .maturityDate(parseDate(item.getResAccountEndDate()))
                     .rawResponse(toJson(item))
                     .build());
         }
@@ -317,6 +325,8 @@ public class AssetSyncServiceImpl implements AssetSyncService {
                     .loanName(item.getResAccountName())
                     .accountDisplay(item.getResAccountDisplay())
                     .loanBalance(balance != null ? balance : 0L)
+                    .startDate(parseDate(item.getResLoanStartDate()))
+                    .endDate(parseDate(item.getResLoanEndDate()))
                     .rawResponse(toJson(item))
                     .build());
         }
@@ -357,6 +367,18 @@ public class AssetSyncServiceImpl implements AssetSyncService {
             case "FUND":
             case "STOCK": return "INVESTMENT";
             default: return "DEPOSIT_SAVINGS";
+        }
+    }
+
+    private LocalDate parseDate(String value) {
+        if (value == null || value.isBlank() || value.length() != 8) return null;
+        try {
+            return LocalDate.of(
+                    Integer.parseInt(value.substring(0, 4)),
+                    Integer.parseInt(value.substring(4, 6)),
+                    Integer.parseInt(value.substring(6, 8)));
+        } catch (NumberFormatException | DateTimeParseException e) {
+            return null;
         }
     }
 

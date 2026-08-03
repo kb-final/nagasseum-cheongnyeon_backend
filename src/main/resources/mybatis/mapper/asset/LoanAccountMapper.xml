@@ -10,6 +10,8 @@
         <result property="loanName"                 column="loan_name"/>
         <result property="accountDisplay"           column="account_display"/>
         <result property="loanBalance"              column="loan_balance"/>
+        <result property="startDate"                column="start_date"/>
+        <result property="endDate"                  column="end_date"/>
         <result property="rawResponse"              column="raw_response"/>
         <result property="createdAt"                column="created_at"/>
         <result property="updatedAt"                column="updated_at"/>
@@ -25,10 +27,12 @@
 
     <insert id="insertAll">
         INSERT INTO loan_account
-            (connected_institution_id, loan_name, account_display, loan_balance, raw_response)
+            (connected_institution_id, loan_name, account_display, loan_balance,
+             start_date, end_date, raw_response)
         VALUES
         <foreach collection="list" item="l" separator=",">
-            (#{l.connectedInstitutionId}, #{l.loanName}, #{l.accountDisplay}, #{l.loanBalance}, #{l.rawResponse})
+            (#{l.connectedInstitutionId}, #{l.loanName}, #{l.accountDisplay}, #{l.loanBalance},
+             #{l.startDate}, #{l.endDate}, #{l.rawResponse})
         </foreach>
     </insert>
 
@@ -54,6 +58,27 @@
     <select id="findWithInstitutionByMemberId" parameterType="long" resultMap="loanAccountQueryMap">
         SELECT la.id, i.name AS institution_name,
                la.loan_name, la.account_display, la.loan_balance
+          FROM loan_account la
+          JOIN connected_institution ci ON la.connected_institution_id = ci.id
+          JOIN connected_account ca ON ci.connected_account_id = ca.id
+          JOIN institution i ON ci.institution_code = i.code
+         WHERE ca.member_id = #{memberId}
+         ORDER BY i.name
+    </select>
+
+    <resultMap id="loanAccountDetailMap" type="com.team.independence.asset.dto.LoanAccountDetailItem">
+        <result property="institutionName"  column="institution_name"/>
+        <result property="loanName"         column="loan_name"/>
+        <result property="accountDisplay"   column="account_display"/>
+        <result property="loanBalance"      column="loan_balance"/>
+        <result property="startDate"        column="start_date"/>
+        <result property="endDate"          column="end_date"/>
+    </resultMap>
+
+    <select id="findAllDetailsByMemberId" parameterType="long" resultMap="loanAccountDetailMap">
+        SELECT i.name AS institution_name,
+               la.loan_name, la.account_display, la.loan_balance,
+               la.start_date, la.end_date
           FROM loan_account la
           JOIN connected_institution ci ON la.connected_institution_id = ci.id
           JOIN connected_account ca ON ci.connected_account_id = ca.id
