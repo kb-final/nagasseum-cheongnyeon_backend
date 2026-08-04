@@ -1,6 +1,9 @@
 package com.team.independence.config;
 
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CharacterEncodingFilter;
+import org.springframework.web.filter.CorsFilter;
 import org.springframework.web.servlet.support.AbstractAnnotationConfigDispatcherServletInitializer;
 
 import javax.servlet.Filter;
@@ -37,13 +40,24 @@ public class WebAppInitializer extends AbstractAnnotationConfigDispatcherServlet
         return new String[]{ "/" };
     }
 
-    /** UTF-8 인코딩 필터 */
     @Override
     protected Filter[] getServletFilters() {
+        CorsConfiguration corsConfig = new CorsConfiguration();
+        corsConfig.addAllowedOrigin("http://localhost:5173");
+        corsConfig.addAllowedOrigin("https://www.nagasseum.com");
+        corsConfig.addAllowedMethod("*");
+        corsConfig.addAllowedHeader("*");
+        corsConfig.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", corsConfig);
+
         CharacterEncodingFilter encodingFilter = new CharacterEncodingFilter();
         encodingFilter.setEncoding("UTF-8");
         encodingFilter.setForceEncoding(true);
-        return new Filter[]{ encodingFilter };
+
+        // CorsFilter가 CharacterEncodingFilter보다 먼저 실행되어야 preflight를 MVC 전에 처리함
+        return new Filter[]{ new CorsFilter(source), encodingFilter };
     }
 
     /**
