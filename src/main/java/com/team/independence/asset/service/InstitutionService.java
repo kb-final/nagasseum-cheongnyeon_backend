@@ -6,6 +6,6 @@ import com.team.independence.asset.dto.OrganizationResponse;
 import java.util.List;
 
 public interface InstitutionService {
-    List<OrganizationResponse> getOrganizations();
+    List<OrganizationResponse> getOrganizations(Long memberId);
     Institution getByCode(String code);
 }

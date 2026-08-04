@@ -13,6 +13,7 @@ public class OrganizationResponse {
     private String organizationName;
     private String businessType;
     private List<String> supportedLoginTypes;
+    private boolean isConnected;
 
     public static OrganizationResponse from(Institution institution) {
         return OrganizationResponse.builder()
@@ -20,6 +21,7 @@ public class OrganizationResponse {
                 .organizationName(institution.getName())
                 .businessType(institution.getBusinessType())
                 .supportedLoginTypes(List.of("ID"))
+                .isConnected(institution.isConnected())
                 .build();
     }
 }

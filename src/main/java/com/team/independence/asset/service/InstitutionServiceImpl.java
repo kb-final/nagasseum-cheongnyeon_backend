@@ -16,8 +16,8 @@ public class InstitutionServiceImpl implements InstitutionService {
     private final InstitutionMapper institutionMapper;
 
     @Override
-    public List<OrganizationResponse> getOrganizations() {
-        return institutionMapper.findAllActive().stream()
+    public List<OrganizationResponse> getOrganizations(Long memberId) {
+        return institutionMapper.findAllActiveWithConnectionStatus(memberId).stream()
                 .map(OrganizationResponse::from)
                 .collect(Collectors.toList());
     }
