@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.goal.mapper.SavingRecordMapper">
+
+    <resultMap id="savingRecordMap" type="com.team.independence.goal.domain.SavingRecord">
+        <id     property="id"            column="id"/>
+        <result property="goalId"        column="goal_id"/>
+        <result property="recordYm"      column="record_ym"/>
+        <result property="targetSaving"  column="target_saving"/>
+        <result property="actualSaving"  column="actual_saving"/>
+        <result property="isModified"    column="is_modified"/>
+        <result property="createdAt"     column="created_at"/>
+        <result property="updatedAt"     column="updated_at"/>
+    </resultMap>
+
+    <!-- record_ym DESC 정렬은 uk_saving_goal_ym (goal_id, record_ym) 인덱스를 그대로 탄다. -->
+    <select id="findRecentByGoalId" resultMap="savingRecordMap">
+        SELECT id, goal_id, record_ym, target_saving, actual_saving,
+               is_modified, created_at, updated_at
+          FROM saving_record
+         WHERE goal_id = #{goalId}
+         ORDER BY record_ym DESC
+         LIMIT #{limit}
+    </select>
+
+</mapper>

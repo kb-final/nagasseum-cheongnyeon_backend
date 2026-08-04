@@ -4,6 +4,21 @@
 
 <mapper namespace="com.team.independence.goal.mapper.GoalHousingMapper">
 
+    <resultMap id="goalHousingMap" type="com.team.independence.goal.domain.GoalHousing">
+        <id     property="goalId"          column="goal_id"/>
+        <result property="regionCode"      column="region_code"/>
+        <result property="housingType"     column="housing_type"
+                javaType="com.team.independence.property.domain.HousingType"/>
+        <result property="dealType"        column="deal_type"
+                javaType="com.team.independence.property.domain.DealType"/>
+        <result property="areaMin"         column="area_min"/>
+        <result property="areaMax"         column="area_max"/>
+        <result property="depositMin"      column="deposit_min"/>
+        <result property="depositMax"      column="deposit_max"/>
+        <result property="monthlyRentMin"  column="monthly_rent_min"/>
+        <result property="monthlyRentMax"  column="monthly_rent_max"/>
+    </resultMap>
+
     <insert id="insert" parameterType="com.team.independence.goal.domain.GoalHousing">
         INSERT INTO goal_housing (
             goal_id, region_code, housing_type, deal_type,
@@ -15,5 +30,13 @@
             #{monthlyRentMin}, #{monthlyRentMax}
         )
     </insert>
+
+    <select id="findByGoalId" resultMap="goalHousingMap">
+        SELECT goal_id, region_code, housing_type, deal_type,
+               area_min, area_max, deposit_min, deposit_max,
+               monthly_rent_min, monthly_rent_max
+          FROM goal_housing
+         WHERE goal_id = #{goalId}
+    </select>
 
 </mapper>

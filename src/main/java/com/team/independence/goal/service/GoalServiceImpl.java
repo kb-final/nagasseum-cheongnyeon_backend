@@ -49,6 +49,8 @@ public class GoalServiceImpl implements GoalService {
     private static final long EXTEND_PERIOD_MAX_MONTHS = 240;
     /** 평수 축소 제안 탐색 상한(평) */
     private static final int REDUCE_SIZE_MAX_STEPS = 10;
+    /** 예상 달성 시점 탐색 상한(개월). 저축액이 미미해 사실상 도달 불가할 때 무한 루프를 막는 안전장치. */
+    private static final long MAX_FORECAST_MONTHS = 1200;
 
     private final RegionQueryService regionQueryService;
     private final AssetService assetService; // 자산 정보 조회
@@ -235,6 +237,34 @@ public class GoalServiceImpl implements GoalService {
                 .targetRentMiddleAmount(request.getTargetRentMiddleAmount())
                 .createdAt(LocalDateTime.now())
                 .build();
+    }
+
+    /**
+     * 목표 달성 상세 조회의 예상 달성 시점 계산에 쓴다.
+     * 진단의 기간 연장 제안(calculateExtendPeriodSuggestion)과 같은 방식으로,
+     * 저축액을 고정한 채 개월수를 늘려가며 예산이 목표 금액에 닿는 첫 시점을 찾는다.
+     * 화면에 필요한 개월수를 그대로 보여줘야 해서 진단의 240개월 상한 대신 안전장치 상한만 둔다.
+     */
+    @Override
+    public Long calculateMonthToReach(AssetNetWorthBreakdown netWorth, long monthlySaving, long targetAmount) {
+        long growingAssets = netWorth.getInterestBearingAssets(); // 이자로 불어나는 자산(예적금)
+        long fixedAssets = netWorth.getFlatRecognizedAssets();    // 원금 그대로 인정하는 자산
+
+        if (growingAssets + fixedAssets >= targetAmount) {
+            return 0L;
+        }
+        if (monthlySaving <= 0) {
+            return null;
+        }
+
+        for (long months = 1; months <= MAX_FORECAST_MONTHS; months++) {
+            long expectedBudget = calculateGrownAmount(growingAssets, months) + fixedAssets
+                    + calculateProjectedSavings(monthlySaving, months);
+            if (expectedBudget >= targetAmount) {
+                return months;
+            }
+        }
+        return null;
     }
 
     /** RentMedianService 호출용 요청 조립. sizeMin/sizeMax는 평 단위 그대로 넘기면 내부에서 ㎡로 환산한다. */

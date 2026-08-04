@@ -1,5 +1,6 @@
 package com.team.independence.goal.service;
 
+import com.team.independence.asset.dto.AssetNetWorthBreakdown;
 import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
@@ -10,4 +11,11 @@ public interface GoalService {
 
     /** 진단 결과를 목표로 저장한다. 이미 ACTIVE 목표가 있으면 GOAL_ALREADY_EXISTS로 거부한다. */
     GoalResponse createGoal(Long memberId, GoalCreateRequest request);
+
+    /**
+     * 매달 monthlySaving씩 저축할 때 예상 예산이 targetAmount 이상이 되는 최초 개월수.
+     * 진단과 동일한 복리 계산을 쓴다(예적금만 거치식 성장 + 월저축액 적립식 미래가치).
+     * 이미 도달했으면 0, 저축액이 0 이하거나 탐색 상한까지 못 미치면 null.
+     */
+    Long calculateMonthToReach(AssetNetWorthBreakdown netWorth, long monthlySaving, long targetAmount);
 }
