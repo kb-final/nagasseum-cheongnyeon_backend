@@ -4,6 +4,21 @@
 
 <mapper namespace="com.team.independence.goal.mapper.GoalMapper">
 
+    <resultMap id="goalMap" type="com.team.independence.goal.domain.Goal">
+        <id     property="id"                        column="id"/>
+        <result property="memberId"                  column="member_id"/>
+        <result property="goalType"                  column="goal_type"/>
+        <result property="targetAmount"              column="target_amount"/>
+        <result property="targetRentMiddleAmount"    column="target_rent_middle_amount"/>
+        <result property="targetDate"                column="target_date"/>
+        <result property="monthlySaving"             column="monthly_saving"/>
+        <result property="status"                    column="status"/>
+        <result property="marketAlertDismissedAt"    column="market_alert_dismissed_at"/>
+        <result property="marketAlertDismissedPrice" column="market_alert_dismissed_price"/>
+        <result property="createdAt"                 column="created_at"/>
+        <result property="updatedAt"                 column="updated_at"/>
+    </resultMap>
+
     <insert id="insert" parameterType="com.team.independence.goal.domain.Goal"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO goal (
@@ -19,6 +34,15 @@
         SELECT EXISTS(
             SELECT 1 FROM goal WHERE member_id = #{memberId} AND status = 'ACTIVE'
         )
+    </select>
+
+    <select id="findById" resultMap="goalMap">
+        SELECT id, member_id, goal_type, target_amount, target_rent_middle_amount,
+               target_date, monthly_saving, status,
+               market_alert_dismissed_at, market_alert_dismissed_price,
+               created_at, updated_at
+          FROM goal
+         WHERE id = #{id}
     </select>
 
 </mapper>
