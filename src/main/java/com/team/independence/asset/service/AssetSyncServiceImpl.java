@@ -110,7 +110,7 @@ public class AssetSyncServiceImpl implements AssetSyncService {
                 sb.append("• memberId=").append(f.memberId)
                   .append(" / ").append(f.reason).append("\n");
             }
-            slackNotifier.sendBatchFailureSummary(sb.toString().trim());
+            slackNotifier.sendBatchFailureSummary("asset-sync", sb.toString().trim());
         }
 
         log.info("[배치] 자산 동기화 완료 — 성공: {}, 실패: {}",

@@ -39,6 +39,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -226,7 +227,7 @@ class  AssetSyncServiceImplTest {
         service.syncAll();
 
         ArgumentCaptor<String> slackCaptor = ArgumentCaptor.forClass(String.class);
-        verify(slackNotifier, times(1)).sendBatchFailureSummary(slackCaptor.capture());
+        verify(slackNotifier, times(1)).sendBatchFailureSummary(eq("asset-sync"), slackCaptor.capture());
         assertThat(slackCaptor.getValue()).contains("memberId=2");
 
         verify(assetSummaryMapper, times(2)).upsert(any());
@@ -245,7 +246,7 @@ class  AssetSyncServiceImplTest {
 
         service.syncAll();
 
-        verify(slackNotifier, never()).sendBatchFailureSummary(anyString());
+        verify(slackNotifier, never()).sendBatchFailureSummary(anyString(), anyString());
     }
 
     // 더미 Response JSON (CodefMockClient와 동일)
