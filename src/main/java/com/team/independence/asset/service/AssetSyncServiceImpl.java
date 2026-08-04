@@ -8,6 +8,7 @@ import com.team.independence.asset.domain.ConnectedInstitution;
 import com.team.independence.asset.domain.LoanAccount;
 import com.team.independence.asset.dto.AssetSyncResponse;
 import com.team.independence.asset.dto.AssetSyncResponse.InstitutionSyncResult;
+import com.team.independence.asset.dto.SyncJobStatusResponse;
 import com.team.independence.asset.domain.AssetSummary;
 import com.team.independence.asset.mapper.AssetAccountMapper;
 import com.team.independence.asset.mapper.AssetSummaryMapper;
@@ -60,6 +61,7 @@ public class AssetSyncServiceImpl implements AssetSyncService {
     private static final String CURRENCY_KRW = "KRW";
     private static final String OVERDRAFT_FLAG = "1";
 
+    private final AssetSyncJobStore jobStore;
     private final ConnectedAccountMapper connectedAccountMapper;
     private final ConnectedInstitutionMapper connectedInstitutionMapper;
     private final InstitutionMapper institutionMapper;
@@ -71,6 +73,20 @@ public class AssetSyncServiceImpl implements AssetSyncService {
     private final AesEncryptor aesEncryptor;
     private final ObjectMapper objectMapper;
     private final SlackNotifier slackNotifier;
+
+    @Override
+    public SyncJobStatusResponse getSyncStatus(String jobId) {
+        String status = jobStore.getStatus(jobId);
+        if (status == null) {
+            throw new BusinessException(ErrorCode.ASSET_SYNC_JOB_NOT_FOUND);
+        }
+        return SyncJobStatusResponse.builder()
+                .jobId(jobId)
+                .status(status)
+                .errorMessage("FAILED".equals(status) ? jobStore.getError(jobId) : null)
+                .resultUrl("SUCCESS".equals(status) ? jobStore.getResultUrl(jobId) : null)
+                .build();
+    }
 
     @Override
     public void syncAll() {
