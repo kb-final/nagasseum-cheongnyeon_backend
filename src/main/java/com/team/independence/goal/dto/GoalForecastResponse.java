@@ -25,4 +25,36 @@ public class GoalForecastResponse {
     private YearMonth expectedDate;
     /** 고정 기준 대비 앞당겨진 개월 수(양수=단축, 0=동일, 음수=지연). 비교 불가면 null */
     private Integer monthsDiff;
+
+    /**
+     * 도달 개월수를 화면용 응답으로 옮긴다.
+     * 상세 조회와 시뮬레이션이 같은 금액에 같은 값을 내도록 조립은 여기 한곳에서만 한다.
+     *
+     * @param months      목표 도달까지 남은 개월수. 이미 달성했으면 0, 계산 불가면 null
+     * @param fixedMonths 고정 저축액 기준 도달 개월수(비교 기준). 없으면 monthsDiff는 null
+     */
+    public static GoalForecastResponse of(SavingBasis basis, long monthlySaving,
+                                          Long months, Long fixedMonths) {
+        // 계산 불가(저축액 0 이하 또는 탐색 상한 초과) — 시점도 비교도 낼 수 없다.
+        if (months == null) {
+            return build(basis, monthlySaving, null, null);
+        }
+        // 이미 달성했으면 예상 시점을 따질 게 없다.
+        if (months == 0) {
+            return build(basis, monthlySaving, null, 0);
+        }
+
+        Integer monthsDiff = fixedMonths == null ? null : (int) (fixedMonths - months);
+        return build(basis, monthlySaving, YearMonth.now().plusMonths(months), monthsDiff);
+    }
+
+    private static GoalForecastResponse build(SavingBasis basis, long monthlySaving,
+                                              YearMonth expectedDate, Integer monthsDiff) {
+        return GoalForecastResponse.builder()
+                .basis(basis)
+                .monthlySaving(monthlySaving)
+                .expectedDate(expectedDate)
+                .monthsDiff(monthsDiff)
+                .build();
+    }
 }

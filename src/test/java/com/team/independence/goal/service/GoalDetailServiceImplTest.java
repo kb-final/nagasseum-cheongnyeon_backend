@@ -65,7 +65,8 @@ class GoalDetailServiceImplTest {
         savingRecordMapper = new FakeSavingRecordMapper();
         assetService = new FakeAssetService();
         // 소유권 검증과 도달 개월수 계산은 진짜 GoalServiceImpl이 담당한다.
-        // 나머지 의존성은 이 경로에서 쓰이지 않아 null로 둔다.
+        // 계산을 가짜로 바꾸면 forecasts 검증이 의미를 잃기 때문이다.
+        // 그 외 의존성은 이 경로에서 쓰이지 않아 null로 둔다.
         service = new GoalDetailServiceImpl(
                 goalHousingMapper, savingRecordMapper, assetService,
                 new GoalServiceImpl(null, null, null, goalMapper, null));

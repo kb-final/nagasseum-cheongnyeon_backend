@@ -6,9 +6,11 @@ import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.domain.Goal;
 import com.team.independence.goal.domain.GoalHousing;
+import com.team.independence.goal.domain.SavingBasis;
 import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
+import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
@@ -277,6 +279,40 @@ public class GoalServiceImpl implements GoalService {
             }
         }
         return null;
+    }
+
+    /**
+     * 진단과 같은 복리 계산에 월 저축액만 바꿔 넣고 목표 도달 시점을 되짚는다.
+     * 진단이 "시점을 고정하고 금액을 구한다"면 이쪽은 "금액을 고정하고 시점을 구한다".
+     */
+    @Override
+    public GoalForecastResponse simulateMonthlySaving(Long memberId, Long goalId, Long monthlySaving) {
+        if (monthlySaving == null || monthlySaving <= 0) {
+            throw new BusinessException(ErrorCode.GOAL_INVALID_INPUT);
+        }
+
+        Goal goal = findOwnedGoal(memberId, goalId);
+        if (!GOAL_STATUS_ACTIVE.equals(goal.getStatus())) {
+            throw new BusinessException(ErrorCode.GOAL_NOT_ACTIVE);
+        }
+
+        assetService.validateConnectedAccountExists(memberId);
+        AssetNetWorthBreakdown netWorth = assetService.getNetWorthBreakdown(memberId);
+
+        long targetAmount = goal.getTargetAmount();
+        Long months = calculateMonthToReach(netWorth, monthlySaving, targetAmount);
+        Long fixedMonths = calculateFixedMonths(netWorth, goal, targetAmount);
+
+        return GoalForecastResponse.of(SavingBasis.CUSTOM, monthlySaving, months, fixedMonths);
+    }
+
+    /** 비교 기준이 되는 고정 저축액의 도달 개월수. 저축액이 0 이하면 비교할 수 없다. */
+    private Long calculateFixedMonths(AssetNetWorthBreakdown netWorth, Goal goal, long targetAmount) {
+        Long fixedSaving = goal.getMonthlySaving();
+        if (fixedSaving == null || fixedSaving <= 0) {
+            return null;
+        }
+        return calculateMonthToReach(netWorth, fixedSaving, targetAmount);
     }
 
     /** RentMedianService 호출용 요청 조립. sizeMin/sizeMax는 평 단위 그대로 넘기면 내부에서 ㎡로 환산한다. */
