@@ -7,5 +7,7 @@ public enum SavingBasis {
     /** 최근 3개월 실제 저축액 평균 */
     RECENT_AVERAGE,
     /** 가장 최근 달 실제 저축액 */
-    LATEST
+    LATEST,
+    /** 사용자가 직접 입력한 금액 (시뮬레이션 전용) */
+    CUSTOM
 }

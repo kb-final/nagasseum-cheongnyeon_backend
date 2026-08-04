@@ -9,6 +9,7 @@ import com.team.independence.goal.domain.GoalHousing;
 import com.team.independence.goal.domain.SavingBasis;
 import com.team.independence.goal.domain.SavingRecord;
 import com.team.independence.goal.dto.GoalDetailResponse;
+import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
 import com.team.independence.goal.mapper.SavingRecordMapper;
@@ -133,13 +134,13 @@ public class GoalDetailServiceImpl implements GoalDetailService {
      * 기준 금액이 없거나 0 이하면 계산이 불가하므로 목록에서 뺀다.
      * monthsDiff는 고정 저축액 기준과 비교한 값이라, 고정 기준을 못 구하면 null이 된다.
      */
-    private List<GoalDetailResponse.Forecast> buildForecasts(AssetNetWorthBreakdown netWorth,
-                                                             long targetAmount,
-                                                             long remainingAmount,
-                                                             GoalDetailResponse.SavingStatus savingStatus) {
+    private List<GoalForecastResponse> buildForecasts(AssetNetWorthBreakdown netWorth,
+                                                      long targetAmount,
+                                                      long remainingAmount,
+                                                      GoalDetailResponse.SavingStatus savingStatus) {
         Long fixedMonths = calculateMonths(netWorth, savingStatus.getFixedSaving(), targetAmount);
 
-        List<GoalDetailResponse.Forecast> forecasts = new ArrayList<>();
+        List<GoalForecastResponse> forecasts = new ArrayList<>();
         addForecast(forecasts, SavingBasis.FIXED, savingStatus.getFixedSaving(),
                 netWorth, targetAmount, remainingAmount, fixedMonths);
         addForecast(forecasts, SavingBasis.RECENT_AVERAGE, savingStatus.getRecentAverageSaving(),
@@ -149,7 +150,7 @@ public class GoalDetailServiceImpl implements GoalDetailService {
         return forecasts;
     }
 
-    private void addForecast(List<GoalDetailResponse.Forecast> forecasts,
+    private void addForecast(List<GoalForecastResponse> forecasts,
                              SavingBasis basis,
                              Long monthlySaving,
                              AssetNetWorthBreakdown netWorth,
@@ -162,7 +163,7 @@ public class GoalDetailServiceImpl implements GoalDetailService {
 
         // 이미 달성했으면 예상 시점을 따질 게 없다.
         if (remainingAmount == 0) {
-            forecasts.add(GoalDetailResponse.Forecast.builder()
+            forecasts.add(GoalForecastResponse.builder()
                     .basis(basis)
                     .monthlySaving(monthlySaving)
                     .expectedDate(null)
@@ -172,7 +173,7 @@ public class GoalDetailServiceImpl implements GoalDetailService {
         }
 
         Long months = calculateMonths(netWorth, monthlySaving, targetAmount);
-        forecasts.add(GoalDetailResponse.Forecast.builder()
+        forecasts.add(GoalForecastResponse.builder()
                 .basis(basis)
                 .monthlySaving(monthlySaving)
                 .expectedDate(months == null ? null : YearMonth.now().plusMonths(months))

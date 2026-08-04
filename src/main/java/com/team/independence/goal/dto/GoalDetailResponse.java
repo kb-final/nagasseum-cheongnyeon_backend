@@ -1,6 +1,5 @@
 package com.team.independence.goal.dto;
 
-import com.team.independence.goal.domain.SavingBasis;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import java.time.YearMonth;
@@ -29,7 +28,7 @@ public class GoalDetailResponse {
     private Progress progress;
     private SavingStatus savingStatus;
     /** 저축 기준별 예상 달성 시점 */
-    private List<Forecast> forecasts;
+    private List<GoalForecastResponse> forecasts;
 
     /** 희망 주거 조건 (goal_housing) */
     @Getter
@@ -72,16 +71,4 @@ public class GoalDetailResponse {
         private Long latestSaving;
     }
 
-    /** 특정 월 저축액을 유지했을 때의 예상 달성 시점 */
-    @Getter
-    @Builder
-    public static class Forecast {
-        private SavingBasis basis;
-        /** 해당 기준의 월 저축액 */
-        private Long monthlySaving;
-        /** 예상 달성 시점. 이미 달성했거나 탐색 상한 내에 도달하지 못하면 null */
-        private YearMonth expectedDate;
-        /** 고정 기준 대비 앞당겨진 개월 수(양수=단축, 0=동일, 음수=지연). 비교 불가면 null */
-        private Integer monthsDiff;
-    }
 }
