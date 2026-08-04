@@ -2,8 +2,6 @@ package com.team.independence.goal.service;
 
 import com.team.independence.asset.dto.AssetNetWorthBreakdown;
 import com.team.independence.asset.service.AssetService;
-import com.team.independence.common.exception.BusinessException;
-import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.domain.Goal;
 import com.team.independence.goal.domain.GoalHousing;
 import com.team.independence.goal.domain.SavingBasis;
@@ -11,7 +9,6 @@ import com.team.independence.goal.domain.SavingRecord;
 import com.team.independence.goal.dto.GoalDetailResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
-import com.team.independence.goal.mapper.GoalMapper;
 import com.team.independence.goal.mapper.SavingRecordMapper;
 import java.time.YearMonth;
 import java.util.ArrayList;
@@ -31,7 +28,6 @@ public class GoalDetailServiceImpl implements GoalDetailService {
     /** 최근 평균 저축액을 낼 때 보는 개월 수. 이보다 기록이 적으면 평균을 내지 않는다. */
     private static final int RECENT_MONTHS = 3;
 
-    private final GoalMapper goalMapper;
     private final GoalHousingMapper goalHousingMapper;
     private final SavingRecordMapper savingRecordMapper;
     private final AssetService assetService;
@@ -39,7 +35,7 @@ public class GoalDetailServiceImpl implements GoalDetailService {
 
     @Override
     public GoalDetailResponse getGoalDetail(Long memberId, Long goalId) {
-        Goal goal = findOwnedGoal(memberId, goalId);
+        Goal goal = goalService.findOwnedGoal(memberId, goalId);
         GoalHousing housing = goalHousingMapper.findByGoalId(goalId);
 
         assetService.validateConnectedAccountExists(memberId);
@@ -67,18 +63,6 @@ public class GoalDetailServiceImpl implements GoalDetailService {
                 .savingStatus(savingStatus)
                 .forecasts(buildForecasts(netWorth, targetAmount, remainingAmount, savingStatus))
                 .build();
-    }
-
-    /** 목표를 찾고 소유자인지 확인한다. */
-    private Goal findOwnedGoal(Long memberId, Long goalId) {
-        Goal goal = goalMapper.findById(goalId);
-        if (goal == null) {
-            throw new BusinessException(ErrorCode.GOAL_NOT_FOUND);
-        }
-        if (!goal.getMemberId().equals(memberId)) {
-            throw new BusinessException(ErrorCode.GOAL_FORBIDDEN);
-        }
-        return goal;
     }
 
     private GoalDetailResponse.Housing buildHousing(GoalHousing housing) {

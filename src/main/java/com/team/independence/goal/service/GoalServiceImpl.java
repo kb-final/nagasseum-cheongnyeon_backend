@@ -239,6 +239,18 @@ public class GoalServiceImpl implements GoalService {
                 .build();
     }
 
+    @Override
+    public Goal findOwnedGoal(Long memberId, Long goalId) {
+        Goal goal = goalMapper.findById(goalId);
+        if (goal == null) {
+            throw new BusinessException(ErrorCode.GOAL_NOT_FOUND);
+        }
+        if (!goal.getMemberId().equals(memberId)) {
+            throw new BusinessException(ErrorCode.GOAL_FORBIDDEN);
+        }
+        return goal;
+    }
+
     /**
      * 목표 달성 상세 조회의 예상 달성 시점 계산에 쓴다.
      * 진단의 기간 연장 제안(calculateExtendPeriodSuggestion)과 같은 방식으로,

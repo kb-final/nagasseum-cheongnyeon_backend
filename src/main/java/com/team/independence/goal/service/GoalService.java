@@ -1,6 +1,7 @@
 package com.team.independence.goal.service;
 
 import com.team.independence.asset.dto.AssetNetWorthBreakdown;
+import com.team.independence.goal.domain.Goal;
 import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
@@ -11,6 +12,12 @@ public interface GoalService {
 
     /** 진단 결과를 목표로 저장한다. 이미 ACTIVE 목표가 있으면 GOAL_ALREADY_EXISTS로 거부한다. */
     GoalResponse createGoal(Long memberId, GoalCreateRequest request);
+
+    /**
+     * 목표를 찾고 요청자가 소유자인지 확인한다.
+     * 목표가 없으면 GOAL_NOT_FOUND, 다른 회원의 목표면 GOAL_FORBIDDEN.
+     */
+    Goal findOwnedGoal(Long memberId, Long goalId);
 
     /**
      * 매달 monthlySaving씩 저축할 때 예상 예산이 targetAmount 이상이 되는 최초 개월수.
