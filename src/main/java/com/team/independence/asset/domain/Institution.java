@@ -17,4 +17,5 @@ public class Institution {
     private String logoUrl;
     private int displayOrder;
     private boolean isActive;
+    private boolean isConnected;
 }

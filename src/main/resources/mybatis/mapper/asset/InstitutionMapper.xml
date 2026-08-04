@@ -16,6 +16,25 @@
         <result property="isActive"        column="is_active"/>
     </resultMap>
 
+    <resultMap id="institutionWithStatusMap" type="com.team.independence.asset.domain.Institution"
+               extends="institutionMap">
+        <result property="isConnected" column="is_connected"/>
+    </resultMap>
+
+    <select id="findAllActiveWithConnectionStatus" resultMap="institutionWithStatusMap">
+        SELECT i.code, i.name, i.institution_type, i.business_type, i.login_type,
+               i.product_label, i.logo_url, i.display_order, i.is_active,
+               CASE WHEN ci.institution_code IS NOT NULL THEN TRUE ELSE FALSE END AS is_connected
+          FROM institution i
+          LEFT JOIN connected_institution ci
+            ON ci.institution_code = i.code
+           AND ci.connected_account_id = (
+                 SELECT id FROM connected_account WHERE member_id = #{memberId}
+               )
+         WHERE i.is_active = TRUE
+         ORDER BY i.display_order
+    </select>
+
     <select id="findAllActive" resultMap="institutionMap">
         SELECT code, name, institution_type, business_type, login_type,
                product_label, logo_url, display_order, is_active

@@ -7,6 +7,7 @@ import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.asset.service.AssetSyncService;
 import com.team.independence.asset.service.InstitutionService;
 import com.team.independence.asset.service.ManualAssetService;
+import com.team.independence.common.annotation.LoginMember;
 import com.team.independence.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -33,8 +34,9 @@ public class AssetController {
     }
 
     @GetMapping("/organizations")
-    public ApiResponse<List<OrganizationResponse>> getOrganizations() {
-        return ApiResponse.ok(institutionService.getOrganizations());
+    public ApiResponse<List<OrganizationResponse>> getOrganizations(
+            @LoginMember Long memberId) {
+        return ApiResponse.ok(institutionService.getOrganizations(memberId));
     }
 
     @GetMapping("/connections")
