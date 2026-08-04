@@ -69,7 +69,7 @@ class GoalDetailServiceImplTest {
         // 그 외 의존성은 이 경로에서 쓰이지 않아 null로 둔다.
         service = new GoalDetailServiceImpl(
                 goalHousingMapper, savingRecordMapper, assetService,
-                new GoalServiceImpl(null, null, null, goalMapper, null));
+                new GoalServiceImpl(null, null, null, goalMapper, null, null));
     }
 
     // ------------------------------------------------------------------
@@ -418,6 +418,16 @@ class GoalDetailServiceImplTest {
 
         @Override
         public boolean existsActiveByMemberId(Long memberId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Goal findActiveByMemberId(Long memberId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<Long> findAllActiveGoalIds() {
             throw new UnsupportedOperationException();
         }
     }

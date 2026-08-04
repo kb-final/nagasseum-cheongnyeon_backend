@@ -356,9 +356,11 @@ public class GoalServiceImpl implements GoalService {
 
         // 목표 유지 시: 저장된 target_date 그대로 (다른 화면에 노출되는 목표 시점과 일치시킴)
         YearMonth maintainEta = YearMonth.from(goal.getTargetDate());
-        // 현재 시세 반영 시: 오늘 자산 기준으로 다시 계산
-        YearMonth reflectEta = calculateEta(netWorth.getInterestBearingAssets(), netWorth.getFlatRecognizedAssets(),
-                goal.getMonthlySaving(), currentMiddleAmount);
+        // 현재 시세 반영 시: 오늘 자산 기준으로 다시 계산 (목표 상세 조회와 같은 계산 재사용)
+        Long monthsToReachCurrentMiddle = calculateMonthToReach(netWorth, goal.getMonthlySaving(), currentMiddleAmount);
+        YearMonth reflectEta = monthsToReachCurrentMiddle == null
+                ? null
+                : YearMonth.now().plusMonths(monthsToReachCurrentMiddle);
 
         return GoalMarketTrendResponse.builder()
                 .regionName(regionName)
@@ -374,22 +376,6 @@ public class GoalServiceImpl implements GoalService {
                 .maintainEta(maintainEta)
                 .reflectEta(reflectEta)
                 .build();
-    }
-
-    /** 오늘(n=0)부터 상한까지, 자산 성장 + 적립식 저축이 targetAmount 이상이 되는 최초 시점을 탐색. 못 찾으면 null. */
-    private YearMonth calculateEta(long interestBearingAssets, long flatRecognizedAssets,
-            long monthlySaving, long targetAmount) {
-        for (long n = 0; n <= EXTEND_PERIOD_MAX_MONTHS; n++) {
-            // 예상 총 예산 계산
-            long projected = calculateGrownAmount(interestBearingAssets, n) + flatRecognizedAssets
-                    + calculateProjectedSavings(monthlySaving, n);
-
-            // 목표 금액보다 클 때 날짜 반환
-            if (projected >= targetAmount) {
-                return YearMonth.now().plusMonths(n);
-            }
-        }
-        return null;
     }
 
     /**
