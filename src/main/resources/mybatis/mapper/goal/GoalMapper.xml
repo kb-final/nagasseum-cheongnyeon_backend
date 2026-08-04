@@ -36,13 +36,28 @@
         )
     </select>
 
-    <select id="findById" resultMap="goalMap">
-        SELECT id, member_id, goal_type, target_amount, target_rent_middle_amount,
-               target_date, monthly_saving, status,
-               market_alert_dismissed_at, market_alert_dismissed_price,
-               created_at, updated_at
-          FROM goal
-         WHERE id = #{id}
+    <select id="findActiveByMemberId" resultType="com.team.independence.goal.domain.Goal">
+        SELECT
+            id, member_id, goal_type, target_amount, target_rent_middle_amount,
+            target_date, monthly_saving, status,
+            market_alert_dismissed_at, market_alert_dismissed_price,
+            created_at, updated_at
+        FROM goal
+        WHERE member_id = #{memberId} AND status = 'ACTIVE'
+    </select>
+
+    <select id="findAllActiveGoalIds" resultType="long">
+        SELECT id FROM goal WHERE status = 'ACTIVE'
+    </select>
+
+    <select id="findById" resultType="com.team.independence.goal.domain.Goal">
+        SELECT
+            id, member_id, goal_type, target_amount, target_rent_middle_amount,
+            target_date, monthly_saving, status,
+            market_alert_dismissed_at, market_alert_dismissed_price,
+            created_at, updated_at
+        FROM goal
+        WHERE id = #{goalId}
     </select>
 
 </mapper>

@@ -11,6 +11,7 @@ import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
+import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
@@ -22,6 +23,7 @@ import com.team.independence.property.service.RegionQueryService;
 import com.team.independence.property.service.RentMedianService;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,11 +56,15 @@ public class GoalServiceImpl implements GoalService {
     /** 예상 달성 시점 탐색 상한(개월). 저축액이 미미해 사실상 도달 불가할 때 무한 루프를 막는 안전장치. */
     private static final long MAX_FORECAST_MONTHS = 1200;
 
+    /** RentMedianResponse.baseEndYm("YYYYMM") 파싱용 */
+    private static final DateTimeFormatter YM_FORMATTER = DateTimeFormatter.ofPattern("yyyyMM");
+
     private final RegionQueryService regionQueryService;
     private final AssetService assetService; // 자산 정보 조회
     private final RentMedianService rentMedianService; // 조건에 맞는 실거래 4분위값 조회
     private final GoalMapper goalMapper;
     private final GoalHousingMapper goalHousingMapper;
+    private final GoalMarketTrendCacheStore goalMarketTrendCacheStore;
 
     @Override
     public GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request) {
@@ -276,6 +282,111 @@ public class GoalServiceImpl implements GoalService {
                     + calculateProjectedSavings(monthlySaving, months);
             if (expectedBudget >= targetAmount) {
                 return months;
+            }
+        }
+        return null;
+    }
+
+    // 현재 활성 목표에 대한 매물 시세 변화 데이터 조회
+    @Override
+    @Transactional(readOnly = true)
+    public GoalMarketTrendResponse getMarketTrend(Long memberId) {
+        // 회원 활성 목표 조회
+        Goal goal = goalMapper.findActiveByMemberId(memberId);
+        if (goal == null) {
+            throw new BusinessException(ErrorCode.GOAL_NOT_FOUND);
+        }
+
+        // redis 캐시 조회
+        return goalMarketTrendCacheStore.find(goal.getId())
+                .orElseGet(() -> refreshMarketTrend(goal.getId())); // 캐시 없으면 직접 갱신
+    }
+
+    // 시세 변화 데이터를 새로 계산한 뒤 Redis에 저장
+    @Override
+    @Transactional(readOnly = true)
+    public GoalMarketTrendResponse refreshMarketTrend(Long goalId) {
+        // 기본 목표 정보 조회
+        Goal goal = goalMapper.findById(goalId);
+        if (goal == null) {
+            throw new BusinessException(ErrorCode.GOAL_NOT_FOUND);
+        }
+
+        // 주거 희망 조건 조회
+        GoalHousing goalHousing = goalHousingMapper.findByGoalId(goalId);
+        if (goalHousing == null) {
+            throw new BusinessException(ErrorCode.GOAL_NOT_FOUND);
+        }
+
+        // 시세 변화 데이터 계산
+        GoalMarketTrendResponse response = computeMarketTrend(goal, goalHousing);
+
+        // Redis에 저장
+        goalMarketTrendCacheStore.save(goalId, response);
+        return response;
+    }
+
+    /**
+     * 목표의 희망 조건으로 실거래 중앙값을 다시 조회하고, reflectEta(현재 시세 반영 시 도달 예상 시점)만
+     * 오늘 기준 자산으로 다시 계산한다.
+     *
+     * <p>maintainEta(목표 유지 시 도달 예상 시점)는 재계산하지 않고 goal.target_date를 그대로 쓴다.
+     * 홈 화면 다른 곳에도 같은 target_date가 "목표 시점"으로 노출되는데, 여기서 오늘 자산 기준으로
+     * 다시 계산해버리면 같은 화면 안에서 목표 시점이 두 가지 다른 값으로 보이게 된다.
+     */
+    private GoalMarketTrendResponse computeMarketTrend(Goal goal, GoalHousing goalHousing) {
+        String regionName = regionQueryService.resolveRegionName(goalHousing.getRegionCode());
+
+        // 사용자 조건에 맞춰 현재 실거래 데이터를 다시 조회
+        RentMedianResponse currentStats = rentMedianService.getMedian(buildMedianRequest(
+                goalHousing.getRegionCode(), goalHousing.getHousingType(), goalHousing.getDealType(),
+                goalHousing.getAreaMin(), goalHousing.getAreaMax(),
+                goalHousing.getDepositMin(), goalHousing.getDepositMax(),
+                goalHousing.getMonthlyRentMin(), goalHousing.getMonthlyRentMax()));
+
+        if (currentStats.getSampleCount() == 0) {
+            throw new BusinessException(ErrorCode.GOAL_NO_MARKET_DATA);
+        }
+
+        long currentMiddleAmount = currentStats.getDeposit().getMedian(); // 현재 실거래 중앙값 추출
+        long initialMiddleAmount = goal.getTargetRentMiddleAmount(); // 목표 생성 당시 중앙값 조회
+
+        // 회원의 현재 자산 조회
+        AssetNetWorthBreakdown netWorth = assetService.getNetWorthBreakdown(goal.getMemberId());
+
+        // 목표 유지 시: 저장된 target_date 그대로 (다른 화면에 노출되는 목표 시점과 일치시킴)
+        YearMonth maintainEta = YearMonth.from(goal.getTargetDate());
+        // 현재 시세 반영 시: 오늘 자산 기준으로 다시 계산
+        YearMonth reflectEta = calculateEta(netWorth.getInterestBearingAssets(), netWorth.getFlatRecognizedAssets(),
+                goal.getMonthlySaving(), currentMiddleAmount);
+
+        return GoalMarketTrendResponse.builder()
+                .regionName(regionName)
+                .housingType(goalHousing.getHousingType())
+                .dealType(goalHousing.getDealType())
+                .areaMin(goalHousing.getAreaMin())
+                .areaMax(goalHousing.getAreaMax())
+                .updatedYm(YearMonth.parse(currentStats.getBaseEndYm(), YM_FORMATTER))
+                .changeAmount(currentMiddleAmount - initialMiddleAmount)
+                .targetAmount(goal.getTargetAmount())
+                .initialMiddleAmount(initialMiddleAmount)
+                .currentMiddleAmount(currentMiddleAmount)
+                .maintainEta(maintainEta)
+                .reflectEta(reflectEta)
+                .build();
+    }
+
+    /** 오늘(n=0)부터 상한까지, 자산 성장 + 적립식 저축이 targetAmount 이상이 되는 최초 시점을 탐색. 못 찾으면 null. */
+    private YearMonth calculateEta(long interestBearingAssets, long flatRecognizedAssets,
+            long monthlySaving, long targetAmount) {
+        for (long n = 0; n <= EXTEND_PERIOD_MAX_MONTHS; n++) {
+            // 예상 총 예산 계산
+            long projected = calculateGrownAmount(interestBearingAssets, n) + flatRecognizedAssets
+                    + calculateProjectedSavings(monthlySaving, n);
+
+            // 목표 금액보다 클 때 날짜 반환
+            if (projected >= targetAmount) {
+                return YearMonth.now().plusMonths(n);
             }
         }
         return null;

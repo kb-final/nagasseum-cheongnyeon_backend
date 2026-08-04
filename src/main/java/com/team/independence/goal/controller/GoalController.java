@@ -6,6 +6,7 @@ import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDetailResponse;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
+import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalResponse;
 import com.team.independence.goal.service.GoalDetailService;
@@ -55,5 +56,10 @@ public class GoalController {
             @PathVariable Long goalId,
             @RequestParam Long monthlySaving) {
         return ApiResponse.ok(goalService.simulateMonthlySaving(memberId, goalId, monthlySaving));
+    }
+
+    @GetMapping("/market-trend")
+    public ApiResponse<GoalMarketTrendResponse> getMarketTrend(@RequestParam Long memberId) {
+        return ApiResponse.ok(goalService.getMarketTrend(memberId));
     }
 }

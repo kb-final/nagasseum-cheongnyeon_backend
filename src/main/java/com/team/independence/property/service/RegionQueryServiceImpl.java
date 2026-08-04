@@ -22,4 +22,14 @@ public class RegionQueryServiceImpl implements RegionQueryService {
         }
         return regionCode;
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String resolveRegionName(String regionCode) {
+        String regionName = regionMapper.findFullNameByCode(regionCode);
+        if (regionName == null) {
+            throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
+        }
+        return regionName;
+    }
 }
