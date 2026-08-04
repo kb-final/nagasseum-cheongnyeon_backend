@@ -34,6 +34,7 @@ public enum ErrorCode {
     ASSET_ORGANIZATION_NOT_CONNECTED("ASSET_005", "연동되지 않은 기관입니다.", HttpStatus.NOT_FOUND),
     ASSET_SUMMARY_NOT_FOUND("ASSET_006", "자산 연동 정보가 없습니다. 먼저 금융기관을 연동해주세요.", HttpStatus.NOT_FOUND),
     ASSET_MANUAL_NOT_FOUND("ASSET_007", "수동 자산을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    ASSET_SYNC_JOB_NOT_FOUND("ASSET_008", "동기화 작업을 찾을 수 없거나 만료되었습니다.", HttpStatus.NOT_FOUND),
 
     // ===== 목표 GOAL_xxx =====
     GOAL_NOT_FOUND("GOAL_001", "목표를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),

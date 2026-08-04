@@ -47,6 +47,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class  AssetSyncServiceImplTest {
 
+    @Mock AssetSyncJobStore jobStore;
     @Mock ConnectedAccountMapper connectedAccountMapper;
     @Mock ConnectedInstitutionMapper connectedInstitutionMapper;
     @Mock InstitutionMapper institutionMapper;
@@ -75,6 +76,7 @@ class  AssetSyncServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new AssetSyncServiceImpl(
+                jobStore,
                 connectedAccountMapper, connectedInstitutionMapper, institutionMapper,
                 assetAccountMapper, loanAccountMapper, assetSummaryMapper,
                 codefClient, codefTokenManager, aesEncryptor, objectMapper, slackNotifier);
