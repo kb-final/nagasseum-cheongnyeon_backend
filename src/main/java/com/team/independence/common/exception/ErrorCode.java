@@ -43,6 +43,7 @@ public enum ErrorCode {
     GOAL_MONTHLY_SAVINGS_ZERO("GOAL_005", "월 저축액은 0보다 커야 합니다.", HttpStatus.BAD_REQUEST),
     GOAL_MONTHLY_RENT_REQUIRED("GOAL_006", "월세 거래는 월세 상한(monthlyRentMax) 입력이 필요합니다.", HttpStatus.BAD_REQUEST),
     GOAL_NO_MARKET_DATA("GOAL_007", "해당 조건의 실거래 데이터가 없습니다.", HttpStatus.NOT_FOUND),
+    GOAL_FORBIDDEN("GOAL_008", "접근할 수 없는 목표입니다.", HttpStatus.FORBIDDEN),
 
     // ===== 또래 비교 COMPARE_xxx =====
     COMPARE_SNAPSHOT_NOT_FOUND("COMPARE_001", "비교할 집계 데이터가 없습니다.", HttpStatus.NOT_FOUND),
