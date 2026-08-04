@@ -20,11 +20,15 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Controller;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.concurrent.Executor;
 
 import javax.sql.DataSource;
 
@@ -52,6 +56,7 @@ import javax.sql.DataSource;
         })
 @MapperScan(basePackages = "com.team.independence", annotationClass = Mapper.class)
 @EnableTransactionManagement
+@EnableAsync
 public class RootConfig {
 
     @Value("${DB_URL:jdbc:mysql://localhost:3306/independence?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}")
@@ -145,6 +150,17 @@ public class RootConfig {
     @Bean
     public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory cf) {
         return new StringRedisTemplate(cf);
+    }
+
+    @Bean("assetSyncExecutor")
+    public Executor assetSyncExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(5);
+        executor.setQueueCapacity(10);
+        executor.setThreadNamePrefix("asset-sync-");
+        executor.initialize();
+        return executor;
     }
 
 }
