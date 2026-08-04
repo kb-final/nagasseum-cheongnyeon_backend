@@ -4,13 +4,19 @@ import com.team.independence.asset.dto.*;
 import com.team.independence.asset.service.AssetAccountListService;
 import com.team.independence.asset.service.AssetService;
 import com.team.independence.asset.service.AssetSummaryService;
+import com.team.independence.asset.service.AssetSyncJobStarter;
 import com.team.independence.asset.service.AssetSyncService;
 import com.team.independence.asset.service.InstitutionService;
 import com.team.independence.asset.service.ManualAssetService;
 import com.team.independence.common.annotation.LoginMember;
 import com.team.independence.common.response.ApiResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import javax.servlet.http.HttpServletRequest;
+import java.net.URI;
 
 import java.util.List;
 
@@ -21,6 +27,7 @@ public class AssetController {
 
     private final AssetService assetService;
     private final AssetSyncService assetSyncService;
+    private final AssetSyncJobStarter assetSyncJobStarter;
     private final AssetSummaryService assetSummaryService;
     private final AssetAccountListService assetAccountListService;
     private final ManualAssetService manualAssetService;
@@ -46,8 +53,23 @@ public class AssetController {
     }
 
     @PostMapping("/sync")
-    public ApiResponse<AssetSyncResponse> syncAccounts(@RequestParam Long memberId) {
-        return ApiResponse.ok(assetSyncService.syncAccounts(memberId));
+    public ResponseEntity<ApiResponse<SyncJobResponse>> startSync(
+            @RequestParam Long memberId,
+            HttpServletRequest request) {
+        SyncJobResponse response = assetSyncJobStarter.start(memberId);
+        URI location = UriComponentsBuilder
+                .fromHttpUrl(request.getRequestURL().toString())
+                .path("/status/{jobId}")
+                .buildAndExpand(response.getJobId())
+                .toUri();
+        return ResponseEntity.accepted()
+                .location(location)
+                .body(ApiResponse.ok(response));
+    }
+
+    @GetMapping("/sync/status/{jobId}")
+    public ApiResponse<SyncJobStatusResponse> getSyncStatus(@PathVariable String jobId) {
+        return ApiResponse.ok(assetSyncService.getSyncStatus(jobId));
     }
 
     @GetMapping("/summary/{memberId}")
