@@ -6,6 +6,7 @@ import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDetailResponse;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
+import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalResponse;
 import com.team.independence.goal.service.GoalDetailService;
 import com.team.independence.goal.service.GoalService;
@@ -46,5 +47,13 @@ public class GoalController {
             @LoginMember Long memberId,
             @PathVariable Long goalId) {
         return ApiResponse.ok(goalDetailService.getGoalDetail(memberId, goalId));
+    }
+
+    @GetMapping("/{goalId}/simulations/monthly-saving")
+    public ApiResponse<GoalForecastResponse> simulateMonthlySaving(
+            @LoginMember Long memberId,
+            @PathVariable Long goalId,
+            @RequestParam Long monthlySaving) {
+        return ApiResponse.ok(goalService.simulateMonthlySaving(memberId, goalId, monthlySaving));
     }
 }

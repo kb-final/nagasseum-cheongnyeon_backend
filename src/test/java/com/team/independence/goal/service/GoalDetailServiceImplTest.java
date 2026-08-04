@@ -20,7 +20,7 @@ import com.team.independence.goal.domain.GoalHousing;
 import com.team.independence.goal.domain.SavingBasis;
 import com.team.independence.goal.domain.SavingRecord;
 import com.team.independence.goal.dto.GoalDetailResponse;
-import com.team.independence.goal.dto.GoalDetailResponse.Forecast;
+import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
 import com.team.independence.goal.mapper.SavingRecordMapper;
@@ -64,9 +64,12 @@ class GoalDetailServiceImplTest {
         goalHousingMapper = new FakeGoalHousingMapper();
         savingRecordMapper = new FakeSavingRecordMapper();
         assetService = new FakeAssetService();
+        // 소유권 검증과 도달 개월수 계산은 진짜 GoalServiceImpl이 담당한다.
+        // 계산을 가짜로 바꾸면 forecasts 검증이 의미를 잃기 때문이다.
+        // 그 외 의존성은 이 경로에서 쓰이지 않아 null로 둔다.
         service = new GoalDetailServiceImpl(
-                goalMapper, goalHousingMapper, savingRecordMapper, assetService,
-                new GoalServiceImpl(null, null, null, null, null));
+                goalHousingMapper, savingRecordMapper, assetService,
+                new GoalServiceImpl(null, null, null, goalMapper, null));
     }
 
     // ------------------------------------------------------------------
@@ -238,7 +241,7 @@ class GoalDetailServiceImplTest {
     void forecasts_순서() {
         savingRecordMapper.records = threeRecords();
 
-        List<Forecast> forecasts = call().getForecasts();
+        List<GoalForecastResponse> forecasts = call().getForecasts();
 
         assertEquals(SavingBasis.FIXED, forecasts.get(0).getBasis());
         assertEquals(SavingBasis.RECENT_AVERAGE, forecasts.get(1).getBasis());
@@ -259,8 +262,8 @@ class GoalDetailServiceImplTest {
         savingRecordMapper.records = threeRecords(); // 평균 175만 > 고정 150만
 
         GoalDetailResponse response = call();
-        Forecast fixed = findBasis(response, SavingBasis.FIXED);
-        Forecast average = findBasis(response, SavingBasis.RECENT_AVERAGE);
+        GoalForecastResponse fixed = findBasis(response, SavingBasis.FIXED);
+        GoalForecastResponse average = findBasis(response, SavingBasis.RECENT_AVERAGE);
 
         assertTrue(average.getMonthsDiff() > 0, "앞당겨졌으면 양수여야 한다: " + average.getMonthsDiff());
         assertTrue(average.getExpectedDate().isBefore(fixed.getExpectedDate()));
@@ -285,7 +288,7 @@ class GoalDetailServiceImplTest {
         assetService.fixedAssets = 0L;
         savingRecordMapper.records = threeRecords();
 
-        for (Forecast forecast : call().getForecasts()) {
+        for (GoalForecastResponse forecast : call().getForecasts()) {
             assertNull(forecast.getExpectedDate(), forecast.getBasis() + "은 시점이 없어야 한다");
             assertEquals(0, forecast.getMonthsDiff().intValue());
         }
@@ -301,7 +304,7 @@ class GoalDetailServiceImplTest {
 
         assertFalse(hasBasis(response, SavingBasis.FIXED));
         assertEquals(2, response.getForecasts().size());
-        for (Forecast forecast : response.getForecasts()) {
+        for (GoalForecastResponse forecast : response.getForecasts()) {
             assertNotNull(forecast.getExpectedDate());
             assertNull(forecast.getMonthsDiff(), forecast.getBasis() + "은 비교 기준이 없다");
         }
@@ -357,7 +360,7 @@ class GoalDetailServiceImplTest {
         return response.getForecasts().stream().anyMatch(f -> f.getBasis() == basis);
     }
 
-    private Forecast findBasis(GoalDetailResponse response, SavingBasis basis) {
+    private GoalForecastResponse findBasis(GoalDetailResponse response, SavingBasis basis) {
         return response.getForecasts().stream()
                 .filter(f -> f.getBasis() == basis)
                 .findFirst()
