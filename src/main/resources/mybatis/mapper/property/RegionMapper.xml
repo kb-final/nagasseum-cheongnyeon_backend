@@ -8,10 +8,16 @@
         SELECT code FROM region
     </select>
 
+    <select id="findCodeBySidoAndSigungu" resultType="string">
+        SELECT code FROM region
+         WHERE sido = #{sido}
+           AND sigungu = #{sigungu}
+    </select>
+
     <select id="findFullNameByCode" resultType="string">
         SELECT full_name
-          FROM region
-         WHERE code = #{code}
+        FROM region
+        WHERE code = #{code}
     </select>
 
 </mapper>

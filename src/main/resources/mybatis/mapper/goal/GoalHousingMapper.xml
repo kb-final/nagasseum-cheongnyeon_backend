@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.goal.mapper.GoalHousingMapper">
+
+    <insert id="insert" parameterType="com.team.independence.goal.domain.GoalHousing">
+        INSERT INTO goal_housing (
+            goal_id, region_code, housing_type, deal_type,
+            area_min, area_max, deposit_min, deposit_max,
+            monthly_rent_min, monthly_rent_max
+        ) VALUES (
+            #{goalId}, #{regionCode}, #{housingType}, #{dealType},
+            #{areaMin}, #{areaMax}, #{depositMin}, #{depositMax},
+            #{monthlyRentMin}, #{monthlyRentMax}
+        )
+    </insert>
+
+</mapper>

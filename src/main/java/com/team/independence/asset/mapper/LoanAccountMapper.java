@@ -16,5 +16,6 @@ public interface LoanAccountMapper {
     List<LoanAccount> findByConnectedInstitutionId(Long connectedInstitutionId);
     List<LoanAccountQueryItem> findWithInstitutionByMemberId(Long memberId);
     List<LoanAccountDetailItem> findAllDetailsByMemberId(Long memberId);
-    Long sumLoanBalanceByMemberId(Long memberId);
+    Long sumLoanBalanceByMemberId(@Param("memberId") Long memberId);
+
 }

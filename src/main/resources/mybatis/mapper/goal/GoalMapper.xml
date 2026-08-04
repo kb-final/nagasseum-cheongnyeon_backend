@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.goal.mapper.GoalMapper">
+
+    <insert id="insert" parameterType="com.team.independence.goal.domain.Goal"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO goal (
+            member_id, goal_type, target_amount, target_rent_middle_amount,
+            target_date, monthly_saving, status
+        ) VALUES (
+            #{memberId}, #{goalType}, #{targetAmount}, #{targetRentMiddleAmount},
+            #{targetDate}, #{monthlySaving}, #{status}
+        )
+    </insert>
+
+    <select id="existsActiveByMemberId" resultType="boolean">
+        SELECT EXISTS(
+            SELECT 1 FROM goal WHERE member_id = #{memberId} AND status = 'ACTIVE'
+        )
+    </select>
+
+</mapper>

@@ -37,6 +37,12 @@ public enum ErrorCode {
 
     // ===== 목표 GOAL_xxx =====
     GOAL_NOT_FOUND("GOAL_001", "목표를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    GOAL_INVALID_RANGE("GOAL_002", "범위 입력이 올바르지 않습니다. 하한이 상한보다 클 수 없습니다.", HttpStatus.BAD_REQUEST),
+    GOAL_ALREADY_EXISTS("GOAL_003", "이미 활성 목표가 존재합니다. 기존 목표를 수정하거나 삭제 후 다시 시도해 주세요.", HttpStatus.CONFLICT),
+    GOAL_INVALID_DATE("GOAL_004", "목표 시점이 현재 이전입니다.", HttpStatus.BAD_REQUEST),
+    GOAL_MONTHLY_SAVINGS_ZERO("GOAL_005", "월 저축액은 0보다 커야 합니다.", HttpStatus.BAD_REQUEST),
+    GOAL_MONTHLY_RENT_REQUIRED("GOAL_006", "월세 거래는 월세 상한(monthlyRentMax) 입력이 필요합니다.", HttpStatus.BAD_REQUEST),
+    GOAL_NO_MARKET_DATA("GOAL_007", "해당 조건의 실거래 데이터가 없습니다.", HttpStatus.NOT_FOUND),
 
     // ===== 또래 비교 COMPARE_xxx =====
     COMPARE_SNAPSHOT_NOT_FOUND("COMPARE_001", "비교할 집계 데이터가 없습니다.", HttpStatus.NOT_FOUND),
@@ -46,7 +52,7 @@ public enum ErrorCode {
     // ===== 정책 POLICY_xxx =====
     POLICY_NOT_FOUND("POLICY_001", "정책을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
-    // ===== 부동산 PROPERTY_xxx =====
+    // ===== 매물 PROPERTY_xxx =====
     REGION_NOT_FOUND("PROPERTY_001", "존재하지 않는 지역 코드입니다.", HttpStatus.NOT_FOUND);
 
     private final String code;

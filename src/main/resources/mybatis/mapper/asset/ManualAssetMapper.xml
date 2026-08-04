@@ -42,4 +42,9 @@
          ORDER BY asset_type
     </select>
 
+    <select id="sumAmountByMemberId" resultType="long">
+        SELECT COALESCE(SUM(amount), 0)
+        FROM manual_assets
+        WHERE member_id = #{memberId}
+    </select>
 </mapper>

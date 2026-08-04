@@ -119,10 +119,22 @@
 
     <select id="sumCurrentValueByMemberId" parameterType="long" resultType="java.lang.Long">
         SELECT COALESCE(SUM(aa.current_value), 0)
+        FROM asset_account aa
+                 JOIN connected_institution ci ON aa.connected_institution_id = ci.id
+                 JOIN connected_account ca ON ci.connected_account_id = ca.id
+        WHERE ca.member_id = #{memberId}
+    </select>
+
+    <select id="sumCurrentValueByMemberIdAndCategories" resultType="long">
+        SELECT COALESCE(SUM(aa.current_value), 0)
           FROM asset_account aa
           JOIN connected_institution ci ON aa.connected_institution_id = ci.id
           JOIN connected_account ca ON ci.connected_account_id = ca.id
          WHERE ca.member_id = #{memberId}
+           AND aa.asset_category IN
+           <foreach collection="categories" item="category" open="(" separator="," close=")">
+               #{category}
+           </foreach>
     </select>
 
 </mapper>
