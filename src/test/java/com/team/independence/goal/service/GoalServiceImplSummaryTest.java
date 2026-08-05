@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.team.independence.asset.dto.AssetNetWorthBreakdown;
 import com.team.independence.asset.service.AssetService;
+import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.domain.Goal;
@@ -31,6 +32,7 @@ class GoalServiceImplSummaryTest {
 
     @Mock RegionQueryService regionQueryService;
     @Mock AssetService assetService;
+    @Mock AssetSummaryService assetSummaryService;
     @Mock RentMedianService rentMedianService;
     @Mock GoalMapper goalMapper;
     @Mock GoalHousingMapper goalHousingMapper;
@@ -44,7 +46,7 @@ class GoalServiceImplSummaryTest {
     @BeforeEach
     void setUp() {
         service = new GoalServiceImpl(
-                regionQueryService, assetService, rentMedianService,
+                regionQueryService, assetService, assetSummaryService, rentMedianService,
                 goalMapper, goalHousingMapper, goalMarketTrendCacheStore);
     }
 
