@@ -1,5 +1,7 @@
 package com.team.independence.compare.service;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,7 +36,8 @@ import lombok.RequiredArgsConstructor;
 /**
  * 또래 비교 집계.
  *
- * <p>응답의 모든 값이 goal_snapshot 집계 결과다.
+ * <p>비교 대상(또래)의 값은 모두 goal_snapshot 집계 결과다.
+ * 기준이 되는 내 값만, 스냅샷이 아직 없으면 지금 값을 읽어서 쓴다. ({@link #findBaseline})
  */
 @Service
 @RequiredArgsConstructor
@@ -61,6 +64,9 @@ public class CompareServiceImpl implements CompareService {
     /** 달성률 구간 개수. 0~10 … 70~80 여덟 칸에 마지막 80~100 한 칸 */
     private static final int BUCKET_SIZE = 9;
 
+    /** 집계 기준월 형식 YYYYMM. 배치(GoalSnapshotBatchServiceImpl)와 같은 형식이어야 한다 */
+    private static final DateTimeFormatter YM = DateTimeFormatter.ofPattern("yyyyMM");
+
     /** 화면 표시명. DB에는 코드만 저장하므로 여기서 붙인다 */
     private static final Map<String, String> DEAL_TYPE_LABELS = new LinkedHashMap<>();
 
@@ -83,13 +89,23 @@ public class CompareServiceImpl implements CompareService {
         validateRange(assetRange, ageRange);
         validateConsent(memberId);
 
+        // 비교 대상은 배치가 만든 스냅샷이다. 배치가 한 번도 안 돌았으면 이번 달을 기준월로 삼는다.
+        // 그러면 대상이 0명이라 아래에서 인원 미달로 내려간다. 예전처럼 '목표 미설정'이 뜨지 않는다.
         String snapshotYm = goalSnapshotMapper.findLatestSnapshotYm();
-        GoalSnapshot me = (snapshotYm == null)
-                ? null
-                : goalSnapshotMapper.findByMemberAndYm(memberId, snapshotYm);
+        if (snapshotYm == null) {
+            snapshotYm = LocalDate.now().format(YM);
+        }
+
+        GoalSnapshot me = findBaseline(memberId, snapshotYm);
 
         if (me == null) {
-            throw new BusinessException(ErrorCode.COMPARE_SNAPSHOT_NOT_FOUND);
+            // 기준값을 못 만드는 이유가 두 가지라 안내 문구가 달라야 한다.
+            //   목표가 없다              → 목표를 세우라고 안내
+            //   목표는 있으나 자산이 없다 → 자산을 연동하라고 안내
+            // 순자산이 코호트 범위의 기준이라, 자산이 없으면 누구와 비교할지를 정할 수 없다.
+            throw new BusinessException(goalSnapshotMapper.existsActiveGoal(memberId)
+                    ? ErrorCode.COMPARE_ASSET_REQUIRED
+                    : ErrorCode.COMPARE_SNAPSHOT_NOT_FOUND);
         }
 
         CohortCondition condition = CohortCondition.of(
@@ -126,6 +142,27 @@ public class CompareServiceImpl implements CompareService {
                         .cohortRangeMax(savingRange.getCohortRangeMax())
                         .build())
                 .build();
+    }
+
+    /**
+     * 비교 기준이 되는 내 값.
+     *
+     * <p>스냅샷이 있으면 그대로 쓴다. 없으면 goal · member · asset_summary에서 지금 값을 읽어
+     * 같은 모양으로 만들어 쓴다.
+     *
+     * <p>두 번째 경로가 필요한 이유는 스냅샷이 매월 1일에만 생기기 때문이다. 그 전에는
+     * 이번 달에 목표를 세운 사람의 행이 없고, 순자산·나이가 없으면 코호트 범위를 못 정해서
+     * 비교를 통째로 못 보여줬다. 서비스 초기에는 대부분의 회원이 이 상태다.
+     *
+     * <p>여기서 만든 값은 저장하지 않는다. 조회 API가 데이터를 만들면 안 되기 때문이다.
+     * 그 대가로 이번 달에는 내가 남의 코호트 인원에 잡히지 않는다. 다음 배치가 넣어준다.
+     *
+     * <p>비교 대상은 여전히 기준월 스냅샷이라, 내 값만 오늘 기준이고 남들은 그 달 1일 기준이다.
+     * 한 달 안의 차이라 통계 해석을 뒤집을 정도는 아니라고 보고 이대로 둔다.
+     */
+    private GoalSnapshot findBaseline(Long memberId, String snapshotYm) {
+        GoalSnapshot snapshot = goalSnapshotMapper.findByMemberAndYm(memberId, snapshotYm);
+        return snapshot != null ? snapshot : goalSnapshotMapper.findLiveByMember(memberId, LocalDate.now());
     }
 
     /**
