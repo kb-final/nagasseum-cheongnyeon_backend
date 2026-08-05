@@ -176,5 +176,66 @@ curl http://localhost:8080/api/v1/members/999
 {"success":false,"data":null,"error":{"code":"MEMBER_001","message":"회원을 찾을 수 없습니다."}}
 ```
 
+---
+
+## 7단계. CODEF 계좌 연동 테스트
+
+본인 계좌로 자산 동기화를 테스트하려면 아래 절차를 따르세요.
+
+### 7-1. 공유받을 키 (팀 리드에게 요청)
+
+팀 리드에게 아래 세 가지 값을 요청하여 `.env`에 채웁니다.
+
+```
+CODEF_CLIENT_ID=공유받은값
+CODEF_CLIENT_SECRET=공유받은값
+CODEF_PUBLIC_KEY=공유받은값
+```
+
+`CODEF_OAUTH_DOMAIN`, `CODEF_API_DOMAIN`은 `.env.example` 기본값을 그대로 사용합니다.
+
+### 7-2. 암호화 키 직접 생성 (절대 공유 금지)
+
+`CODEF_ENCRYPT_KEY`는 DB에 저장된 연동 계좌 ID를 암복호화하는 키입니다.
+**각자 본인만의 키를 생성해야 하며, 타인과 공유하면 계좌 정보가 노출될 수 있습니다.**
+
+```bash
+# 터미널에서 실행 — 실행할 때마다 다른 값이 생성됨
+openssl rand -base64 32
+```
+
+출력된 값을 `.env`의 `CODEF_ENCRYPT_KEY`에 붙여넣습니다.
+
+```
+CODEF_ENCRYPT_KEY=출력된값
+```
+
+> **왜 각자 생성해야 하나요?**
+> 이 키가 같으면 다른 사람의 DB에 저장된 연동 계좌 ID를 복호화할 수 있습니다.
+> 각자 로컬 DB를 쓰는 이상 키가 달라도 동작에는 문제없습니다.
+
+### 7-3. CODEF 개발자 포털 계정
+
+`CLIENT_ID / CLIENT_SECRET`은 팀 공유 계정을 사용해도 됩니다.
+CODEF는 같은 `CLIENT_ID` 아래에 사용자마다 별도의 Connected ID가 발급되는 구조이므로,
+공유 계정을 써도 계좌 데이터는 각자 로컬 DB에 분리되어 저장됩니다.
+
+### 7-4. 계좌 연동 및 동기화 테스트
+
+```bash
+# 1) 계좌 연동
+curl -X POST "http://localhost:8080/api/v1/assets/link?memberId=1" \
+  -H "Content-Type: application/json" \
+  -d '{"organizationCode":"088","loginType":"1","password":"본인비밀번호","birthDate":"YYMMDD"}'
+
+# 2) 비동기 동기화 시작 — jobId 즉시 반환
+curl -X POST "http://localhost:8080/api/v1/assets/sync?memberId=1"
+
+# 3) 동기화 상태 폴링 (PENDING → SUCCESS)
+curl "http://localhost:8080/api/v1/assets/sync/status/{jobId}"
+```
+
+> `birthDate`는 6자리 형식입니다. 예) 1998년 5월 20일 → `980520`
+
 
 
