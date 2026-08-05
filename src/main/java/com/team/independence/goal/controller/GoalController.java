@@ -32,14 +32,14 @@ public class GoalController {
 
     @PostMapping("/diagnosis")
     public ApiResponse<GoalDiagnosisResponse> diagnose(
-            @RequestParam Long memberId,
+            @LoginMember Long memberId,
             @Valid @RequestBody GoalDiagnosisRequest request) {
         return ApiResponse.ok(goalService.diagnose(memberId, request));
     }
 
     @PostMapping
     public ApiResponse<GoalResponse> createGoal(
-            @RequestParam Long memberId,
+            @LoginMember Long memberId,
             @Valid @RequestBody GoalCreateRequest request) {
         return ApiResponse.ok(goalService.createGoal(memberId, request));
     }
@@ -60,7 +60,7 @@ public class GoalController {
     }
 
     @GetMapping("/market-trend")
-    public ApiResponse<GoalMarketTrendResponse> getMarketTrend(@RequestParam Long memberId) {
+    public ApiResponse<GoalMarketTrendResponse> getMarketTrend(@LoginMember Long memberId) {
         return ApiResponse.ok(goalService.getMarketTrend(memberId));
     }
 

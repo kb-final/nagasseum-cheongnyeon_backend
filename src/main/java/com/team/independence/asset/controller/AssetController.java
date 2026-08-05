@@ -17,7 +17,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import javax.servlet.http.HttpServletRequest;
 import java.net.URI;
-
 import java.util.List;
 
 @RestController
@@ -35,7 +34,7 @@ public class AssetController {
 
     @PostMapping("/link")
     public ApiResponse<AssetLinkResponse> linkAccount(
-            @RequestParam Long memberId,
+            @LoginMember Long memberId,
             @RequestBody AssetLinkRequest request) {
         return ApiResponse.ok(assetService.linkAccount(memberId, request));
     }
@@ -48,13 +47,13 @@ public class AssetController {
 
     @GetMapping("/connections")
     public ApiResponse<List<LinkedOrganizationResponse>> getConnections(
-            @RequestParam Long memberId) {
+            @LoginMember Long memberId) {
         return ApiResponse.ok(assetService.getConnections(memberId));
     }
 
     @PostMapping("/sync")
     public ResponseEntity<ApiResponse<SyncJobResponse>> startSync(
-            @RequestParam Long memberId,
+            @LoginMember Long memberId,
             HttpServletRequest request) {
         SyncJobResponse response = assetSyncJobStarter.start(memberId);
         URI location = UriComponentsBuilder
@@ -72,31 +71,31 @@ public class AssetController {
         return ApiResponse.ok(assetSyncService.getSyncStatus(jobId));
     }
 
-    @GetMapping("/summary/{memberId}")
-    public ApiResponse<AssetSummaryResponse> getSummary(@PathVariable Long memberId) {
+    @GetMapping("/summary")
+    public ApiResponse<AssetSummaryResponse> getSummary(@LoginMember Long memberId) {
         return ApiResponse.ok(assetSummaryService.getSummary(memberId));
     }
 
-    @GetMapping("/accounts/{memberId}")
-    public ApiResponse<AssetAccountListResponse> getAccountList(@PathVariable Long memberId) {
+    @GetMapping("/accounts")
+    public ApiResponse<AssetAccountListResponse> getAccountList(@LoginMember Long memberId) {
         return ApiResponse.ok(assetAccountListService.getAccountList(memberId));
     }
 
-    @GetMapping("/manual/{memberId}")
-    public ApiResponse<List<ManualAssetResponse>> getManualAssets(@PathVariable Long memberId) {
+    @GetMapping("/manual")
+    public ApiResponse<List<ManualAssetResponse>> getManualAssets(@LoginMember Long memberId) {
         return ApiResponse.ok(manualAssetService.getManualAssets(memberId));
     }
 
     @PostMapping("/manual")
     public ApiResponse<ManualAssetResponse> createManualAsset(
-            @RequestParam Long memberId,
+            @LoginMember Long memberId,
             @RequestBody ManualAssetRequest request) {
         return ApiResponse.ok(manualAssetService.createManualAsset(memberId, request));
     }
 
     @PutMapping("/manual/{id}")
     public ApiResponse<ManualAssetResponse> updateManualAsset(
-            @RequestParam Long memberId,
+            @LoginMember Long memberId,
             @PathVariable Long id,
             @RequestBody ManualAssetRequest request) {
         return ApiResponse.ok(manualAssetService.updateManualAsset(memberId, id, request));
@@ -104,7 +103,7 @@ public class AssetController {
 
     @DeleteMapping("/manual/{id}")
     public ApiResponse<Void> deleteManualAsset(
-            @RequestParam Long memberId,
+            @LoginMember Long memberId,
             @PathVariable Long id) {
         manualAssetService.deleteManualAsset(memberId, id);
         return ApiResponse.ok(null);
@@ -112,7 +111,7 @@ public class AssetController {
 
     @DeleteMapping("/connections/organizations/{organizationCode}")
     public ApiResponse<UnlinkOrganizationResponse> unlinkOrganization(
-            @RequestParam Long memberId,
+            @LoginMember Long memberId,
             @PathVariable String organizationCode) {
         return ApiResponse.ok(assetService.unlinkOrganization(memberId, organizationCode));
     }
