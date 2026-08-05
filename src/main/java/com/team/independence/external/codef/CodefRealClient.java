@@ -51,7 +51,33 @@ public class CodefRealClient implements CodefClient {
 
     @Override
     public CodefApiResponse deleteAccount(String accessToken, String connectedId, CodefAccountRequest.CodefAccountItem item) {
-        return call(accessToken, DELETE_PATH, CodefAccountRequest.builder().connectedId(connectedId).accountList(List.of(item)).build());
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(accessToken);
+            CodefAccountRequest body = CodefAccountRequest.builder()
+                    .connectedId(connectedId).accountList(List.of(item)).build();
+            ResponseEntity<String> response = restTemplate.exchange(
+                    properties.getApiDomain() + DELETE_PATH,
+                    HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
+            String decoded = URLDecoder.decode(response.getBody(), StandardCharsets.UTF_8);
+            CodefApiResponse result = objectMapper.readValue(decoded, CodefApiResponse.class);
+            String code = result.getResult().getCode();
+            if ("CF-04011".equals(code)) {
+                log.warn("CODEF deleteAccount: 기관 등록 정보 없음(CF-04011), DB 정리 진행 org={}", item.getOrganization());
+                return result;
+            }
+            if (!result.isSuccess()) {
+                log.error("CODEF API 오류: code={}", code);
+                throw new BusinessException(ErrorCode.ASSET_CODEF_API_ERROR, result.getResult().getMessage());
+            }
+            return result;
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("CODEF deleteAccount 실패: org={}", item.getOrganization(), e);
+            throw new BusinessException(ErrorCode.ASSET_CODEF_API_ERROR);
+        }
     }
 
     @Override

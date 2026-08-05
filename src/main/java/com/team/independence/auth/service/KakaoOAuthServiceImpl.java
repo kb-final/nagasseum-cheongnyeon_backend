@@ -65,6 +65,10 @@ public class KakaoOAuthServiceImpl implements KakaoOAuthService {
         LocalDate birthDate;
         try {
             birthDate = LocalDate.parse(request.birthDate(), DateTimeFormatter.ofPattern("yyMMdd"));
+            // yyMMdd는 99년생 이상의 경우 20xx로 해석하고 미래 날짜면 100년 차감
+            if (birthDate.isAfter(LocalDate.now())) {
+                birthDate = birthDate.minusYears(100);
+            }
         } catch (DateTimeParseException e) {
             throw new BusinessException(ErrorCode.INVALID_INPUT);
         }

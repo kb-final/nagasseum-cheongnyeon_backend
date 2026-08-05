@@ -1,5 +1,6 @@
 package com.team.independence.asset.service;
 
+import com.team.independence.asset.domain.AssetSummary;
 import com.team.independence.asset.domain.ConnectedAccount;
 import com.team.independence.asset.domain.ConnectedInstitution;
 import com.team.independence.asset.dto.AssetAccountQueryItem;
@@ -10,6 +11,7 @@ import com.team.independence.asset.dto.LinkedOrganizationResponse;
 import com.team.independence.asset.dto.UnlinkOrganizationResponse;
 import com.team.independence.asset.domain.Institution;
 import com.team.independence.asset.mapper.AssetAccountMapper;
+import com.team.independence.asset.mapper.AssetSummaryMapper;
 import com.team.independence.asset.mapper.ConnectedAccountMapper;
 import com.team.independence.asset.mapper.ConnectedInstitutionMapper;
 import com.team.independence.asset.mapper.InstitutionMapper;
@@ -30,6 +32,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -48,6 +51,7 @@ public class AssetServiceImpl implements AssetService {
     private final ConnectedInstitutionMapper connectedInstitutionMapper;
     private final InstitutionMapper institutionMapper;
     private final AssetAccountMapper assetAccountMapper;
+    private final AssetSummaryMapper assetSummaryMapper;
     private final LoanAccountMapper loanAccountMapper;
     private final ManualAssetMapper manualAssetMapper;
     private final CodefClient codefClient;
@@ -60,6 +64,7 @@ public class AssetServiceImpl implements AssetService {
     @Override
     @Transactional
     public AssetLinkResponse linkAccount(Long memberId, AssetLinkRequest request) {
+        log.debug("linkAccount request: memberId={}, request={}", memberId, request);
         String lockKey = LOCK_KEY_PREFIX + memberId;
         boolean locked = Boolean.TRUE.equals(
                 redisTemplate.opsForValue().setIfAbsent(lockKey, "1", LOCK_TTL_SECONDS, TimeUnit.SECONDS)
@@ -73,10 +78,13 @@ public class AssetServiceImpl implements AssetService {
             String encryptedPassword = rsaEncryptor.encrypt(codefProperties.getPublicKey(), request.getPassword());
             String birthDate = request.getBirthDate();
 
+            String clientType = request.getClientType() != null ? request.getClientType()
+                    : "ST".equals(request.getBusinessType()) ? "A" : "P";
+
             CodefAccountRequest.CodefAccountItem item = CodefAccountRequest.CodefAccountItem.builder()
                     .countryCode(request.getCountryCode() != null ? request.getCountryCode() : "KR")
                     .businessType(request.getBusinessType())
-                    .clientType(request.getClientType() != null ? request.getClientType() : "P")
+                    .clientType(clientType)
                     .organization(request.getOrganization())
                     .loginType(request.getLoginType())
                     .id(request.getId())
@@ -184,11 +192,22 @@ public class AssetServiceImpl implements AssetService {
         // CODEF 삭제 성공 후에만 DB 삭제
         codefClient.deleteAccount(accessToken, connectedId, item);
 
+        assetAccountMapper.deleteByConnectedInstitutionId(institution.getId());
+        loanAccountMapper.deleteByConnectedInstitutionId(institution.getId());
         connectedInstitutionMapper.deleteByConnectedAccountIdAndInstitutionCode(account.getId(), organizationCode);
 
         if (connectedInstitutionMapper.countByConnectedAccountId(account.getId()) == 0) {
             connectedAccountMapper.deleteById(account.getId());
         }
+
+        Long totalAssets = assetAccountMapper.sumCurrentValueByMemberId(memberId);
+        Long loanBalance = loanAccountMapper.sumLoanBalanceByMemberId(memberId);
+        assetSummaryMapper.upsert(AssetSummary.builder()
+                .memberId(memberId)
+                .totalAssets(totalAssets != null ? totalAssets : 0L)
+                .loanBalance(loanBalance != null ? loanBalance : 0L)
+                .syncedAt(LocalDateTime.now())
+                .build());
 
         return UnlinkOrganizationResponse.builder()
                 .organizationCode(organizationCode)
