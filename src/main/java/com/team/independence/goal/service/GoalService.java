@@ -8,6 +8,7 @@ import com.team.independence.goal.dto.GoalDiagnosisResponse;
 import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalResponse;
+import com.team.independence.goal.dto.GoalSummaryResponse;
 
 public interface GoalService {
     GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request);
@@ -42,4 +43,10 @@ public interface GoalService {
 
     /** 목표 시세 변화 데이터를 다시 계산해 캐시에 덮어쓴다. 배치와 캐시 미스 fallback이 공유하는 진입점. */
     GoalMarketTrendResponse refreshMarketTrend(Long goalId);
+
+    /**
+     * 홈 화면 「목표 달성 요약」 카드 데이터. 목표 조건, 목표 금액/시점, 현재 진행 상황(현재 자금/잔여 금액/
+     * 달성률/예상 잔여 개월)을 한 번에 조회한다. 회원의 활성 목표가 없으면 GOAL_NOT_FOUND.
+     */
+    GoalSummaryResponse getSummary(Long memberId);
 }

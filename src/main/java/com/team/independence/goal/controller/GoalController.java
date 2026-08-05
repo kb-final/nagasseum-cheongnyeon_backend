@@ -9,6 +9,7 @@ import com.team.independence.goal.dto.GoalDiagnosisResponse;
 import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalResponse;
+import com.team.independence.goal.dto.GoalSummaryResponse;
 import com.team.independence.goal.service.GoalDetailService;
 import com.team.independence.goal.service.GoalService;
 import javax.validation.Valid;
@@ -61,5 +62,10 @@ public class GoalController {
     @GetMapping("/market-trend")
     public ApiResponse<GoalMarketTrendResponse> getMarketTrend(@RequestParam Long memberId) {
         return ApiResponse.ok(goalService.getMarketTrend(memberId));
+    }
+
+    @GetMapping("/summary")
+    public ApiResponse<GoalSummaryResponse> getSummary(@LoginMember Long memberId) {
+        return ApiResponse.ok(goalService.getSummary(memberId));
     }
 }

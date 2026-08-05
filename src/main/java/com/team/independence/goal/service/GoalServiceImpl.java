@@ -13,6 +13,7 @@ import com.team.independence.goal.dto.GoalDiagnosisResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalResponse;
+import com.team.independence.goal.dto.GoalSummaryResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
 import com.team.independence.property.domain.DealType;
@@ -410,6 +411,65 @@ public class GoalServiceImpl implements GoalService {
             return null;
         }
         return calculateMonthToReach(netWorth, fixedSaving, targetAmount);
+    }
+
+    // 홈 화면 「목표 달성 요약」 카드 데이터 조회
+    @Override
+    @Transactional(readOnly = true)
+    public GoalSummaryResponse getSummary(Long memberId) {
+        // 회원 활성 목표 조회
+        Goal goal = goalMapper.findActiveByMemberId(memberId);
+        if (goal == null) {
+            throw new BusinessException(ErrorCode.GOAL_NOT_FOUND);
+        }
+
+        // 회원 목표 주거 조건 조회
+        GoalHousing goalHousing = goalHousingMapper.findByGoalId(goal.getId());
+        if (goalHousing == null) {
+            throw new BusinessException(ErrorCode.GOAL_NOT_FOUND);
+        }
+        String regionName = regionQueryService.resolveRegionName(goalHousing.getRegionCode());
+
+        // 연동 계좌 있는지 확인
+        assetService.validateConnectedAccountExists(memberId);
+        // 현재 순자산 구성 조회
+        AssetNetWorthBreakdown netWorth = assetService.getNetWorthBreakdown(memberId);
+        long currentAmount = netWorth.getInterestBearingAssets() + netWorth.getFlatRecognizedAssets();
+
+        long targetAmount = goal.getTargetAmount();
+        long remainingAmount = Math.max(0, targetAmount - currentAmount); // 남은 금액
+        Double achievementRate = calculateAchievementRate(currentAmount, targetAmount); // 달성률
+        Long remainingMonths = monthsUntil(YearMonth.from(goal.getTargetDate())); // 목표 시점
+
+        return GoalSummaryResponse.builder()
+                .goalId(goal.getId())
+                .goalType(goal.getGoalType())
+                .housing(GoalSummaryResponse.Housing.builder()
+                        .regionName(regionName)
+                        .housingType(goalHousing.getHousingType())
+                        .dealType(goalHousing.getDealType())
+                        .areaMin(goalHousing.getAreaMin())
+                        .areaMax(goalHousing.getAreaMax())
+                        .build())
+                .targetAmount(targetAmount)
+                .targetDate(YearMonth.from(goal.getTargetDate()))
+                .progress(GoalSummaryResponse.Progress.builder()
+                        .currentAmount(currentAmount)
+                        .remainingAmount(remainingAmount)
+                        .achievementRate(achievementRate)
+                        .remainingMonths(remainingMonths)
+                        .build())
+                .build();
+    }
+
+    /** 달성률(%). 0~100으로 자른다 — GoalDetailServiceImpl과 동일 규칙. */
+    private Double calculateAchievementRate(long currentAmount, long targetAmount) {
+        if (targetAmount <= 0) {
+            return 0.0;
+        }
+        double rate = currentAmount * 100.0 / targetAmount;
+        double clamped = Math.min(100.0, Math.max(0.0, rate));
+        return Math.round(clamped * 100) / 100.0;
     }
 
     /** RentMedianService 호출용 요청 조립. sizeMin/sizeMax는 평 단위 그대로 넘기면 내부에서 ㎡로 환산한다. */
