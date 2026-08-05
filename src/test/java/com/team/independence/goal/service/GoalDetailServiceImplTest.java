@@ -69,7 +69,7 @@ class GoalDetailServiceImplTest {
         // 그 외 의존성은 이 경로에서 쓰이지 않아 null로 둔다.
         service = new GoalDetailServiceImpl(
                 goalHousingMapper, savingRecordMapper, assetService,
-                new GoalServiceImpl(null, null, null, goalMapper, null, null));
+                new GoalServiceImpl(null, null, null, null, goalMapper, null, null));
     }
 
     // ------------------------------------------------------------------

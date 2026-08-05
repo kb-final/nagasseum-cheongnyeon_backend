@@ -2,6 +2,7 @@ package com.team.independence.goal.service;
 
 import com.team.independence.asset.dto.AssetNetWorthBreakdown;
 import com.team.independence.asset.service.AssetService;
+import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.domain.Goal;
@@ -62,6 +63,7 @@ public class GoalServiceImpl implements GoalService {
 
     private final RegionQueryService regionQueryService;
     private final AssetService assetService; // 자산 정보 조회
+    private final AssetSummaryService assetSummaryService; // asset_summary.monthly_savings 캐시 갱신
     private final RentMedianService rentMedianService; // 조건에 맞는 실거래 4분위값 조회
     private final GoalMapper goalMapper;
     private final GoalHousingMapper goalHousingMapper;
@@ -213,6 +215,9 @@ public class GoalServiceImpl implements GoalService {
                 .status(GOAL_STATUS_ACTIVE)
                 .build();
         goalMapper.insert(goal);
+
+        // assets/summary가 보여주는 monthlySavings는 asset_summary 캐시에서 읽으므로 goal 저장 시점에 함께 갱신한다
+        assetSummaryService.updateMonthlySavings(memberId, request.getMonthlySavings());
 
         GoalHousing goalHousing = GoalHousing.builder()
                 .goalId(goal.getId())
