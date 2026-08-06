@@ -7,11 +7,13 @@ import com.team.independence.asset.dto.AssetAccountQueryItem;
 import com.team.independence.asset.dto.AssetLinkRequest;
 import com.team.independence.asset.dto.AssetLinkResponse;
 import com.team.independence.asset.dto.AssetNetWorthBreakdown;
+import com.team.independence.asset.dto.CardAccountResponse;
 import com.team.independence.asset.dto.LinkedOrganizationResponse;
 import com.team.independence.asset.dto.UnlinkOrganizationResponse;
 import com.team.independence.asset.domain.Institution;
 import com.team.independence.asset.mapper.AssetAccountMapper;
 import com.team.independence.asset.mapper.AssetSummaryMapper;
+import com.team.independence.asset.mapper.CardAccountMapper;
 import com.team.independence.asset.mapper.ConnectedAccountMapper;
 import com.team.independence.asset.mapper.ConnectedInstitutionMapper;
 import com.team.independence.asset.mapper.InstitutionMapper;
@@ -52,6 +54,7 @@ public class AssetServiceImpl implements AssetService {
     private final InstitutionMapper institutionMapper;
     private final AssetAccountMapper assetAccountMapper;
     private final AssetSummaryMapper assetSummaryMapper;
+    private final CardAccountMapper cardAccountMapper;
     private final LoanAccountMapper loanAccountMapper;
     private final ManualAssetMapper manualAssetMapper;
     private final CodefClient codefClient;
@@ -194,6 +197,7 @@ public class AssetServiceImpl implements AssetService {
 
         assetAccountMapper.deleteByConnectedInstitutionId(institution.getId());
         loanAccountMapper.deleteByConnectedInstitutionId(institution.getId());
+        cardAccountMapper.deleteByConnectedInstitutionId(institution.getId());
         connectedInstitutionMapper.deleteByConnectedAccountIdAndInstitutionCode(account.getId(), organizationCode);
 
         if (connectedInstitutionMapper.countByConnectedAccountId(account.getId()) == 0) {
@@ -213,6 +217,14 @@ public class AssetServiceImpl implements AssetService {
                 .organizationCode(organizationCode)
                 .organizationName(institutionInfo.getName())
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CardAccountResponse> getCardList(Long memberId) {
+        return cardAccountMapper.findByMemberId(memberId).stream()
+                .map(CardAccountResponse::from)
+                .toList();
     }
 
     @Override
