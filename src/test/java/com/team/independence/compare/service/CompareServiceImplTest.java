@@ -25,6 +25,8 @@ import com.team.independence.compare.dto.CompareResponse;
 import com.team.independence.compare.dto.CompareResponse.AchievementBucket;
 import com.team.independence.compare.dto.CompareResponse.DealTypeItem;
 import com.team.independence.compare.dto.DealTypeCount;
+import com.team.independence.compare.dto.IncomeBracketCount;
+import com.team.independence.compare.dto.OccupationTypeCount;
 import com.team.independence.compare.dto.RegionCount;
 import com.team.independence.compare.dto.SavingRangeResult;
 import com.team.independence.compare.mapper.GoalSnapshotMapper;
@@ -476,6 +478,11 @@ class CompareServiceImplTest {
         }
 
         @Override
+        public GoalSnapshot findLiveAssetsByMember(Long memberId, LocalDate baseDate) {
+            return live;
+        }
+
+        @Override
         public GoalSnapshot findLiveByMember(Long memberId, LocalDate baseDate) {
             liveCalls++;
             return live;
@@ -536,6 +543,18 @@ class CompareServiceImplTest {
             result.setCohortRangeMin(700_000L);
             result.setCohortRangeMax(900_000L);
             return result;
+        }
+
+        @Override
+        public List<IncomeBracketCount> countByIncomeBracket(CohortCondition condition) {
+            aggregateCalls++;
+            return new ArrayList<>();
+        }
+
+        @Override
+        public List<OccupationTypeCount> countByOccupationType(CohortCondition condition) {
+            aggregateCalls++;
+            return new ArrayList<>();
         }
     }
 }
