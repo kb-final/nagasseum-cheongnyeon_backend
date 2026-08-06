@@ -51,6 +51,53 @@
           AND snapshot_ym = #{snapshotYm}
     </select>
 
+    <!--
+      스냅샷이 아직 없는 회원의 기준값을 지금 계산한다.
+
+      아래 배치(insertSnapshots)가 넣는 값과 계산식을 똑같이 맞췄다. 한쪽만 고치면
+      같은 사람이 이번 달과 다음 달에 다른 달성률로 보인다. 고칠 때 둘 다 고칠 것.
+
+      배치와 다른 점은 순자산을 어디서 읽느냐 하나다.
+        배치       asset_snapshot  그 달 1일에 굳힌 값
+        여기       asset_summary   지금 값(동기화 시각 기준)
+      asset_snapshot에는 아직 아무도 INSERT 하지 않아서 이번 달 행을 기대할 수 없다.
+
+      JOIN이라 asset_summary 행이 없으면 결과가 없다. 자산 연동을 안 한 경우이고,
+      서비스가 그 null을 받아 '자산 연동이 필요하다'로 안내한다.
+
+      snapshot_ym은 넣지 않는다. 비교 기준월은 서비스가 따로 들고 있고,
+      여기 값은 어느 달에도 저장되지 않은 임시 값이라 달을 붙이면 오해를 부른다.
+    -->
+    <select id="findLiveByMember" resultMap="goalSnapshotMap">
+        SELECT
+        g.member_id     AS member_id,
+        g.id            AS goal_id,
+        gh.region_code  AS region_code,
+        TIMESTAMPDIFF(YEAR, m.birth_date, #{baseDate}) AS age,
+        (a.total_assets - a.loan_balance)              AS net_assets,
+        g.goal_type     AS goal_type,
+        gh.housing_type AS housing_type,
+        gh.deal_type    AS deal_type,
+        g.target_amount AS target_amount,
+        <!-- 달성률 = 순자산 / 목표금액. 0~100으로 자른다 (배치와 같은 식) -->
+        LEAST(100, GREATEST(0,
+        ROUND((a.total_assets - a.loan_balance) * 100 / g.target_amount, 2))) AS achievement_rate,
+        <!-- 준비 기간 = 목표를 세운 날부터 희망 시점까지 (배치와 같은 식) -->
+        GREATEST(0, TIMESTAMPDIFF(MONTH, DATE(g.created_at), g.target_date)) AS prep_months,
+        g.monthly_saving AS monthly_saving
+        FROM goal g
+        JOIN goal_housing  gh ON gh.goal_id  = g.id
+        JOIN member        m  ON m.id        = g.member_id
+        JOIN asset_summary a  ON a.member_id = g.member_id
+        WHERE g.member_id = #{memberId}
+        AND g.status = 'ACTIVE'
+        <!-- 0으로 나누기 방지 -->
+        AND g.target_amount > 0
+        <!-- 목표가 여러 개면 배치와 같이 가장 최근 것 하나만 -->
+        ORDER BY g.id DESC
+        LIMIT 1
+    </select>
+
     <select id="countCohort" resultType="int">
         SELECT COUNT(*)
         FROM goal_snapshot
@@ -119,6 +166,18 @@
         <include refid="cohortWhere"/>
         ) t
         WHERE quartile IN (2, 3)
+    </select>
+
+    <!--
+      스냅샷이 없을 때 안내 문구를 가르기 위한 조회.
+      goal 테이블을 읽지만 EXISTS 한 번이라 idx_goal_member_status 를 그대로 탄다.
+    -->
+    <select id="existsActiveGoal" resultType="boolean">
+        SELECT EXISTS(
+            SELECT 1 FROM goal
+            WHERE member_id = #{memberId}
+              AND status = 'ACTIVE'
+        )
     </select>
 
     <!--

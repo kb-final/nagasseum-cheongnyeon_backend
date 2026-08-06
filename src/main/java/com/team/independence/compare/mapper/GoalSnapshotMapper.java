@@ -28,6 +28,25 @@ public interface GoalSnapshotMapper {
     GoalSnapshot findByMemberAndYm(@Param("memberId") Long memberId,
                                    @Param("snapshotYm") String snapshotYm);
 
+    /**
+     * 기준 회원의 지금 값. 스냅샷이 아직 없을 때만 쓴다.
+     *
+     * <p>스냅샷은 매월 1일 배치가 만든다. 그래서 이번 달에 목표를 세운 사람은 다음 달까지
+     * 자기 기준값이 없어 비교를 아예 볼 수 없었다. 그 한 달을 메우려고, 배치가 넣는 것과
+     * 같은 값을 goal · goal_housing · member · asset_summary에서 그 자리에서 계산해 온다.
+     *
+     * <p>DB에 쓰지 않는다. 조회 API가 데이터를 만들지 않게 하려는 것이다. 대신 이번 달에는
+     * 내가 남의 코호트에 잡히지 않는다. 다음 배치가 돌면 자연히 들어간다.
+     *
+     * <p>자산 연동을 안 했으면 asset_summary 행이 없어 null이 나온다. 순자산이 코호트 범위의
+     * 기준이라 0으로 대신 채우면 엉뚱한 또래와 묶인다. 그래서 채우지 않고 null로 두고,
+     * 서비스가 '자산 연동이 필요하다'고 안내한다.
+     *
+     * @param baseDate 나이 계산 기준일(오늘)
+     */
+    GoalSnapshot findLiveByMember(@Param("memberId") Long memberId,
+                                  @Param("baseDate") LocalDate baseDate);
+
     /** 코호트 인원 수. k-익명성 판단에 쓴다 */
     int countCohort(CohortCondition condition);
 
@@ -53,6 +72,15 @@ public interface GoalSnapshotMapper {
 
     /** 월 저축액의 가운데 50%(25~75 백분위) 구간 */
     SavingRangeResult findSavingRange(CohortCondition condition);
+
+    /**
+     * 회원에게 진행 중인 목표가 있는지.
+     *
+     * <p>스냅샷이 없을 때 "목표를 안 세운 것"과 "목표는 있으나 아직 집계 전"을 가르는 데 쓴다.
+     * goal 테이블을 읽지만 EXISTS 한 번이고, 아래 배치(insertSnapshots)도 이미 goal을 읽고 있어
+     * 의존 범위가 늘지 않는다.
+     */
+    boolean existsActiveGoal(@Param("memberId") Long memberId);
 
     /**
      * 해당 월의 스냅샷을 만든다(배치 전용).

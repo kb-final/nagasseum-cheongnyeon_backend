@@ -214,21 +214,97 @@ class CompareServiceImplTest {
     }
 
     @Test
-    @DisplayName("내 스냅샷이 없으면 집계 데이터 없음으로 처리한다")
-    void 스냅샷이_없으면_예외() {
+    @DisplayName("목표도 없고 스냅샷도 없으면 목표 미설정으로 처리한다")
+    void 목표가_없으면_미설정_예외() {
         mapper.me = null;
+        mapper.live = null;
+        mapper.hasActiveGoal = false;
 
         assertEquals(ErrorCode.COMPARE_SNAPSHOT_NOT_FOUND,
                 assertThrows(BusinessException.class, this::call).getErrorCode());
     }
 
     @Test
-    @DisplayName("집계된 달이 하나도 없어도 같은 예외로 처리한다")
+    @DisplayName("집계된 달이 하나도 없어도 목표가 없으면 같은 예외다")
     void 스냅샷_월이_없으면_예외() {
         mapper.latestYm = null;
+        mapper.me = null;
+        mapper.live = null;
+        mapper.hasActiveGoal = false;
 
         assertEquals(ErrorCode.COMPARE_SNAPSHOT_NOT_FOUND,
                 assertThrows(BusinessException.class, this::call).getErrorCode());
+    }
+
+    @Test
+    @DisplayName("목표는 있는데 자산이 없으면 자산 연동 안내로 처리한다")
+    void 자산이_없으면_연동_예외() {
+        // 순자산이 코호트 범위의 기준이라, 0으로 채우면 엉뚱한 또래와 묶인다.
+        mapper.me = null;
+        mapper.live = null;
+        mapper.hasActiveGoal = true;
+
+        assertEquals(ErrorCode.COMPARE_ASSET_REQUIRED,
+                assertThrows(BusinessException.class, this::call).getErrorCode());
+    }
+
+    @Test
+    @DisplayName("기준값을 못 만들면 집계 쿼리는 돌리지 않는다")
+    void 기준값이_없으면_쿼리를_돌리지_않는다() {
+        mapper.me = null;
+        mapper.live = null;
+        mapper.hasActiveGoal = true;
+
+        assertThrows(BusinessException.class, this::call);
+
+        assertEquals(0, mapper.aggregateCalls);
+    }
+
+    // ------------------------------------------------------------------
+    // 스냅샷이 아직 없을 때 (목표를 세운 그 달)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("스냅샷이 없으면 지금 값으로 비교한다")
+    void 스냅샷이_없으면_실시간_값을_쓴다() {
+        // 매월 1일 배치 전에는 내 행이 없다. 그렇다고 한 달을 기다리게 하지 않는다.
+        mapper.me = null;
+        mapper.live = liveSnapshot(31, 40_000_000L, 75.0, 1_200_000L);
+        mapper.hasActiveGoal = true;
+        mapper.cohortCount = 10;
+
+        CompareResponse response = call();
+
+        assertEquals(75.0, response.getAchievementDistribution().getMyRate(), 0.0001);
+        assertEquals(1_200_000L, response.getSavingRange().getMyMonthlySaving().longValue());
+    }
+
+    @Test
+    @DisplayName("스냅샷이 있으면 지금 값을 읽지 않는다")
+    void 스냅샷이_있으면_실시간_조회를_하지_않는다() {
+        // 이미 굳은 값이 있으면 그게 정답이다. 쓸데없이 한 번 더 읽지 않는다.
+        mapper.cohortCount = 10;
+
+        call();
+
+        assertEquals(0, mapper.liveCalls);
+    }
+
+    @Test
+    @DisplayName("실시간 값도 코호트 범위의 기준이 된다")
+    void 실시간_값으로_코호트_범위를_잡는다() {
+        mapper.me = null;
+        mapper.live = liveSnapshot(31, 40_000_000L, 75.0, 1_200_000L);
+        mapper.hasActiveGoal = true;
+        mapper.cohortCount = 10;
+
+        call();
+
+        // ±1,000만 / ±2세가 실시간 값 기준으로 벌어져야 한다.
+        assertEquals(30_000_000L, mapper.lastCondition.getNetAssetsMin());
+        assertEquals(50_000_000L, mapper.lastCondition.getNetAssetsMax());
+        assertEquals(29, mapper.lastCondition.getAgeMin());
+        assertEquals(33, mapper.lastCondition.getAgeMax());
     }
 
     // ------------------------------------------------------------------
@@ -304,6 +380,17 @@ class CompareServiceImplTest {
         return row;
     }
 
+    /** 스냅샷이 없을 때 goal·asset_summary에서 즉석으로 만들어지는 기준값 */
+    private static GoalSnapshot liveSnapshot(int age, long netAssets, double rate, long monthlySaving) {
+        GoalSnapshot snapshot = new GoalSnapshot();
+        snapshot.setMemberId(MEMBER_ID);
+        snapshot.setAge(age);
+        snapshot.setNetAssets(netAssets);
+        snapshot.setAchievementRate(rate);
+        snapshot.setMonthlySaving(monthlySaving);
+        return snapshot;
+    }
+
     /** 동의 여부를 테스트가 정해주는 가짜 AgreementService */
     private static class FakeAgreementService implements AgreementService {
 
@@ -357,6 +444,16 @@ class CompareServiceImplTest {
         private List<AchievementBucketCount> buckets = new ArrayList<>();
         private int aggregateCalls = 0;
 
+        /** 회원에게 진행 중인 목표가 있는지. 기준값을 못 만들 때 어떤 예외가 나갈지를 가른다 */
+        private boolean hasActiveGoal = false;
+
+        /** 스냅샷이 없을 때 대신 읽어오는 지금 값. null이면 자산 연동이 안 된 상태 */
+        private GoalSnapshot live = null;
+        private int liveCalls = 0;
+
+        /** 집계 쿼리에 실제로 넘어간 코호트 조건. 범위를 제대로 잡았는지 확인용 */
+        private CohortCondition lastCondition;
+
         private static GoalSnapshot defaultSnapshot() {
             GoalSnapshot snapshot = new GoalSnapshot();
             snapshot.setMemberId(MEMBER_ID);
@@ -379,7 +476,14 @@ class CompareServiceImplTest {
         }
 
         @Override
+        public GoalSnapshot findLiveByMember(Long memberId, LocalDate baseDate) {
+            liveCalls++;
+            return live;
+        }
+
+        @Override
         public int countCohort(CohortCondition condition) {
+            lastCondition = condition;
             return cohortCount;
         }
 
@@ -409,6 +513,11 @@ class CompareServiceImplTest {
         public List<AchievementBucketCount> countByAchievementBucket(CohortCondition condition) {
             aggregateCalls++;
             return buckets;
+        }
+
+        @Override
+        public boolean existsActiveGoal(Long memberId) {
+            return hasActiveGoal;
         }
 
         /**
