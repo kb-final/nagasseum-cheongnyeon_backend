@@ -10,13 +10,13 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 목표 진단 결과를 저장한다. 진단 응답을 그대로 echo해서 받으므로,
+ * 목표 생성·수정 공통 요청. 진단 결과를 그대로 echo해서 받으므로,
  * targetAmount(totalBudget)와 targetRentMiddleAmount(median)는 서버가 재계산하지 않고
  * 프론트가 보내준 값을 "설정 시점" 값으로 그대로 고정한다.
  */
 @Getter
 @NoArgsConstructor
-public class GoalCreateRequest {
+public class GoalSaveRequest {
 
     @NotBlank
     private String regionCode;

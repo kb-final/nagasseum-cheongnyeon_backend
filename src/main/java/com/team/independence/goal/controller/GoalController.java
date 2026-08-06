@@ -2,13 +2,13 @@ package com.team.independence.goal.controller;
 
 import com.team.independence.common.annotation.LoginMember;
 import com.team.independence.common.response.ApiResponse;
-import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDetailResponse;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
 import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalResponse;
+import com.team.independence.goal.dto.GoalSaveRequest;
 import com.team.independence.goal.dto.GoalSummaryResponse;
 import com.team.independence.goal.service.GoalDetailService;
 import com.team.independence.goal.service.GoalService;
@@ -40,7 +40,7 @@ public class GoalController {
     @PostMapping
     public ApiResponse<GoalResponse> createGoal(
             @LoginMember Long memberId,
-            @Valid @RequestBody GoalCreateRequest request) {
+            @Valid @RequestBody GoalSaveRequest request) {
         return ApiResponse.ok(goalService.createGoal(memberId, request));
     }
 

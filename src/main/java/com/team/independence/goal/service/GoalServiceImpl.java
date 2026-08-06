@@ -8,12 +8,12 @@ import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.domain.Goal;
 import com.team.independence.goal.domain.GoalHousing;
 import com.team.independence.goal.domain.SavingBasis;
-import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalResponse;
+import com.team.independence.goal.dto.GoalSaveRequest;
 import com.team.independence.goal.dto.GoalSummaryResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
@@ -181,7 +181,7 @@ public class GoalServiceImpl implements GoalService {
 
     @Override
     @Transactional
-    public GoalResponse createGoal(Long memberId, GoalCreateRequest request) {
+    public GoalResponse createGoal(Long memberId, GoalSaveRequest request) {
         // 희망 조건 범위 검증(진단과 동일 규칙)
         validateMonthlySavings(request.getMonthlySavings());
         validateRange(request.getSizeMin(), request.getSizeMax());

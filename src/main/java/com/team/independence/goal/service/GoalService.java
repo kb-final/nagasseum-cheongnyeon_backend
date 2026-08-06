@@ -2,19 +2,19 @@ package com.team.independence.goal.service;
 
 import com.team.independence.asset.dto.AssetNetWorthBreakdown;
 import com.team.independence.goal.domain.Goal;
-import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
 import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalResponse;
+import com.team.independence.goal.dto.GoalSaveRequest;
 import com.team.independence.goal.dto.GoalSummaryResponse;
 
 public interface GoalService {
     GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request);
 
     /** 진단 결과를 목표로 저장한다. 이미 ACTIVE 목표가 있으면 GOAL_ALREADY_EXISTS로 거부한다. */
-    GoalResponse createGoal(Long memberId, GoalCreateRequest request);
+    GoalResponse createGoal(Long memberId, GoalSaveRequest request);
 
     /**
      * 목표를 찾고 요청자가 소유자인지 확인한다.
