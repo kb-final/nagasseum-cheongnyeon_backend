@@ -1,5 +1,6 @@
 package com.team.independence.compare.dto;
 
+import com.team.independence.compare.domain.MonthlyIncomeBracket;
 import lombok.Getter;
 
 /**
@@ -16,30 +17,44 @@ public class CohortCondition {
     private final long netAssetsMax;
     private final int ageMin;
     private final int ageMax;
+    private final Long monthlyIncomeMin;  // null이면 소득 필터 미적용
+    private final Long monthlyIncomeMax;
+    private final String occupationType;  // null이면 직업군 필터 미적용
 
-    private CohortCondition(String snapshotYm, long netAssetsMin, long netAssetsMax, int ageMin, int ageMax) {
+    private CohortCondition(String snapshotYm,
+                            long netAssetsMin, long netAssetsMax,
+                            int ageMin, int ageMax,
+                            Long monthlyIncomeMin, Long monthlyIncomeMax,
+                            String occupationType) {
         this.snapshotYm = snapshotYm;
         this.netAssetsMin = netAssetsMin;
         this.netAssetsMax = netAssetsMax;
         this.ageMin = ageMin;
         this.ageMax = ageMax;
+        this.monthlyIncomeMin = monthlyIncomeMin;
+        this.monthlyIncomeMax = monthlyIncomeMax;
+        this.occupationType = occupationType;
     }
 
-    /**
-     * 기준 회원의 스냅샷과 비교 범위로 조건을 만든다.
-     *
-     * @param baseNetAssets 기준 회원의 순자산
-     * @param baseAge       기준 회원의 나이
-     * @param assetRange    자산 비교 범위(±원)
-     * @param ageRange      나이 비교 범위(±세)
-     */
+    /** 나이·자산만으로 코호트 조건 생성. 기존 deprecated 엔드포인트용 */
     public static CohortCondition of(String snapshotYm, long baseNetAssets, int baseAge,
                                      long assetRange, int ageRange) {
-        return new CohortCondition(
-                snapshotYm,
-                baseNetAssets - assetRange,
-                baseNetAssets + assetRange,
-                baseAge - ageRange,
-                baseAge + ageRange);
+        return new CohortCondition(snapshotYm,
+                baseNetAssets - assetRange, baseNetAssets + assetRange,
+                baseAge - ageRange, baseAge + ageRange,
+                null, null, null);
+    }
+
+    /** 나이·자산·소득·직업군 코호트 조건 생성. null이면 해당 필터 미적용 */
+    public static CohortCondition of(String snapshotYm, long baseNetAssets, int baseAge,
+                                     long assetRange, int ageRange,
+                                     MonthlyIncomeBracket incomeBracket,
+                                     String occupationType) {
+        return new CohortCondition(snapshotYm,
+                baseNetAssets - assetRange, baseNetAssets + assetRange,
+                baseAge - ageRange, baseAge + ageRange,
+                incomeBracket != null ? incomeBracket.min : null,
+                incomeBracket != null ? incomeBracket.max : null,
+                occupationType);
     }
 }

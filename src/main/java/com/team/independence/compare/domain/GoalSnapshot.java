@@ -52,5 +52,14 @@ public class GoalSnapshot {
     /** 그 시점 월 저축액 → 저축액 구간 */
     private Long monthlySaving;
 
+    /** 월소득 → 소득 구간 코호트 필터 */
+    private Long monthlyIncome;
+
+    /** 소득분위 → 통계 분포 표시용 */
+    private String incomeBracket;
+
+    /** 직업군 → 직업군 코호트 필터 및 분포 표시용 */
+    private String occupationType;
+
     private LocalDateTime createdAt;
 }
