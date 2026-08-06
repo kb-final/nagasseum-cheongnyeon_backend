@@ -9,6 +9,12 @@ import org.apache.ibatis.annotations.Param;
 public interface GoalMapper {
     void insert(Goal goal);
 
+    /**
+     * 목표의 금액/시점/월 저축액을 갱신한다. member_id를 조건에 함께 걸어 소유자가 아니면 0건이 된다.
+     * status, goal_type, member_id는 수정 대상이 아니고 updated_at은 DB가 자동 갱신한다.
+     */
+    int update(Goal goal);
+
     /** 회원에게 ACTIVE 목표가 이미 있는지 확인한다(동시 ACTIVE 목표는 1개만 허용). */
     boolean existsActiveByMemberId(@Param("memberId") Long memberId);
 

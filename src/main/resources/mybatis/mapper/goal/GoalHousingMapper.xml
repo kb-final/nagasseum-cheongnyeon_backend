@@ -31,6 +31,20 @@
         )
     </insert>
 
+    <update id="update" parameterType="com.team.independence.goal.domain.GoalHousing">
+        UPDATE goal_housing
+           SET region_code      = #{regionCode},
+               housing_type     = #{housingType},
+               deal_type        = #{dealType},
+               area_min         = #{areaMin},
+               area_max         = #{areaMax},
+               deposit_min      = #{depositMin},
+               deposit_max      = #{depositMax},
+               monthly_rent_min = #{monthlyRentMin},
+               monthly_rent_max = #{monthlyRentMax}
+         WHERE goal_id = #{goalId}
+    </update>
+
     <select id="findByGoalId" resultMap="goalHousingMap">
         SELECT goal_id, region_code, housing_type, deal_type,
                area_min, area_max, deposit_min, deposit_max,
