@@ -17,6 +17,13 @@ public interface GoalService {
     GoalResponse createGoal(Long memberId, GoalSaveRequest request);
 
     /**
+     * 목표의 금액·시점·월 저축액과 주거 희망 조건을 통째로 교체한다.
+     * 목표가 없으면 GOAL_NOT_FOUND, 다른 회원의 목표면 GOAL_FORBIDDEN,
+     * 진행 중이 아닌 목표면 GOAL_NOT_ACTIVE.
+     */
+    GoalResponse updateGoal(Long memberId, Long goalId, GoalSaveRequest request);
+
+    /**
      * 목표를 찾고 요청자가 소유자인지 확인한다.
      * 목표가 없으면 GOAL_NOT_FOUND, 다른 회원의 목표면 GOAL_FORBIDDEN.
      */
