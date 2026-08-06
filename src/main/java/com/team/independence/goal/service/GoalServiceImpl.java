@@ -8,12 +8,12 @@ import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.domain.Goal;
 import com.team.independence.goal.domain.GoalHousing;
 import com.team.independence.goal.domain.SavingBasis;
-import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalResponse;
+import com.team.independence.goal.dto.GoalSaveRequest;
 import com.team.independence.goal.dto.GoalSummaryResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
@@ -23,7 +23,6 @@ import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.service.RegionQueryService;
 import com.team.independence.property.service.RentMedianService;
-import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import lombok.RequiredArgsConstructor;
@@ -181,22 +180,8 @@ public class GoalServiceImpl implements GoalService {
 
     @Override
     @Transactional
-    public GoalResponse createGoal(Long memberId, GoalCreateRequest request) {
-        // 희망 조건 범위 검증(진단과 동일 규칙)
-        validateMonthlySavings(request.getMonthlySavings());
-        validateRange(request.getSizeMin(), request.getSizeMax());
-        validateRange(request.getDepositMin(), request.getDepositMax());
-        validateTargetDate(request.getTargetDate());
-
-        HousingType housingType = HousingType.valueOf(request.getPropertyType());
-        DealType dealType = DealType.valueOf(request.getTradeType());
-        validateMonthlyRentRequired(dealType, request.getMonthlyRentMax());
-
-        long monthlyRentMin = normalizeMonthlyRent(dealType, request.getMonthlyRentMin());
-        long monthlyRentMax = normalizeMonthlyRent(dealType, request.getMonthlyRentMax());
-        if (dealType == DealType.WOLSE) {
-            validateRange(monthlyRentMin, monthlyRentMax);
-        }
+    public GoalResponse createGoal(Long memberId, GoalSaveRequest request) {
+        GoalHousing goalHousing = validateAndBuildHousing(request);
 
         assetService.validateConnectedAccountExists(memberId);
 
@@ -219,8 +204,69 @@ public class GoalServiceImpl implements GoalService {
         // assets/summary가 보여주는 monthlySavings는 asset_summary 캐시에서 읽으므로 goal 저장 시점에 함께 갱신한다
         assetSummaryService.updateMonthlySavings(memberId, request.getMonthlySavings());
 
-        GoalHousing goalHousing = GoalHousing.builder()
-                .goalId(goal.getId())
+        goalHousing.setGoalId(goal.getId());
+        goalHousingMapper.insert(goalHousing);
+
+        return toGoalResponse(goalMapper.findById(goal.getId()), goalHousing);
+    }
+
+    /**
+     * 목표의 조건을 통째로 교체한다. 저장 계약은 생성과 같다 — 프론트가 진단을 다시 호출해 받은
+     * targetAmount/targetRentMiddleAmount를 실어 보내면 서버는 재계산 없이 그대로 고정 저장한다.
+     * 이미 끝난(ACHIEVED/ARCHIVED) 목표는 수정할 수 없다.
+     */
+    @Override
+    @Transactional
+    public GoalResponse updateGoal(Long memberId, Long goalId, GoalSaveRequest request) {
+        GoalHousing goalHousing = validateAndBuildHousing(request);
+
+        Goal goal = findOwnedGoal(memberId, goalId);
+        if (!GOAL_STATUS_ACTIVE.equals(goal.getStatus())) {
+            throw new BusinessException(ErrorCode.GOAL_NOT_ACTIVE);
+        }
+
+        assetService.validateConnectedAccountExists(memberId);
+
+        goal.setTargetAmount(request.getTargetAmount());
+        goal.setTargetRentMiddleAmount(request.getTargetRentMiddleAmount());
+        goal.setTargetDate(request.getTargetDate().atDay(1));
+        goal.setMonthlySaving(request.getMonthlySavings());
+        goalMapper.update(goal);
+
+        goalHousing.setGoalId(goalId);
+        goalHousingMapper.update(goalHousing);
+
+        // 생성 때와 같은 이유로 asset_summary 캐시도 함께 갱신한다
+        assetSummaryService.updateMonthlySavings(memberId, request.getMonthlySavings());
+
+        // 시세 변화 캐시는 목표 금액과 주거 조건을 그대로 담고 있어 수정 즉시 stale해진다.
+        // 지워두면 다음 조회 때 캐시 미스 경로가 새 조건으로 다시 계산한다.
+        goalMarketTrendCacheStore.delete(goalId);
+
+        return toGoalResponse(goalMapper.findById(goalId), goalHousing);
+    }
+
+    /**
+     * 생성·수정 공통. 희망 조건을 진단과 같은 규칙으로 검증하고 goal_housing 저장 형태로 정규화한다.
+     * goalId는 아직 모르거나(생성) 호출부가 이미 아는 값(수정)이라 여기서 채우지 않는다.
+     */
+    private GoalHousing validateAndBuildHousing(GoalSaveRequest request) {
+        validateMonthlySavings(request.getMonthlySavings());
+        validateRange(request.getSizeMin(), request.getSizeMax());
+        validateRange(request.getDepositMin(), request.getDepositMax());
+        validateTargetDate(request.getTargetDate());
+
+        HousingType housingType = HousingType.valueOf(request.getPropertyType());
+        DealType dealType = DealType.valueOf(request.getTradeType());
+        validateMonthlyRentRequired(dealType, request.getMonthlyRentMax());
+
+        long monthlyRentMin = normalizeMonthlyRent(dealType, request.getMonthlyRentMin());
+        long monthlyRentMax = normalizeMonthlyRent(dealType, request.getMonthlyRentMax());
+        if (dealType == DealType.WOLSE) {
+            validateRange(monthlyRentMin, monthlyRentMax);
+        }
+
+        return GoalHousing.builder()
                 .regionCode(request.getRegionCode())
                 .housingType(housingType)
                 .dealType(dealType)
@@ -231,25 +277,28 @@ public class GoalServiceImpl implements GoalService {
                 .monthlyRentMin(monthlyRentMin)
                 .monthlyRentMax(monthlyRentMax)
                 .build();
-        goalHousingMapper.insert(goalHousing);
+    }
 
+    /** 생성·수정 공통 응답 조립. createdAt/updatedAt은 DB가 채운 값을 그대로 쓴다. */
+    private GoalResponse toGoalResponse(Goal goal, GoalHousing goalHousing) {
         return GoalResponse.builder()
                 .goalId(goal.getId())
                 .status(goal.getStatus())
-                .regionCode(request.getRegionCode())
-                .propertyType(request.getPropertyType())
-                .tradeType(request.getTradeType())
-                .sizeMin(request.getSizeMin())
-                .sizeMax(request.getSizeMax())
-                .depositMin(request.getDepositMin())
-                .depositMax(request.getDepositMax())
-                .monthlyRentMin(monthlyRentMin)
-                .monthlyRentMax(monthlyRentMax)
-                .monthlySavings(request.getMonthlySavings())
-                .targetDate(request.getTargetDate())
-                .targetAmount(request.getTargetAmount())
-                .targetRentMiddleAmount(request.getTargetRentMiddleAmount())
-                .createdAt(LocalDateTime.now())
+                .regionCode(goalHousing.getRegionCode())
+                .propertyType(goalHousing.getHousingType().name())
+                .tradeType(goalHousing.getDealType().name())
+                .sizeMin(goalHousing.getAreaMin())
+                .sizeMax(goalHousing.getAreaMax())
+                .depositMin(goalHousing.getDepositMin())
+                .depositMax(goalHousing.getDepositMax())
+                .monthlyRentMin(goalHousing.getMonthlyRentMin())
+                .monthlyRentMax(goalHousing.getMonthlyRentMax())
+                .monthlySavings(goal.getMonthlySaving())
+                .targetDate(YearMonth.from(goal.getTargetDate()))
+                .targetAmount(goal.getTargetAmount())
+                .targetRentMiddleAmount(goal.getTargetRentMiddleAmount())
+                .createdAt(goal.getCreatedAt())
+                .updatedAt(goal.getUpdatedAt())
                 .build();
     }
 

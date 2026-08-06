@@ -30,6 +30,15 @@
         )
     </insert>
 
+    <update id="update" parameterType="com.team.independence.goal.domain.Goal">
+        UPDATE goal
+           SET target_amount             = #{targetAmount},
+               target_rent_middle_amount = #{targetRentMiddleAmount},
+               target_date               = #{targetDate},
+               monthly_saving            = #{monthlySaving}
+         WHERE id = #{id} AND member_id = #{memberId}
+    </update>
+
     <select id="existsActiveByMemberId" resultType="boolean">
         SELECT EXISTS(
             SELECT 1 FROM goal WHERE member_id = #{memberId} AND status = 'ACTIVE'
