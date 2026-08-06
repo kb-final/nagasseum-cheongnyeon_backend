@@ -431,6 +431,11 @@ class GoalDetailServiceImplTest {
         public List<Long> findAllActiveGoalIds() {
             throw new UnsupportedOperationException();
         }
+
+        @Override
+        public int update(Goal goal) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private static class FakeGoalHousingMapper implements GoalHousingMapper {
@@ -455,6 +460,11 @@ class GoalDetailServiceImplTest {
 
         @Override
         public void insert(GoalHousing goalHousing) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int update(GoalHousing goalHousing) {
             throw new UnsupportedOperationException();
         }
     }
