@@ -11,6 +11,8 @@ import com.team.independence.compare.dto.AchievementBucketCount;
 import com.team.independence.compare.dto.CohortAverages;
 import com.team.independence.compare.dto.CohortCondition;
 import com.team.independence.compare.dto.DealTypeCount;
+import com.team.independence.compare.dto.IncomeBracketCount;
+import com.team.independence.compare.dto.OccupationTypeCount;
 import com.team.independence.compare.dto.RegionCount;
 import com.team.independence.compare.dto.SavingRangeResult;
 
@@ -27,6 +29,9 @@ public interface GoalSnapshotMapper {
     /** 기준 회원의 스냅샷. 코호트 범위를 계산하는 기준값이 된다 */
     GoalSnapshot findByMemberAndYm(@Param("memberId") Long memberId,
                                    @Param("snapshotYm") String snapshotYm);
+
+    GoalSnapshot findLiveAssetsByMember(@Param("memberId") Long memberId,
+                                        @Param("baseDate") LocalDate baseDate);
 
     /**
      * 기준 회원의 지금 값. 스냅샷이 아직 없을 때만 쓴다.
@@ -72,6 +77,12 @@ public interface GoalSnapshotMapper {
 
     /** 월 저축액의 가운데 50%(25~75 백분위) 구간 */
     SavingRangeResult findSavingRange(CohortCondition condition);
+
+    /** 코호트 소득분위 분포. income_bracket IS NOT NULL인 행만 집계 */
+    List<IncomeBracketCount> countByIncomeBracket(CohortCondition condition);
+
+    /** 코호트 직업군 분포. occupation_type IS NOT NULL인 행만 집계 */
+    List<OccupationTypeCount> countByOccupationType(CohortCondition condition);
 
     /**
      * 회원에게 진행 중인 목표가 있는지.

@@ -23,17 +23,27 @@
         <result property="achievementRate" column="achievement_rate"/>
         <result property="prepMonths"      column="prep_months"/>
         <result property="monthlySaving"   column="monthly_saving"/>
+        <result property="monthlyIncome"   column="monthly_income"/>
+        <result property="incomeBracket"   column="income_bracket"/>
+        <result property="occupationType"  column="occupation_type"/>
         <result property="createdAt"       column="created_at"/>
     </resultMap>
 
     <!--
       코호트 조건. 모든 집계 쿼리가 이 조건을 공유하므로 sql 조각으로 빼둔다.
       idx_goal_snapshot_cohort (snapshot_ym, net_assets, age) 를 타도록 순서를 맞췄다.
+      소득·직업군 필터는 null이면 건너뛴다.
     -->
     <sql id="cohortWhere">
         WHERE snapshot_ym = #{snapshotYm}
-        AND net_assets BETWEEN #{netAssetsMin} AND #{netAssetsMax}
-        AND age        BETWEEN #{ageMin}       AND #{ageMax}
+          AND net_assets BETWEEN #{netAssetsMin} AND #{netAssetsMax}
+          AND age        BETWEEN #{ageMin}       AND #{ageMax}
+        <if test="monthlyIncomeMin != null">
+          AND monthly_income BETWEEN #{monthlyIncomeMin} AND #{monthlyIncomeMax}
+        </if>
+        <if test="occupationType != null">
+          AND occupation_type = #{occupationType}
+        </if>
     </sql>
 
     <select id="findLatestSnapshotYm" resultType="string">
@@ -45,10 +55,59 @@
         SELECT id, member_id, goal_id, region_code, snapshot_ym,
                age, net_assets, goal_type, housing_type, deal_type,
                target_amount, achievement_rate, prep_months, monthly_saving,
+               monthly_income, income_bracket, occupation_type,
                created_at
         FROM goal_snapshot
-        WHERE member_id  = #{memberId}
+        WHERE member_id   = #{memberId}
           AND snapshot_ym = #{snapshotYm}
+    </select>
+
+    <!--
+      자산 비교 탭 전용 기준값.
+
+      goal을 LEFT JOIN해서 목표가 없어도 동작한다.
+      asset_summary가 없으면(자산 미연동) 결과가 없어 null이 나온다.
+
+      배치(insertSnapshots)와 계산식을 맞췄다. 한쪽만 고치면
+      이번 달과 다음 달에 같은 사람의 값이 달라진다. 고칠 때 둘 다 고칠 것.
+    -->
+    <select id="findLiveAssetsByMember" resultMap="goalSnapshotMap">
+        SELECT
+            m.id                                                        AS member_id,
+            g.id                                                        AS goal_id,
+            gh.region_code                                              AS region_code,
+            TIMESTAMPDIFF(YEAR, m.birth_date, #{baseDate})              AS age,
+            (a.total_assets - a.loan_balance)                           AS net_assets,
+            g.goal_type                                                 AS goal_type,
+            gh.housing_type                                             AS housing_type,
+            gh.deal_type                                                AS deal_type,
+            g.target_amount                                             AS target_amount,
+            <!-- 목표가 없거나 target_amount = 0이면 null -->
+            CASE
+                WHEN g.target_amount > 0
+                THEN LEAST(100, GREATEST(0,
+                     ROUND((a.total_assets - a.loan_balance) * 100 / g.target_amount, 2)))
+                ELSE NULL
+            END                                                         AS achievement_rate,
+            CASE
+                WHEN g.id IS NOT NULL
+                THEN GREATEST(0, TIMESTAMPDIFF(MONTH, DATE(g.created_at), g.target_date))
+                ELSE NULL
+            END                                                         AS prep_months,
+            g.monthly_saving                                            AS monthly_saving,
+            m.monthly_income                                            AS monthly_income,
+            m.income_bracket                                            AS income_bracket,
+            m.occupation_type                                           AS occupation_type
+        FROM member m
+        JOIN asset_summary a ON a.member_id = m.id
+        LEFT JOIN goal g ON g.member_id = m.id
+            AND g.status = 'ACTIVE'
+            AND g.id = (
+                SELECT MAX(g2.id) FROM goal g2
+                WHERE g2.member_id = m.id AND g2.status = 'ACTIVE'
+            )
+        LEFT JOIN goal_housing gh ON gh.goal_id = g.id
+        WHERE m.id = #{memberId}
     </select>
 
     <!--
@@ -64,36 +123,36 @@
 
       JOIN이라 asset_summary 행이 없으면 결과가 없다. 자산 연동을 안 한 경우이고,
       서비스가 그 null을 받아 '자산 연동이 필요하다'로 안내한다.
-
-      snapshot_ym은 넣지 않는다. 비교 기준월은 서비스가 따로 들고 있고,
-      여기 값은 어느 달에도 저장되지 않은 임시 값이라 달을 붙이면 오해를 부른다.
     -->
     <select id="findLiveByMember" resultMap="goalSnapshotMap">
         SELECT
-        g.member_id     AS member_id,
-        g.id            AS goal_id,
-        gh.region_code  AS region_code,
-        TIMESTAMPDIFF(YEAR, m.birth_date, #{baseDate}) AS age,
-        (a.total_assets - a.loan_balance)              AS net_assets,
-        g.goal_type     AS goal_type,
-        gh.housing_type AS housing_type,
-        gh.deal_type    AS deal_type,
-        g.target_amount AS target_amount,
-        <!-- 달성률 = 순자산 / 목표금액. 0~100으로 자른다 (배치와 같은 식) -->
-        LEAST(100, GREATEST(0,
-        ROUND((a.total_assets - a.loan_balance) * 100 / g.target_amount, 2))) AS achievement_rate,
-        <!-- 준비 기간 = 목표를 세운 날부터 희망 시점까지 (배치와 같은 식) -->
-        GREATEST(0, TIMESTAMPDIFF(MONTH, DATE(g.created_at), g.target_date)) AS prep_months,
-        g.monthly_saving AS monthly_saving
+            g.member_id                                                     AS member_id,
+            g.id                                                            AS goal_id,
+            gh.region_code                                                  AS region_code,
+            TIMESTAMPDIFF(YEAR, m.birth_date, #{baseDate})                  AS age,
+            (a.total_assets - a.loan_balance)                               AS net_assets,
+            g.goal_type                                                     AS goal_type,
+            gh.housing_type                                                 AS housing_type,
+            gh.deal_type                                                    AS deal_type,
+            g.target_amount                                                 AS target_amount,
+            <!-- 달성률 = 순자산 / 목표금액. 0~100으로 자른다 (배치와 같은 식) -->
+            LEAST(100, GREATEST(0,
+                ROUND((a.total_assets - a.loan_balance) * 100 / g.target_amount, 2))) AS achievement_rate,
+            <!-- 준비 기간 = 목표를 세운 날부터 희망 시점까지 (배치와 같은 식) -->
+            GREATEST(0, TIMESTAMPDIFF(MONTH, DATE(g.created_at), g.target_date))      AS prep_months,
+            g.monthly_saving                                                AS monthly_saving,
+            m.monthly_income                                                AS monthly_income,
+            m.income_bracket                                                AS income_bracket,
+            m.occupation_type                                               AS occupation_type
         FROM goal g
         JOIN goal_housing  gh ON gh.goal_id  = g.id
         JOIN member        m  ON m.id        = g.member_id
         JOIN asset_summary a  ON a.member_id = g.member_id
         WHERE g.member_id = #{memberId}
-        AND g.status = 'ACTIVE'
-        <!-- 0으로 나누기 방지 -->
-        AND g.target_amount > 0
-        <!-- 목표가 여러 개면 배치와 같이 가장 최근 것 하나만 -->
+          AND g.status = 'ACTIVE'
+          <!-- 0으로 나누기 방지 -->
+          AND g.target_amount > 0
+          <!-- 목표가 여러 개면 배치와 같이 가장 최근 것 하나만 -->
         ORDER BY g.id DESC
         LIMIT 1
     </select>
@@ -106,7 +165,7 @@
 
     <select id="countByDealType" resultType="com.team.independence.compare.dto.DealTypeCount">
         SELECT deal_type AS dealType,
-        COUNT(*)  AS `count`
+               COUNT(*)  AS `count`
         FROM goal_snapshot
         <include refid="cohortWhere"/>
         GROUP BY deal_type
@@ -115,8 +174,8 @@
 
     <select id="findAverages" resultType="com.team.independence.compare.dto.CohortAverages">
         SELECT ROUND(AVG(target_amount))       AS averageTargetAmount,
-        ROUND(AVG(prep_months))         AS averagePrepMonths,
-        ROUND(AVG(achievement_rate), 1) AS cohortAverageRate
+               ROUND(AVG(prep_months))         AS averagePrepMonths,
+               ROUND(AVG(achievement_rate), 1) AS cohortAverageRate
         FROM goal_snapshot
         <include refid="cohortWhere"/>
     </select>
@@ -127,8 +186,8 @@
     -->
     <select id="countTopRegions" resultType="com.team.independence.compare.dto.RegionCount">
         SELECT g.region_code AS regionCode,
-        r.sigungu     AS regionName,
-        COUNT(*)      AS `count`
+               r.sigungu     AS regionName,
+               COUNT(*)      AS `count`
         FROM goal_snapshot g
         JOIN region r ON r.code = g.region_code
         <include refid="cohortWhere"/>
@@ -144,7 +203,7 @@
     <select id="countByAchievementBucket"
             resultType="com.team.independence.compare.dto.AchievementBucketCount">
         SELECT LEAST(FLOOR(achievement_rate / 10), 8) AS bucketIndex,
-        COUNT(*)                               AS `count`
+               COUNT(*)                               AS `count`
         FROM goal_snapshot
         <include refid="cohortWhere"/>
         GROUP BY LEAST(FLOOR(achievement_rate / 10), 8)
@@ -154,18 +213,39 @@
     <!--
       월 저축액을 오름차순으로 4등분(NTILE)한 뒤 가운데 두 덩어리만 남긴다.
       코호트의 약 절반이 들어가는 구간이라 양 끝 극단값에 흔들리지 않는다.
-      (NTILE은 나눠떨어지지 않으면 앞쪽 그룹부터 한 건씩 더 담아서 정확히 50%는 아니다)
     -->
     <select id="findSavingRange" resultType="com.team.independence.compare.dto.SavingRangeResult">
         SELECT MIN(monthly_saving) AS cohortRangeMin,
-        MAX(monthly_saving) AS cohortRangeMax
+               MAX(monthly_saving) AS cohortRangeMax
         FROM (
-        SELECT monthly_saving,
-        NTILE(4) OVER (ORDER BY monthly_saving) AS quartile
-        FROM goal_snapshot
-        <include refid="cohortWhere"/>
+            SELECT monthly_saving,
+                   NTILE(4) OVER (ORDER BY monthly_saving) AS quartile
+            FROM goal_snapshot
+            <include refid="cohortWhere"/>
         ) t
         WHERE quartile IN (2, 3)
+    </select>
+
+    <!-- 코호트 소득분위 분포. income_bracket IS NOT NULL인 행만 집계 -->
+    <select id="countByIncomeBracket" resultType="com.team.independence.compare.dto.IncomeBracketCount">
+        SELECT income_bracket AS incomeBracket,
+               COUNT(*)       AS `count`
+        FROM goal_snapshot
+        <include refid="cohortWhere"/>
+          AND income_bracket IS NOT NULL
+        GROUP BY income_bracket
+        ORDER BY COUNT(*) DESC
+    </select>
+
+    <!-- 코호트 직업군 분포. occupation_type IS NOT NULL인 행만 집계 -->
+    <select id="countByOccupationType" resultType="com.team.independence.compare.dto.OccupationTypeCount">
+        SELECT occupation_type AS occupationType,
+               COUNT(*)        AS `count`
+        FROM goal_snapshot
+        <include refid="cohortWhere"/>
+          AND occupation_type IS NOT NULL
+        GROUP BY occupation_type
+        ORDER BY COUNT(*) DESC
     </select>
 
     <!--
@@ -197,51 +277,58 @@
     -->
     <insert id="insertSnapshots">
         INSERT INTO goal_snapshot (
-        member_id, goal_id, region_code, snapshot_ym, age, net_assets,
-        goal_type, housing_type, deal_type, target_amount,
-        achievement_rate, prep_months, monthly_saving
+            member_id, goal_id, region_code, snapshot_ym, age, net_assets,
+            goal_type, housing_type, deal_type, target_amount,
+            achievement_rate, prep_months, monthly_saving,
+            monthly_income, income_bracket, occupation_type
         )
         SELECT
-        g.member_id,
-        g.id,
-        gh.region_code,
-        #{snapshotYm},
-        TIMESTAMPDIFF(YEAR, m.birth_date, #{baseDate}),
-        a.net_assets,
-        g.goal_type,
-        gh.housing_type,
-        gh.deal_type,
-        g.target_amount,
-        <!-- 달성률 = 순자산 / 목표금액. 0~100으로 자른다 -->
-        LEAST(100, GREATEST(0, ROUND(a.net_assets * 100 / g.target_amount, 2))),
-        <!-- 준비 기간 = 목표를 세운 날부터 희망 시점까지 -->
-        GREATEST(0, TIMESTAMPDIFF(MONTH, DATE(g.created_at), g.target_date)),
-        g.monthly_saving
+            g.member_id,
+            g.id,
+            gh.region_code,
+            #{snapshotYm},
+            TIMESTAMPDIFF(YEAR, m.birth_date, #{baseDate}),
+            a.net_assets,
+            g.goal_type,
+            gh.housing_type,
+            gh.deal_type,
+            g.target_amount,
+            <!-- 달성률 = 순자산 / 목표금액. 0~100으로 자른다 -->
+            LEAST(100, GREATEST(0, ROUND(a.net_assets * 100 / g.target_amount, 2))),
+            <!-- 준비 기간 = 목표를 세운 날부터 희망 시점까지 -->
+            GREATEST(0, TIMESTAMPDIFF(MONTH, DATE(g.created_at), g.target_date)),
+            g.monthly_saving,
+            m.monthly_income,
+            m.income_bracket,
+            m.occupation_type
         FROM goal g
         JOIN goal_housing   gh ON gh.goal_id   = g.id
         JOIN member         m  ON m.id         = g.member_id
         JOIN asset_snapshot a  ON a.member_id  = g.member_id
-        AND a.snapshot_ym = #{snapshotYm}
+                               AND a.snapshot_ym = #{snapshotYm}
         WHERE g.status = 'ACTIVE'
-        <!-- 0으로 나누기 방지 -->
-        AND g.target_amount > 0
-        <!-- 회원당 한 건. 가장 최근 목표만 -->
-        AND g.id = (SELECT MAX(g2.id)
-        FROM goal g2
-        WHERE g2.member_id = g.member_id
-        AND g2.status = 'ACTIVE')
+          <!-- 0으로 나누기 방지 -->
+          AND g.target_amount > 0
+          <!-- 회원당 한 건. 가장 최근 목표만 -->
+          AND g.id = (SELECT MAX(g2.id)
+                      FROM goal g2
+                      WHERE g2.member_id = g.member_id
+                        AND g2.status = 'ACTIVE')
         ON DUPLICATE KEY UPDATE
-        goal_id          = VALUES(goal_id),
-        region_code      = VALUES(region_code),
-        age              = VALUES(age),
-        net_assets       = VALUES(net_assets),
-        goal_type        = VALUES(goal_type),
-        housing_type     = VALUES(housing_type),
-        deal_type        = VALUES(deal_type),
-        target_amount    = VALUES(target_amount),
-        achievement_rate = VALUES(achievement_rate),
-        prep_months      = VALUES(prep_months),
-        monthly_saving   = VALUES(monthly_saving)
+            goal_id          = VALUES(goal_id),
+            region_code      = VALUES(region_code),
+            age              = VALUES(age),
+            net_assets       = VALUES(net_assets),
+            goal_type        = VALUES(goal_type),
+            housing_type     = VALUES(housing_type),
+            deal_type        = VALUES(deal_type),
+            target_amount    = VALUES(target_amount),
+            achievement_rate = VALUES(achievement_rate),
+            prep_months      = VALUES(prep_months),
+            monthly_saving   = VALUES(monthly_saving),
+            monthly_income   = VALUES(monthly_income),
+            income_bracket   = VALUES(income_bracket),
+            occupation_type  = VALUES(occupation_type)
     </insert>
 
 </mapper>
