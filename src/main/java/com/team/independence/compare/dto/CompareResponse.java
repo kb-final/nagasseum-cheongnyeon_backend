@@ -57,7 +57,7 @@ public class CompareResponse {
         /** 비교 대상 인원 수 */
         private Integer cohortSize;
 
-        /** 최소 인원 미달일 때만 false로 내려간다. 충분하면 null */
+        /** 인원 충분하면 true, 최소 인원 미달일 때 false */
         private Boolean sufficient;
 
         /** 최소 인원 미달일 때만 내려간다 */

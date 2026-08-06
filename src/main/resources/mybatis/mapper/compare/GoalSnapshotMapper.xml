@@ -257,6 +257,7 @@
             SELECT 1 FROM goal
             WHERE member_id = #{memberId}
               AND status = 'ACTIVE'
+              AND target_amount > 0
         )
     </select>
 

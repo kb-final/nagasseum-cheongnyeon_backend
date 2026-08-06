@@ -21,7 +21,7 @@ public class CompareCohort {
     /** 요청에서 실제로 적용된 추가 필터 목록 */
     private List<CohortType> appliedFilters;
 
-    /** 인원 미달일 때만 false. 충분하면 null */
+    /** 인원 충분하면 true, 미달이면 false */
     private Boolean sufficient;
     private Integer minimumRequired;
 }

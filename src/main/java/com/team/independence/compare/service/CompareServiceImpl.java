@@ -229,9 +229,9 @@ public class CompareServiceImpl implements CompareService {
         return CompareCohort.builder()
                 .assetRange(assetRange)
                 .ageRange(ageRange)
-                .cohortSize(cohortSize)
+                .cohortSize(sufficient ? cohortSize : null)
                 .appliedFilters(applied)
-                .sufficient(sufficient ? null : false)
+                .sufficient(sufficient)
                 .minimumRequired(sufficient ? null : MINIMUM_COHORT_SIZE)
                 .build();
     }
@@ -239,10 +239,19 @@ public class CompareServiceImpl implements CompareService {
     private List<AssetCompareResponse.IncomeBracketItem> toIncomeBracketItems(
             List<IncomeBracketCount> counts, int cohortSize) {
         List<AssetCompareResponse.IncomeBracketItem> items = new ArrayList<>();
+        int knownCount = 0;
         for (IncomeBracketCount row : counts) {
             items.add(AssetCompareResponse.IncomeBracketItem.builder()
                     .bracket(row.getIncomeBracket())
                     .ratio(percentage(row.getCount(), cohortSize))
+                    .build());
+            knownCount += row.getCount();
+        }
+        int unknownCount = cohortSize - knownCount;
+        if (unknownCount > 0) {
+            items.add(AssetCompareResponse.IncomeBracketItem.builder()
+                    .bracket("UNKNOWN")
+                    .ratio(percentage(unknownCount, cohortSize))
                     .build());
         }
         return items;
@@ -251,10 +260,19 @@ public class CompareServiceImpl implements CompareService {
     private List<AssetCompareResponse.OccupationItem> toOccupationItems(
             List<OccupationTypeCount> counts, int cohortSize) {
         List<AssetCompareResponse.OccupationItem> items = new ArrayList<>();
+        int knownCount = 0;
         for (OccupationTypeCount row : counts) {
             items.add(AssetCompareResponse.OccupationItem.builder()
                     .occupationType(row.getOccupationType())
                     .ratio(percentage(row.getCount(), cohortSize))
+                    .build());
+            knownCount += row.getCount();
+        }
+        int unknownCount = cohortSize - knownCount;
+        if (unknownCount > 0) {
+            items.add(AssetCompareResponse.OccupationItem.builder()
+                    .occupationType("UNKNOWN")
+                    .ratio(percentage(unknownCount, cohortSize))
                     .build());
         }
         return items;
@@ -291,7 +309,7 @@ public class CompareServiceImpl implements CompareService {
     }
 
     private List<GoalCompareResponse.Bucket> toAchievementBuckets(
-            List<AchievementBucketCount> counts, int cohortSize, double myRate) {
+            List<AchievementBucketCount> counts, int cohortSize, Double myRate) {
         int[] bucketCounts = new int[BUCKET_SIZE];
         for (AchievementBucketCount row : counts) {
             int index = row.getBucketIndex();
@@ -300,7 +318,7 @@ public class CompareServiceImpl implements CompareService {
             }
         }
 
-        int myIndex = bucketIndexOf(myRate);
+        int myIndex = myRate != null ? bucketIndexOf(myRate) : -1;
         List<GoalCompareResponse.Bucket> buckets = new ArrayList<>();
         for (int i = 0; i < BUCKET_SIZE; i++) {
             buckets.add(GoalCompareResponse.Bucket.builder()
@@ -308,7 +326,7 @@ public class CompareServiceImpl implements CompareService {
                     .rangeMax(i == BUCKET_SIZE - 1 ? 100 : (i + 1) * 10)
                     .count(bucketCounts[i])
                     .ratio(percentage(bucketCounts[i], cohortSize))
-                    .isMine(i == myIndex)
+                    .isMine(myIndex >= 0 && i == myIndex)
                     .build());
         }
         return buckets;
@@ -355,7 +373,7 @@ public class CompareServiceImpl implements CompareService {
         int cohortSize = goalSnapshotMapper.countCohort(condition);
 
         if (cohortSize < MINIMUM_COHORT_SIZE) {
-            return insufficient(snapshotYm, assetRange, ageRange, cohortSize);
+            return insufficient(snapshotYm, assetRange, ageRange);
         }
 
         CohortAverages averages = goalSnapshotMapper.findAverages(condition);
@@ -395,13 +413,13 @@ public class CompareServiceImpl implements CompareService {
     /** @deprecated {@link #getComparison} 전용. 인원 미달 시 cohort만 담아 반환 */
     @Deprecated
     private CompareResponse insufficient(String snapshotYm, Long assetRange,
-                                         Integer ageRange, int cohortSize) {
+                                         Integer ageRange) {
         return CompareResponse.builder()
                 .snapshotYm(snapshotYm)
                 .cohort(Cohort.builder()
                         .assetRange(assetRange)
                         .ageRange(ageRange)
-                        .cohortSize(cohortSize)
+                        .cohortSize(null)
                         .sufficient(false)
                         .minimumRequired(MINIMUM_COHORT_SIZE)
                         .build())
@@ -433,7 +451,7 @@ public class CompareServiceImpl implements CompareService {
     /** @deprecated {@link #getComparison} 전용. 달성률 구간 분포(CompareResponse 형식) */
     @Deprecated
     private List<AchievementBucket> buildAchievementBuckets(CohortCondition condition,
-                                                            int cohortSize, double myRate) {
+                                                            int cohortSize, Double myRate) {
         int[] counts = new int[BUCKET_SIZE];
         for (AchievementBucketCount row : goalSnapshotMapper.countByAchievementBucket(condition)) {
             int index = row.getBucketIndex();
@@ -442,7 +460,7 @@ public class CompareServiceImpl implements CompareService {
             }
         }
 
-        int myIndex = bucketIndexOf(myRate);
+        int myIndex = myRate != null ? bucketIndexOf(myRate) : -1;
 
         List<AchievementBucket> buckets = new ArrayList<>();
         for (int i = 0; i < BUCKET_SIZE; i++) {
@@ -451,7 +469,7 @@ public class CompareServiceImpl implements CompareService {
                     .rangeMax(i == BUCKET_SIZE - 1 ? 100 : (i + 1) * 10)
                     .count(counts[i])
                     .ratio(percentage(counts[i], cohortSize))
-                    .isMine(i == myIndex)
+                    .isMine(myIndex >= 0 && i == myIndex)
                     .build());
         }
         return buckets;

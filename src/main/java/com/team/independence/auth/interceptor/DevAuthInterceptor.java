@@ -19,7 +19,11 @@ public class DevAuthInterceptor implements HandlerInterceptor {
             @NonNull HttpServletRequest request,
             @NonNull HttpServletResponse response,
             @NonNull Object handler) {
-        request.setAttribute("memberId", DEV_MEMBER_ID);
+        String header = request.getHeader("X-Dev-Member-Id");
+        Long memberId = (header != null && !header.isBlank())
+                ? Long.parseLong(header)
+                : DEV_MEMBER_ID;
+        request.setAttribute("memberId", memberId);
         return true;
     }
 }
