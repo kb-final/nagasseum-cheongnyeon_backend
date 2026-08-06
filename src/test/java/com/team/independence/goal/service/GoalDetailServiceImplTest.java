@@ -436,6 +436,11 @@ class GoalDetailServiceImplTest {
         public int update(Goal goal) {
             throw new UnsupportedOperationException();
         }
+
+        @Override
+        public int archive(Long goalId, Long memberId) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private static class FakeGoalHousingMapper implements GoalHousingMapper {
