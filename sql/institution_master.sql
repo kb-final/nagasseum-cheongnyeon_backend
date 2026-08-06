@@ -18,3 +18,12 @@ INSERT INTO institution (code, name, institution_type, business_type, login_type
 ('0240', '삼성증권', 'STOCK', 'ST', '1', '주식 · 펀드', 16),
 ('0243', '한국투자증권', 'STOCK', 'ST', '1', '주식 · 펀드', 15),
 ('0247', 'NH투자증권', 'STOCK', 'ST', '1', '주식 · 펀드', 16);
+
+
+INSERT INTO institution (code, name, institution_type, business_type, login_type, product_label, display_order, extra_field_schema) VALUES
+-- 카드
+('0301', 'KB국민카드', 'CARD', 'CD', '1', '카드', 17, '[{"key":"cardNo","label":"카드번호","type":"text","required":false},{"key":"cardPassword","label":"카드 비밀번호","type":"password","required":false}]'),
+('0302', '현대카드', 'CARD', 'CD', '1', '카드', 18, '[{"key":"cardNo","label":"카드번호","type":"text","required":true},{"key":"cardPassword","label":"카드 비밀번호","type":"password","required":true}]'),
+('0303', '삼성카드', 'CARD', 'CD', '1', '카드', 19, NULL),
+('0306', '신한카드', 'CARD', 'CD', '1', '카드', 20, NULL),
+('0309', '우리카드', 'CARD', 'CD', '1', '카드', 21, '[{"key":"birthDate","label":"생년월일","type":"text","required":false,"placeholder":"YYYYMMDD"}]');

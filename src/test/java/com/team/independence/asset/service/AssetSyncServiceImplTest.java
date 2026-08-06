@@ -10,6 +10,7 @@ import com.team.independence.asset.domain.Institution;
 import com.team.independence.asset.domain.LoanAccount;
 import com.team.independence.asset.mapper.AssetAccountMapper;
 import com.team.independence.asset.mapper.AssetSummaryMapper;
+import com.team.independence.asset.mapper.CardAccountMapper;
 import com.team.independence.asset.mapper.ConnectedAccountMapper;
 import com.team.independence.asset.mapper.ConnectedInstitutionMapper;
 import com.team.independence.asset.mapper.InstitutionMapper;
@@ -53,6 +54,7 @@ class  AssetSyncServiceImplTest {
     @Mock ConnectedInstitutionMapper connectedInstitutionMapper;
     @Mock InstitutionMapper institutionMapper;
     @Mock AssetAccountMapper assetAccountMapper;
+    @Mock CardAccountMapper cardAccountMapper;
     @Mock LoanAccountMapper loanAccountMapper;
     @Mock AssetSummaryMapper assetSummaryMapper;
     @Mock CodefClient codefClient;
@@ -79,7 +81,7 @@ class  AssetSyncServiceImplTest {
         service = new AssetSyncServiceImpl(
                 jobStore,
                 connectedAccountMapper, connectedInstitutionMapper, institutionMapper,
-                assetAccountMapper, loanAccountMapper, assetSummaryMapper,
+                assetAccountMapper, cardAccountMapper, loanAccountMapper, assetSummaryMapper,
                 codefClient, codefTokenManager, aesEncryptor, objectMapper, slackNotifier);
     }
 

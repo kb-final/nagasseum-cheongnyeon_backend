@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team.independence.external.codef.dto.CodefAccountRequest;
 import com.team.independence.external.codef.dto.CodefApiResponse;
 import com.team.independence.external.codef.dto.CodefBankAccountResponse;
+import com.team.independence.external.codef.dto.CodefCardResponse;
 import com.team.independence.external.codef.dto.CodefStockAccountResponse;
 import com.team.independence.external.codef.dto.CodefStockFinancialAssetsResponse;
 import lombok.RequiredArgsConstructor;
@@ -74,6 +75,13 @@ public class CodefMockClient implements CodefClient {
     public CodefApiResponse deleteAccount(String accessToken, String connectedId,
                                           CodefAccountRequest.CodefAccountItem item) {
         return parse(API_SUCCESS_RESPONSE, CodefApiResponse.class);
+    }
+
+    @Override
+    public CodefCardResponse getCardList(String accessToken, String connectedId, String organization,
+                                         String cardNo, String cardPassword, String birthDate) {
+        log.debug("[Mock] getCardList: org={}", organization);
+        return parse(CARD_RESPONSE, CodefCardResponse.class);
     }
 
     private <T> T parse(String json, Class<T> clazz) {
@@ -155,4 +163,19 @@ public class CodefMockClient implements CodefClient {
             + "\"result\":{\"code\":\"CF-00000\",\"message\":\"성공\"},"
             + "\"data\":{\"connectedId\":\"mock-connected-id\","
             + "\"successList\":[],\"errorList\":[]}}";
+
+    private static final String CARD_RESPONSE = "{"
+            + "\"result\":{\"code\":\"CF-00000\",\"message\":\"성공\"},"
+            + "\"data\":["
+            + "  {\"resCardNo\":\"1234-****-****-5678\",\"resSleepYN\":\"0\","
+            + "   \"resCardName\":\"KB국민 My WE:SH 카드\",\"resCardType\":\"신용\","
+            + "   \"resTrafficYN\":\"1\",\"resImageLink\":\"\","
+            + "   \"resIssueDate\":\"20230101\",\"resValidPeriod\":\"202801\","
+            + "   \"resState\":\"정상\"},"
+            + "  {\"resCardNo\":\"9876-****-****-4321\",\"resSleepYN\":\"0\","
+            + "   \"resCardName\":\"KB국민 노리체크카드\",\"resCardType\":\"체크\","
+            + "   \"resTrafficYN\":\"0\",\"resImageLink\":\"\","
+            + "   \"resIssueDate\":\"20220601\",\"resValidPeriod\":\"202706\","
+            + "   \"resState\":\"정상\"}"
+            + "]}";
 }

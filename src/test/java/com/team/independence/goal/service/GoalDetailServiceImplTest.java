@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.team.independence.asset.dto.AssetLinkRequest;
 import com.team.independence.asset.dto.AssetLinkResponse;
 import com.team.independence.asset.dto.AssetNetWorthBreakdown;
+import com.team.independence.asset.dto.CardAccountResponse;
 import com.team.independence.asset.dto.LinkedOrganizationResponse;
 import com.team.independence.asset.dto.UnlinkOrganizationResponse;
 import com.team.independence.asset.service.AssetService;
@@ -502,6 +503,11 @@ class GoalDetailServiceImplTest {
 
         @Override
         public UnlinkOrganizationResponse unlinkOrganization(Long memberId, String organizationCode) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<CardAccountResponse> getCardList(Long memberId) {
             throw new UnsupportedOperationException();
         }
     }

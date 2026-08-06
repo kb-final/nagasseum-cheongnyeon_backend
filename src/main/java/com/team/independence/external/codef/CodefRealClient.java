@@ -1,5 +1,7 @@
 package com.team.independence.external.codef;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
@@ -7,6 +9,8 @@ import com.team.independence.external.codef.dto.CodefAccountRequest;
 import com.team.independence.external.codef.dto.CodefApiResponse;
 import com.team.independence.external.codef.dto.CodefBankAccountResponse;
 import com.team.independence.external.codef.dto.CodefBankInquiryRequest;
+import com.team.independence.external.codef.dto.CodefCardInquiryRequest;
+import com.team.independence.external.codef.dto.CodefCardResponse;
 import com.team.independence.external.codef.dto.CodefStockAccountResponse;
 import com.team.independence.external.codef.dto.CodefStockFinancialAssetsRequest;
 import com.team.independence.external.codef.dto.CodefStockFinancialAssetsResponse;
@@ -34,6 +38,7 @@ public class CodefRealClient implements CodefClient {
     private static final String BANK_ACCOUNT_LIST_PATH = "/v1/kr/bank/p/account/account-list";
     private static final String STOCK_ACCOUNT_LIST_PATH = "/v1/kr/stock/a/account/account-list";
     private static final String STOCK_FINANCIAL_ASSETS_PATH = "/v1/kr/stock/a/account/financial-assets";
+    private static final String CARD_LIST_PATH = "/v1/kr/card/p/account/card-list";
 
     private final CodefProperties properties;
     private final RestTemplate restTemplate;
@@ -139,6 +144,34 @@ public class CodefRealClient implements CodefClient {
             return objectMapper.readValue(decoded, CodefStockFinancialAssetsResponse.class);
         } catch (Exception e) {
             log.error("CODEF 종합자산 조회 실패: org={}", organization, e);
+            throw new BusinessException(ErrorCode.ASSET_CODEF_API_ERROR);
+        }
+    }
+
+    @Override
+    public CodefCardResponse getCardList(String accessToken, String connectedId, String organization,
+                                         String cardNo, String cardPassword, String birthDate) {
+        CodefCardInquiryRequest body = CodefCardInquiryRequest.builder()
+                .connectedId(connectedId)
+                .organization(organization)
+                .cardNo(cardNo != null ? cardNo : "")
+                .cardPassword(cardPassword != null ? cardPassword : "")
+                .birthDate(birthDate != null ? birthDate : "")
+                .build();
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(accessToken);
+            ResponseEntity<String> response = restTemplate.exchange(
+                    properties.getApiDomain() + CARD_LIST_PATH,
+                    HttpMethod.POST, new HttpEntity<>(body, headers), String.class
+            );
+            String decoded = URLDecoder.decode(response.getBody(), StandardCharsets.UTF_8);
+            log.debug("CODEF 카드목록 응답: org={}", organization);
+            return objectMapper.readValue(decoded, CodefCardResponse.class);
+        } catch (Exception e)  {
+            log.error("CODEF 카드목록 조회 실패={}", organization, e);
             throw new BusinessException(ErrorCode.ASSET_CODEF_API_ERROR);
         }
     }

@@ -279,7 +279,7 @@ CREATE TABLE connected_institution (
     status               VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/AUTH_EXPIRED/ERROR',
     last_synced_at       DATETIME     NULL     COMMENT '이 기관 마지막 동기화 시각',
     last_error_code      VARCHAR(30)  NULL     COMMENT 'CODEF 실패 코드(비밀번호 오류, 계정 잠김 등)',
-    last_error_message   VARCHAR(255) NULL     COMMENT '사용자 안내 문구',
+    last_error_message   TEXT         NULL     COMMENT '사용자 안내 문구',
     last_attempted_at    DATETIME     NULL     COMMENT '마지막 연동 시도 시각(성공·실패 무관)',
     created_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -332,6 +332,26 @@ CREATE TABLE loan_account (
     KEY idx_loan_account_inst (connected_institution_id),
     CONSTRAINT fk_loan_account_inst FOREIGN KEY (connected_institution_id) REFERENCES connected_institution (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='대출 계좌(부채)';
+
+CREATE TABLE card_account (
+    id                       BIGINT       NOT NULL AUTO_INCREMENT,
+    connected_institution_id BIGINT       NOT NULL COMMENT '연결된 기관 FK',
+    card_no                  VARCHAR(30)  NOT NULL COMMENT '마스킹된 카드번호(resCardNo)',
+    is_sleep                 VARCHAR(10)  NOT NULL DEFAULT 'N' COMMENT '휴면 여부(resSleepYN: Y/N)',
+    card_name                VARCHAR(100) NOT NULL COMMENT '카드명(resCardName)',
+    card_type                VARCHAR(20)  NOT NULL COMMENT '카드 종류(resCardType: 신용/체크)',
+    is_traffic               VARCHAR(10)  NOT NULL DEFAULT 'N' COMMENT '교통 기능 여부(resTrafficYN: Y/N)',
+    image_link               VARCHAR(500) NULL     COMMENT '카드 이미지 URL(resImageLink)',
+    issue_date               DATE         NULL     COMMENT '발급일(resIssueDate: YYYYMMDD)',
+    valid_period             VARCHAR(6)   NULL     COMMENT '유효기간(resValidPeriod: YYYYMM)',
+    state                    VARCHAR(20)  NULL     COMMENT '카드 상태(resState: 정상/분실/해지 등)',
+    raw_response             JSON         NOT NULL COMMENT 'CODEF 원본 응답',
+    created_at               DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at               DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_card_account_inst (connected_institution_id),
+    CONSTRAINT fk_card_account_inst FOREIGN KEY (connected_institution_id) REFERENCES connected_institution (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='카드 계좌. 동기화 시 응답에 없는 카드는 물리 삭제';
 
 -- =====================================================================
 -- [목표 종속]

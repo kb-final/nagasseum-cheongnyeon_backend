@@ -81,6 +81,11 @@ public class AssetController {
         return ApiResponse.ok(assetAccountListService.getAccountList(memberId));
     }
 
+    @GetMapping("/cards")
+    public ApiResponse<List<CardAccountResponse>> getCardList(@LoginMember Long memberId) {
+        return ApiResponse.ok(assetService.getCardList(memberId));
+    }
+
     @GetMapping("/manual")
     public ApiResponse<List<ManualAssetResponse>> getManualAssets(@LoginMember Long memberId) {
         return ApiResponse.ok(manualAssetService.getManualAssets(memberId));
