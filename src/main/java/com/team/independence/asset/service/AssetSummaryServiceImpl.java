@@ -12,6 +12,7 @@ import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -92,6 +93,12 @@ public class AssetSummaryServiceImpl implements AssetSummaryService {
                         .build())
                 .loans(loanItems)
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public void updateMonthlySavings(Long memberId, Long monthlySavings) {
+        assetSummaryMapper.upsertMonthlySavings(memberId, monthlySavings);
     }
 
     /**

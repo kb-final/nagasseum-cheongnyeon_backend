@@ -4,4 +4,5 @@ import com.team.independence.asset.dto.AssetSummaryResponse;
 
 public interface AssetSummaryService {
     AssetSummaryResponse getSummary(Long memberId);
+    void updateMonthlySavings(Long memberId, Long monthlySavings);
 }

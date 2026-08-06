@@ -31,4 +31,11 @@
             synced_at    = VALUES(synced_at)
     </insert>
 
+    <insert id="upsertMonthlySavings">
+        INSERT INTO asset_summary (member_id, monthly_savings)
+        VALUES (#{memberId}, #{monthlySavings})
+        ON DUPLICATE KEY UPDATE
+            monthly_savings = VALUES(monthly_savings)
+    </insert>
+
 </mapper>
