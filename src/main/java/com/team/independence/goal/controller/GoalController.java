@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -42,6 +43,14 @@ public class GoalController {
             @LoginMember Long memberId,
             @Valid @RequestBody GoalSaveRequest request) {
         return ApiResponse.ok(goalService.createGoal(memberId, request));
+    }
+
+    @PutMapping("/{goalId}")
+    public ApiResponse<GoalResponse> updateGoal(
+            @LoginMember Long memberId,
+            @PathVariable Long goalId,
+            @Valid @RequestBody GoalSaveRequest request) {
+        return ApiResponse.ok(goalService.updateGoal(memberId, goalId, request));
     }
 
     @GetMapping("/{goalId}/detail")
