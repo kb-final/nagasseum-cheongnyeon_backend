@@ -1,6 +1,7 @@
 package com.team.independence.member.service;
 
 import com.team.independence.member.domain.IncomeBracket;
+import com.team.independence.member.domain.OccupationType;
 import com.team.independence.member.dto.MemberProfileResponse;
 
 import java.time.LocalDate;
@@ -20,6 +21,7 @@ public interface MemberService {
     /** 신규 회원 등록 후 memberId 반환. 이미 가입된 kakaoId면 예외 */
     Long createMember(String kakaoId, String nickname, LocalDate birthDate, IncomeBracket incomeBracket);
 
-    /** 닉네임·소득분위 수정. null 필드는 변경하지 않음 */
-    void updateMember(Long memberId, String nickname, IncomeBracket incomeBracket);
+    /** 닉네임·소득분위·월소득·직업군 수정. null 필드는 변경하지 않음 */
+    void updateMember(Long memberId, String nickname, IncomeBracket incomeBracket,
+                      Long monthlyIncome, OccupationType occupationType);
 }
