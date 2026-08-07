@@ -1,0 +1,8 @@
+.git
+.github
+.idea
+*.iml
+sql/
+docs/
+.env
+README.md
