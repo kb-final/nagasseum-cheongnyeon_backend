@@ -1,4 +1,4 @@
-package com.team.independence.asset.dto;
+package com.team.independence.asset.dto.summary;
 
 import lombok.Builder;
 import lombok.Getter;

@@ -1,6 +1,6 @@
-package com.team.independence.asset.dto;
+package com.team.independence.asset.dto.account;
 
-import com.team.independence.asset.domain.CardAccount;
+import com.team.independence.asset.domain.account.CardAccount;
 import lombok.Builder;
 import lombok.Getter;
 

@@ -1,4 +1,4 @@
-package com.team.independence.asset.dto;
+package com.team.independence.asset.dto.connection;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;

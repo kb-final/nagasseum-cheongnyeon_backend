@@ -1,6 +1,6 @@
-package com.team.independence.asset.dto;
+package com.team.independence.asset.dto.connection;
 
-import com.team.independence.asset.domain.Institution;
+import com.team.independence.asset.domain.codef.Institution;
 import lombok.Builder;
 import lombok.Getter;
 
