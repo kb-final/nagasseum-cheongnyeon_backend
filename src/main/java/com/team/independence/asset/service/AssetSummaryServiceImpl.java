@@ -1,13 +1,15 @@
 package com.team.independence.asset.service;
 
-import com.team.independence.asset.domain.AssetSummary;
-import com.team.independence.asset.dto.AssetAccountQueryItem;
-import com.team.independence.asset.dto.AssetSummaryResponse;
-import com.team.independence.asset.dto.AssetSummaryResponse.*;
-import com.team.independence.asset.dto.LoanAccountQueryItem;
+import com.team.independence.asset.domain.summary.AssetSummary;
+import com.team.independence.asset.dto.account.AssetAccountQueryItem;
+import com.team.independence.asset.dto.account.LoanAccountQueryItem;
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
+import com.team.independence.asset.dto.summary.AssetSummaryResponse;
+import com.team.independence.asset.dto.summary.AssetSummaryResponse.*;
 import com.team.independence.asset.mapper.AssetAccountMapper;
 import com.team.independence.asset.mapper.AssetSummaryMapper;
 import com.team.independence.asset.mapper.LoanAccountMapper;
+import com.team.independence.asset.mapper.ManualAssetMapper;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -21,9 +23,12 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AssetSummaryServiceImpl implements AssetSummaryService {
 
+    private static final double INVESTMENT_RECOGNITION_RATE = 0.7;
+
     private final AssetSummaryMapper assetSummaryMapper;
     private final AssetAccountMapper assetAccountMapper;
     private final LoanAccountMapper loanAccountMapper;
+    private final ManualAssetMapper manualAssetMapper;
 
     @Override
     public AssetSummaryResponse getSummary(Long memberId) {
@@ -55,7 +60,6 @@ public class AssetSummaryServiceImpl implements AssetSummaryService {
                 investmentList.add(item);
                 investmentTotal += balance;
             } else {
-                // CASH, DEPOSIT_SAVINGS, SUBSCRIPTION 모두 현금성 자산
                 cashList.add(item);
                 cashTotal += balance;
             }
@@ -101,10 +105,42 @@ public class AssetSummaryServiceImpl implements AssetSummaryService {
         assetSummaryMapper.upsertMonthlySavings(memberId, monthlySavings);
     }
 
-    /**
-     * STOCK: valuationAmount × 70% + depositReceived
-     * 나머지: current_value 그대로
-     */
+    @Override
+    @Transactional(readOnly = true)
+    public AssetNetWorthBreakdown getNetWorthBreakdown(Long memberId) {
+        long interestBearingAssets = assetAccountMapper.sumCurrentValueByMemberIdAndCategories(
+                memberId, List.of("DEPOSIT_SAVINGS"));
+        long investmentRecognized = investmentRecognizedAmount(memberId);
+        long cashAndEtcAssets = assetAccountMapper.sumCurrentValueByMemberIdAndCategories(
+                memberId, List.of("CASH", "ETC"));
+        long manualAssets = manualAssetMapper.sumAmountByMemberId(memberId);
+        long loanBalance = loanAccountMapper.sumLoanBalanceByMemberId(memberId);
+
+        long flatRecognizedAssets = investmentRecognized + cashAndEtcAssets + manualAssets - loanBalance;
+
+        return AssetNetWorthBreakdown.builder()
+                .interestBearingAssets(interestBearingAssets)
+                .flatRecognizedAssets(flatRecognizedAssets)
+                .build();
+    }
+
+    private long investmentRecognizedAmount(Long memberId) {
+        long total = 0L;
+        for (AssetAccountQueryItem account : assetAccountMapper.findWithInstitutionByMemberId(memberId)) {
+            if (!"INVESTMENT".equals(account.getAssetCategory())) {
+                continue;
+            }
+            String type = account.getAccountType();
+            if (("STOCK".equals(type) || "FUND".equals(type)) && account.getValuationAmount() != null) {
+                long deposit = account.getDepositReceived() != null ? account.getDepositReceived() : 0L;
+                total += Math.round(account.getValuationAmount() * INVESTMENT_RECOGNITION_RATE) + deposit;
+            } else {
+                total += account.getCurrentValue() != null ? account.getCurrentValue() : 0L;
+            }
+        }
+        return total;
+    }
+
     private long computeBalance(AssetAccountQueryItem account) {
         String type = account.getAccountType();
         if (("STOCK".equals(type) || "FUND".equals(type)) && account.getValuationAmount() != null) {
@@ -115,11 +151,6 @@ public class AssetSummaryServiceImpl implements AssetSummaryService {
         return account.getCurrentValue() != null ? account.getCurrentValue() : 0L;
     }
 
-    /**
-     * 내부 account_type → API 응답 accountType
-     * DEMAND(입출금), DEPOSIT(정기예금) → DEPOSIT
-     * SAVINGS(적금), SUBSCRIPTION(청약) → SAVINGS
-     */
     private String toResponseAccountType(String accountType) {
         switch (accountType) {
             case "DEMAND":

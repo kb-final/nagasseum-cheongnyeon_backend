@@ -1,6 +1,6 @@
 package com.team.independence.asset.service;
 
-import com.team.independence.asset.dto.SyncJobResponse;
+import com.team.independence.asset.dto.sync.SyncJobResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
