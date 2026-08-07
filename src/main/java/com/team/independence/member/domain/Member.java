@@ -17,6 +17,8 @@ public class Member {
     private LocalDate birthDate;
     private IncomeBracket incomeBracket;
     private LocalDateTime incomeBracketUpdatedAt;
+    private Long monthlyIncome;
+    private OccupationType occupationType;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

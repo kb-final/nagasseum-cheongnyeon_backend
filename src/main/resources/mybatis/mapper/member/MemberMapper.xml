@@ -15,6 +15,8 @@
         <result property="birthDate"              column="birth_date"/>
         <result property="incomeBracket"          column="income_bracket"/>
         <result property="incomeBracketUpdatedAt" column="income_bracket_updated_at"/>
+        <result property="monthlyIncome"          column="monthly_income"/>
+        <result property="occupationType"         column="occupation_type"/>
         <result property="createdAt"              column="created_at"/>
         <result property="updatedAt"              column="updated_at"/>
     </resultMap>
@@ -22,6 +24,7 @@
     <select id="findById" parameterType="long" resultMap="memberMap">
         SELECT id, kakao_id, nickname, birth_date,
                income_bracket, income_bracket_updated_at,
+               monthly_income, occupation_type,
                created_at, updated_at
           FROM member
          WHERE id = #{id}
@@ -30,6 +33,7 @@
     <select id="findByKakaoId" parameterType="string" resultMap="memberMap">
         SELECT id, kakao_id, nickname, birth_date,
                income_bracket, income_bracket_updated_at,
+               monthly_income, occupation_type,
                created_at, updated_at
           FROM member
          WHERE kakao_id = #{kakaoId}
@@ -43,6 +47,8 @@
                 income_bracket = #{incomeBracket},
                 income_bracket_updated_at = NOW(),
             </if>
+            <if test="monthlyIncome != null">monthly_income = #{monthlyIncome},</if>
+            <if test="occupationType != null">occupation_type = #{occupationType},</if>
             updated_at = NOW()
         </set>
         WHERE id = #{id}

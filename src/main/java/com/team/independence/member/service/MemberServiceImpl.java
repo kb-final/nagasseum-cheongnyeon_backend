@@ -5,6 +5,7 @@ import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.member.domain.Agreement;
 import com.team.independence.member.domain.IncomeBracket;
 import com.team.independence.member.domain.Member;
+import com.team.independence.member.domain.OccupationType;
 import com.team.independence.member.dto.MemberProfileResponse;
 import com.team.independence.member.mapper.AgreementMapper;
 import com.team.independence.member.mapper.MemberMapper;
@@ -40,7 +41,8 @@ public class MemberServiceImpl implements MemberService {
 
     @Override
     @Transactional
-    public void updateMember(Long memberId, String nickname, IncomeBracket incomeBracket) {
+    public void updateMember(Long memberId, String nickname, IncomeBracket incomeBracket,
+                             Long monthlyIncome, OccupationType occupationType) {
         memberMapper.findById(memberId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
 
@@ -48,6 +50,8 @@ public class MemberServiceImpl implements MemberService {
                 .id(memberId)
                 .nickname(nickname)
                 .incomeBracket(incomeBracket)
+                .monthlyIncome(monthlyIncome)
+                .occupationType(occupationType)
                 .build();
         memberMapper.update(member);
     }

@@ -53,6 +53,8 @@ public enum ErrorCode {
     COMPARE_INVALID_RANGE("COMPARE_002", "비교 기준 범위가 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
     COMPARE_CONSENT_REQUIRED("COMPARE_003", "또래 비교 약관 동의가 필요합니다.", HttpStatus.FORBIDDEN),
     COMPARE_ASSET_REQUIRED("COMPARE_004", "자산 연동이 필요합니다.", HttpStatus.NOT_FOUND),
+    COMPARE_INCOME_REQUIRED("COMPARE_005", "월소득 정보를 먼저 입력해 주세요.", HttpStatus.BAD_REQUEST),
+    COMPARE_OCCUPATION_REQUIRED("COMPARE_006", "직업군 정보를 먼저 입력해 주세요.", HttpStatus.BAD_REQUEST),
 
     // ===== 정책 POLICY_xxx =====
     POLICY_NOT_FOUND("POLICY_001", "정책을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),

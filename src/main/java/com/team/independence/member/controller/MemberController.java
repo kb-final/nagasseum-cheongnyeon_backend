@@ -33,7 +33,8 @@ public class MemberController {
     public ApiResponse<Void> updateMe(
             @LoginMember Long memberId,
             @RequestBody MemberUpdateRequest request) {
-        memberService.updateMember(memberId, request.nickname(), request.incomeBracket());
+        memberService.updateMember(memberId, request.nickname(), request.incomeBracket(),
+                request.monthlyIncome(), request.occupationType());
         return ApiResponse.ok(null);
     }
 
