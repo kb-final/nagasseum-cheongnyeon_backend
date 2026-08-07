@@ -10,8 +10,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.team.independence.asset.dto.AssetNetWorthBreakdown;
-import com.team.independence.asset.service.AssetService;
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
+import com.team.independence.asset.service.AssetConnectionService;
 import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
@@ -40,7 +40,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class GoalServiceImplMarketTrendTest {
 
     @Mock RegionQueryService regionQueryService;
-    @Mock AssetService assetService;
+    @Mock AssetConnectionService assetConnectionService;
     @Mock AssetSummaryService assetSummaryService;
     @Mock RentMedianService rentMedianService;
     @Mock GoalMapper goalMapper;
@@ -55,7 +55,7 @@ class GoalServiceImplMarketTrendTest {
     @BeforeEach
     void setUp() {
         service = new GoalServiceImpl(
-                regionQueryService, assetService, assetSummaryService, rentMedianService,
+                regionQueryService, assetConnectionService, assetSummaryService, rentMedianService,
                 goalMapper, goalHousingMapper, goalMarketTrendCacheStore);
     }
 
@@ -112,7 +112,7 @@ class GoalServiceImplMarketTrendTest {
 
         assertThat(result).isSameAs(cached);
         verify(rentMedianService, never()).getMedian(any());
-        verify(assetService, never()).getNetWorthBreakdown(anyLong());
+        verify(assetSummaryService, never()).getNetWorthBreakdown(anyLong());
         verify(goalMarketTrendCacheStore, never()).save(any(), any());
     }
 
@@ -137,7 +137,7 @@ class GoalServiceImplMarketTrendTest {
         when(regionQueryService.resolveRegionName("11680")).thenReturn("서울 강남구");
         when(rentMedianService.getMedian(any(RentMedianRequest.class)))
                 .thenReturn(rentStats(5, 95_000_000L, "202607"));
-        when(assetService.getNetWorthBreakdown(MEMBER_ID))
+        when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID))
                 .thenReturn(AssetNetWorthBreakdown.builder()
                         .interestBearingAssets(0L)
                         .flatRecognizedAssets(200_000_000L)
@@ -198,7 +198,7 @@ class GoalServiceImplMarketTrendTest {
         when(regionQueryService.resolveRegionName("11680")).thenReturn("서울 강남구");
         when(rentMedianService.getMedian(any(RentMedianRequest.class)))
                 .thenReturn(rentStats(5, 1L, "202607"));
-        when(assetService.getNetWorthBreakdown(MEMBER_ID))
+        when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID))
                 .thenReturn(AssetNetWorthBreakdown.builder()
                         .interestBearingAssets(0L)
                         .flatRecognizedAssets(1_000_000_000L)
@@ -220,7 +220,7 @@ class GoalServiceImplMarketTrendTest {
         when(regionQueryService.resolveRegionName("11680")).thenReturn("서울 강남구");
         when(rentMedianService.getMedian(any(RentMedianRequest.class)))
                 .thenReturn(rentStats(5, 9_999_999_999L, "202607"));
-        when(assetService.getNetWorthBreakdown(MEMBER_ID))
+        when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID))
                 .thenReturn(AssetNetWorthBreakdown.builder()
                         .interestBearingAssets(0L)
                         .flatRecognizedAssets(0L)
@@ -242,7 +242,7 @@ class GoalServiceImplMarketTrendTest {
         when(regionQueryService.resolveRegionName("11680")).thenReturn("서울 강남구");
         when(rentMedianService.getMedian(any(RentMedianRequest.class)))
                 .thenReturn(rentStats(5, 10_000_000L, "202607"));
-        when(assetService.getNetWorthBreakdown(MEMBER_ID))
+        when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID))
                 .thenReturn(AssetNetWorthBreakdown.builder()
                         .interestBearingAssets(0L)
                         .flatRecognizedAssets(0L)

@@ -1,7 +1,7 @@
 package com.team.independence.asset.service;
 
-import com.team.independence.asset.domain.Institution;
-import com.team.independence.asset.dto.OrganizationResponse;
+import com.team.independence.asset.domain.codef.Institution;
+import com.team.independence.asset.dto.connection.OrganizationResponse;
 import com.team.independence.asset.mapper.InstitutionMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

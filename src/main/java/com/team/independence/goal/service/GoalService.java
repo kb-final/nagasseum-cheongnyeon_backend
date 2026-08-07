@@ -1,6 +1,6 @@
 package com.team.independence.goal.service;
 
-import com.team.independence.asset.dto.AssetNetWorthBreakdown;
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
 import com.team.independence.goal.domain.Goal;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;

@@ -1,0 +1,24 @@
+package com.team.independence.asset.domain.account;
+
+import lombok.*;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class LoanAccount {
+    private Long id;
+    private Long connectedInstitutionId;
+    private String loanName;  // 대출 상품명
+    private String accountDisplay;  // 표시용 계좌번호
+    private Long loanBalance;  // 대출 잔액
+    private LocalDate startDate;  // 대출 실행일
+    private LocalDate endDate;  // 대출 만기일
+    private String rawResponse;  // CODEF 원본 응답 (JSON)
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}

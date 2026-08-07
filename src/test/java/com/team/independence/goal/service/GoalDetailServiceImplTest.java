@@ -7,13 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.team.independence.asset.dto.AssetLinkRequest;
-import com.team.independence.asset.dto.AssetLinkResponse;
-import com.team.independence.asset.dto.AssetNetWorthBreakdown;
-import com.team.independence.asset.dto.CardAccountResponse;
-import com.team.independence.asset.dto.LinkedOrganizationResponse;
-import com.team.independence.asset.dto.UnlinkOrganizationResponse;
-import com.team.independence.asset.service.AssetService;
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
+import com.team.independence.asset.dto.summary.AssetSummaryResponse;
+import com.team.independence.asset.service.AssetConnectionService;
+import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.domain.Goal;
@@ -40,7 +37,7 @@ import org.junit.jupiter.api.Test;
 /**
  * 목표 상세 조회 조립 로직 테스트.
  *
- * <p>DB 없이 돈다. Mapper와 AssetService 자리에 직접 만든 가짜 구현을 끼워 넣어
+ * <p>DB 없이 돈다. Mapper와 서비스 자리에 직접 만든 가짜 구현을 끼워 넣어
  * 조회 결과를 마음대로 정해주고, 서비스가 그걸로 무엇을 만드는지만 본다.
  * pom.xml에 Mockito가 없어 공용 파일을 건드리지 않으려고 이렇게 했다.
  *
@@ -56,7 +53,8 @@ class GoalDetailServiceImplTest {
     private FakeGoalMapper goalMapper;
     private FakeGoalHousingMapper goalHousingMapper;
     private FakeSavingRecordMapper savingRecordMapper;
-    private FakeAssetService assetService;
+    private FakeAssetConnectionService assetConnectionService;
+    private FakeAssetSummaryService assetSummaryService;
     private GoalDetailServiceImpl service;
 
     @BeforeEach
@@ -64,12 +62,13 @@ class GoalDetailServiceImplTest {
         goalMapper = new FakeGoalMapper();
         goalHousingMapper = new FakeGoalHousingMapper();
         savingRecordMapper = new FakeSavingRecordMapper();
-        assetService = new FakeAssetService();
+        assetConnectionService = new FakeAssetConnectionService();
+        assetSummaryService = new FakeAssetSummaryService();
         // 소유권 검증과 도달 개월수 계산은 진짜 GoalServiceImpl이 담당한다.
         // 계산을 가짜로 바꾸면 forecasts 검증이 의미를 잃기 때문이다.
         // 그 외 의존성은 이 경로에서 쓰이지 않아 null로 둔다.
         service = new GoalDetailServiceImpl(
-                goalHousingMapper, savingRecordMapper, assetService,
+                goalHousingMapper, savingRecordMapper, assetConnectionService, assetSummaryService,
                 new GoalServiceImpl(null, null, null, null, goalMapper, null, null));
     }
 
@@ -126,8 +125,8 @@ class GoalDetailServiceImplTest {
     @Test
     @DisplayName("현재 자금은 이자 성장 자산과 원금 인정 자산의 합")
     void 현재자금은_순자산_합계() {
-        assetService.growingAssets = 30_000_000L;
-        assetService.fixedAssets = 20_000_000L;
+        assetSummaryService.growingAssets = 30_000_000L;
+        assetSummaryService.fixedAssets = 20_000_000L;
 
         assertEquals(50_000_000L, call().getProgress().getCurrentAmount().longValue());
     }
@@ -136,8 +135,8 @@ class GoalDetailServiceImplTest {
     @DisplayName("남은 금액과 달성률을 목표 금액 기준으로 계산한다")
     void 남은금액과_달성률() {
         goalMapper.goal.setTargetAmount(200_000_000L);
-        assetService.growingAssets = 50_000_000L;
-        assetService.fixedAssets = 0L;
+        assetSummaryService.growingAssets = 50_000_000L;
+        assetSummaryService.fixedAssets = 0L;
 
         GoalDetailResponse.Progress progress = call().getProgress();
 
@@ -149,8 +148,8 @@ class GoalDetailServiceImplTest {
     @DisplayName("목표를 넘겨도 남은 금액은 0, 달성률은 100을 넘지 않는다")
     void 초과달성해도_100을_넘지_않는다() {
         goalMapper.goal.setTargetAmount(100_000_000L);
-        assetService.growingAssets = 300_000_000L;
-        assetService.fixedAssets = 0L;
+        assetSummaryService.growingAssets = 300_000_000L;
+        assetSummaryService.fixedAssets = 0L;
 
         GoalDetailResponse.Progress progress = call().getProgress();
 
@@ -162,8 +161,8 @@ class GoalDetailServiceImplTest {
     @DisplayName("순자산이 마이너스여도 달성률은 0 밑으로 내려가지 않는다")
     void 순자산이_마이너스여도_0() {
         goalMapper.goal.setTargetAmount(100_000_000L);
-        assetService.growingAssets = 0L;
-        assetService.fixedAssets = -5_000_000L; // 대출이 자산보다 많은 경우
+        assetSummaryService.growingAssets = 0L;
+        assetSummaryService.fixedAssets = -5_000_000L; // 대출이 자산보다 많은 경우
 
         assertEquals(0.0, call().getProgress().getAchievementRate(), 0.0001);
     }
@@ -172,8 +171,8 @@ class GoalDetailServiceImplTest {
     @DisplayName("달성률은 소수 둘째 자리까지만 내려간다")
     void 달성률은_소수_둘째자리() {
         goalMapper.goal.setTargetAmount(300_000_000L);
-        assetService.growingAssets = 100_000_000L;
-        assetService.fixedAssets = 0L;
+        assetSummaryService.growingAssets = 100_000_000L;
+        assetSummaryService.fixedAssets = 0L;
 
         // 33.3333...% -> 33.33
         assertEquals(33.33, call().getProgress().getAchievementRate(), 0.0001);
@@ -285,8 +284,8 @@ class GoalDetailServiceImplTest {
     @DisplayName("이미 달성했으면 예상 시점은 없고 차이는 0")
     void 이미_달성했으면_시점이_없다() {
         goalMapper.goal.setTargetAmount(100_000_000L);
-        assetService.growingAssets = 200_000_000L;
-        assetService.fixedAssets = 0L;
+        assetSummaryService.growingAssets = 200_000_000L;
+        assetSummaryService.fixedAssets = 0L;
         savingRecordMapper.records = threeRecords();
 
         for (GoalForecastResponse forecast : call().getForecasts()) {
@@ -345,7 +344,7 @@ class GoalDetailServiceImplTest {
 
         call();
 
-        assertEquals(1, assetService.netWorthCalls, "forecasts 세 개를 만들어도 자산 조회는 1회");
+        assertEquals(1, assetSummaryService.netWorthCalls, "forecasts 세 개를 만들어도 자산 조회는 1회");
         assertEquals(1, savingRecordMapper.calls);
     }
 
@@ -486,7 +485,32 @@ class GoalDetailServiceImplTest {
         }
     }
 
-    private static class FakeAssetService implements AssetService {
+    private static class FakeAssetConnectionService implements AssetConnectionService {
+
+        @Override
+        public com.team.independence.asset.dto.connection.AssetLinkResponse linkAccount(
+                Long memberId, com.team.independence.asset.dto.connection.AssetLinkRequest request) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<com.team.independence.asset.dto.connection.LinkedOrganizationResponse> getConnections(Long memberId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public com.team.independence.asset.dto.connection.UnlinkOrganizationResponse unlinkOrganization(
+                Long memberId, String organizationCode) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void validateConnectedAccountExists(Long memberId) {
+            // 연동돼 있다고 본다.
+        }
+    }
+
+    private static class FakeAssetSummaryService implements AssetSummaryService {
 
         private long growingAssets = 100_000_000L;
         private long fixedAssets = 20_000_000L;
@@ -502,27 +526,12 @@ class GoalDetailServiceImplTest {
         }
 
         @Override
-        public void validateConnectedAccountExists(Long memberId) {
-            // 연동돼 있다고 본다.
-        }
-
-        @Override
-        public AssetLinkResponse linkAccount(Long memberId, AssetLinkRequest request) {
+        public AssetSummaryResponse getSummary(Long memberId) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public List<LinkedOrganizationResponse> getConnections(Long memberId) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public UnlinkOrganizationResponse unlinkOrganization(Long memberId, String organizationCode) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public List<CardAccountResponse> getCardList(Long memberId) {
+        public void updateMonthlySavings(Long memberId, Long monthlySavings) {
             throw new UnsupportedOperationException();
         }
     }

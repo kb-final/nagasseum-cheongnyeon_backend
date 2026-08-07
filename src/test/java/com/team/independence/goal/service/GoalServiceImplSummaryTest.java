@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
-import com.team.independence.asset.dto.AssetNetWorthBreakdown;
-import com.team.independence.asset.service.AssetService;
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
+import com.team.independence.asset.service.AssetConnectionService;
 import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
@@ -31,7 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class GoalServiceImplSummaryTest {
 
     @Mock RegionQueryService regionQueryService;
-    @Mock AssetService assetService;
+    @Mock AssetConnectionService assetConnectionService;
     @Mock AssetSummaryService assetSummaryService;
     @Mock RentMedianService rentMedianService;
     @Mock GoalMapper goalMapper;
@@ -46,7 +46,7 @@ class GoalServiceImplSummaryTest {
     @BeforeEach
     void setUp() {
         service = new GoalServiceImpl(
-                regionQueryService, assetService, assetSummaryService, rentMedianService,
+                regionQueryService, assetConnectionService, assetSummaryService, rentMedianService,
                 goalMapper, goalHousingMapper, goalMarketTrendCacheStore);
     }
 
@@ -89,7 +89,7 @@ class GoalServiceImplSummaryTest {
         when(goalMapper.findActiveByMemberId(MEMBER_ID)).thenReturn(goal);
         when(goalHousingMapper.findByGoalId(GOAL_ID)).thenReturn(goalHousing());
         when(regionQueryService.resolveRegionName("11680")).thenReturn("서울 강남구");
-        when(assetService.getNetWorthBreakdown(MEMBER_ID))
+        when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID))
                 .thenReturn(AssetNetWorthBreakdown.builder()
                         .interestBearingAssets(0L)
                         .flatRecognizedAssets(20_000_000L)
@@ -143,7 +143,7 @@ class GoalServiceImplSummaryTest {
         when(goalMapper.findActiveByMemberId(MEMBER_ID)).thenReturn(goal);
         when(goalHousingMapper.findByGoalId(GOAL_ID)).thenReturn(goalHousing());
         when(regionQueryService.resolveRegionName("11680")).thenReturn("서울 강남구");
-        when(assetService.getNetWorthBreakdown(MEMBER_ID))
+        when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID))
                 .thenReturn(AssetNetWorthBreakdown.builder()
                         .interestBearingAssets(0L)
                         .flatRecognizedAssets(80_000_000L)
@@ -163,7 +163,7 @@ class GoalServiceImplSummaryTest {
         when(goalMapper.findActiveByMemberId(MEMBER_ID)).thenReturn(goal);
         when(goalHousingMapper.findByGoalId(GOAL_ID)).thenReturn(goalHousing());
         when(regionQueryService.resolveRegionName("11680")).thenReturn("서울 강남구");
-        when(assetService.getNetWorthBreakdown(MEMBER_ID))
+        when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID))
                 .thenReturn(AssetNetWorthBreakdown.builder()
                         .interestBearingAssets(0L)
                         .flatRecognizedAssets(20_000_000L)
@@ -181,7 +181,7 @@ class GoalServiceImplSummaryTest {
         when(goalMapper.findActiveByMemberId(MEMBER_ID)).thenReturn(goal);
         when(goalHousingMapper.findByGoalId(GOAL_ID)).thenReturn(goalHousing());
         when(regionQueryService.resolveRegionName("11680")).thenReturn("서울 강남구");
-        when(assetService.getNetWorthBreakdown(MEMBER_ID))
+        when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID))
                 .thenReturn(AssetNetWorthBreakdown.builder()
                         .interestBearingAssets(0L)
                         .flatRecognizedAssets(20_000_000L)

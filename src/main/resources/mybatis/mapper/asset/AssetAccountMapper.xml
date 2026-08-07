@@ -4,7 +4,7 @@
 
 <mapper namespace="com.team.independence.asset.mapper.AssetAccountMapper">
 
-    <resultMap id="assetAccountMap" type="com.team.independence.asset.domain.AssetAccount">
+    <resultMap id="assetAccountMap" type="com.team.independence.asset.domain.account.AssetAccount">
         <id     property="id"                       column="id"/>
         <result property="connectedInstitutionId"   column="connected_institution_id"/>
         <result property="accountType"              column="account_type"/>
@@ -24,7 +24,7 @@
         <result property="updatedAt"                column="updated_at"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.team.independence.asset.domain.AssetAccount"
+    <insert id="insert" parameterType="com.team.independence.asset.domain.account.AssetAccount"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO asset_account
             (connected_institution_id, account_type, asset_category,
@@ -62,7 +62,7 @@
          WHERE connected_institution_id = #{connectedInstitutionId}
     </select>
 
-    <resultMap id="assetAccountQueryMap" type="com.team.independence.asset.dto.AssetAccountQueryItem">
+    <resultMap id="assetAccountQueryMap" type="com.team.independence.asset.dto.account.AssetAccountQueryItem">
         <result property="id"               column="id"/>
         <result property="institutionName"  column="institution_name"/>
         <result property="accountType"      column="account_type"/>
@@ -87,7 +87,7 @@
          ORDER BY aa.asset_category, i.name
     </select>
 
-    <resultMap id="assetAccountDetailMap" type="com.team.independence.asset.dto.AssetAccountDetailItem">
+    <resultMap id="assetAccountDetailMap" type="com.team.independence.asset.dto.account.AssetAccountDetailItem">
         <result property="institutionName"  column="institution_name"/>
         <result property="accountType"      column="account_type"/>
         <result property="assetCategory"    column="asset_category"/>
@@ -114,6 +114,36 @@
           JOIN connected_account ca ON ci.connected_account_id = ca.id
           JOIN institution i ON ci.institution_code = i.code
          WHERE ca.member_id = #{memberId}
+         ORDER BY i.name, aa.asset_category
+    </select>
+
+    <select id="findBankAccountDetailsByMemberId" parameterType="long" resultMap="assetAccountDetailMap">
+        SELECT i.name AS institution_name,
+               aa.account_type, aa.asset_category, aa.account_display, aa.product_name,
+               aa.current_value, aa.valuation_amount, aa.deposit_received,
+               aa.valuation_pl, aa.purchase_amount, aa.earnings_rate,
+               aa.start_date, aa.maturity_date
+          FROM asset_account aa
+          JOIN connected_institution ci ON aa.connected_institution_id = ci.id
+          JOIN connected_account ca ON ci.connected_account_id = ca.id
+          JOIN institution i ON ci.institution_code = i.code
+         WHERE ca.member_id = #{memberId}
+           AND i.institution_type = 'BANK'
+         ORDER BY i.name, aa.asset_category
+    </select>
+
+    <select id="findStockAccountDetailsByMemberId" parameterType="long" resultMap="assetAccountDetailMap">
+        SELECT i.name AS institution_name,
+               aa.account_type, aa.asset_category, aa.account_display, aa.product_name,
+               aa.current_value, aa.valuation_amount, aa.deposit_received,
+               aa.valuation_pl, aa.purchase_amount, aa.earnings_rate,
+               aa.start_date, aa.maturity_date
+          FROM asset_account aa
+          JOIN connected_institution ci ON aa.connected_institution_id = ci.id
+          JOIN connected_account ca ON ci.connected_account_id = ca.id
+          JOIN institution i ON ci.institution_code = i.code
+         WHERE ca.member_id = #{memberId}
+           AND i.institution_type = 'SECURITIES'
          ORDER BY i.name, aa.asset_category
     </select>
 

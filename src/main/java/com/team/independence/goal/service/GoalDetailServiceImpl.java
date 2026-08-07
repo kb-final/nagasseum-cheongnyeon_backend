@@ -1,7 +1,8 @@
 package com.team.independence.goal.service;
 
-import com.team.independence.asset.dto.AssetNetWorthBreakdown;
-import com.team.independence.asset.service.AssetService;
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
+import com.team.independence.asset.service.AssetConnectionService;
+import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.goal.domain.Goal;
 import com.team.independence.goal.domain.GoalHousing;
 import com.team.independence.goal.domain.SavingBasis;
@@ -31,7 +32,8 @@ public class GoalDetailServiceImpl implements GoalDetailService {
 
     private final GoalHousingMapper goalHousingMapper;
     private final SavingRecordMapper savingRecordMapper;
-    private final AssetService assetService;
+    private final AssetConnectionService assetConnectionService;
+    private final AssetSummaryService assetSummaryService;
     private final GoalService goalService; // 목표 조회·소유권 검증, 도달 개월수 계산
 
     @Override
@@ -39,8 +41,8 @@ public class GoalDetailServiceImpl implements GoalDetailService {
         Goal goal = goalService.findOwnedGoal(memberId, goalId);
         GoalHousing housing = goalHousingMapper.findByGoalId(goalId);
 
-        assetService.validateConnectedAccountExists(memberId);
-        AssetNetWorthBreakdown netWorth = assetService.getNetWorthBreakdown(memberId);
+        assetConnectionService.validateConnectedAccountExists(memberId);
+        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
         long currentAmount = netWorth.getInterestBearingAssets() + netWorth.getFlatRecognizedAssets();
 
         long targetAmount = goal.getTargetAmount();

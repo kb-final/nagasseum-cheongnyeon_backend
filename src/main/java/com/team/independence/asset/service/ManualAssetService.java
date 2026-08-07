@@ -1,7 +1,7 @@
 package com.team.independence.asset.service;
 
-import com.team.independence.asset.dto.ManualAssetRequest;
-import com.team.independence.asset.dto.ManualAssetResponse;
+import com.team.independence.asset.dto.manual.ManualAssetRequest;
+import com.team.independence.asset.dto.manual.ManualAssetResponse;
 
 import java.util.List;
 

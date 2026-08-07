@@ -4,7 +4,7 @@
 
 <mapper namespace="com.team.independence.asset.mapper.LoanAccountMapper">
 
-    <resultMap id="loanAccountMap" type="com.team.independence.asset.domain.LoanAccount">
+    <resultMap id="loanAccountMap" type="com.team.independence.asset.domain.account.LoanAccount">
         <id     property="id"                       column="id"/>
         <result property="connectedInstitutionId"   column="connected_institution_id"/>
         <result property="loanName"                 column="loan_name"/>
@@ -17,7 +17,7 @@
         <result property="updatedAt"                column="updated_at"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.team.independence.asset.domain.LoanAccount"
+    <insert id="insert" parameterType="com.team.independence.asset.domain.account.LoanAccount"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO loan_account
             (connected_institution_id, loan_name, account_display, loan_balance, raw_response)
@@ -47,7 +47,7 @@
          WHERE connected_institution_id = #{connectedInstitutionId}
     </select>
 
-    <resultMap id="loanAccountQueryMap" type="com.team.independence.asset.dto.LoanAccountQueryItem">
+    <resultMap id="loanAccountQueryMap" type="com.team.independence.asset.dto.account.LoanAccountQueryItem">
         <result property="id"              column="id"/>
         <result property="institutionName" column="institution_name"/>
         <result property="loanName"        column="loan_name"/>
@@ -66,7 +66,7 @@
          ORDER BY i.name
     </select>
 
-    <resultMap id="loanAccountDetailMap" type="com.team.independence.asset.dto.LoanAccountDetailItem">
+    <resultMap id="loanAccountDetailMap" type="com.team.independence.asset.dto.account.LoanAccountDetailItem">
         <result property="institutionName"  column="institution_name"/>
         <result property="loanName"         column="loan_name"/>
         <result property="accountDisplay"   column="account_display"/>

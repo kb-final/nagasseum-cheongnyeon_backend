@@ -1,8 +1,8 @@
 package com.team.independence.asset.service;
 
-import com.team.independence.asset.domain.ManualAsset;
-import com.team.independence.asset.dto.ManualAssetRequest;
-import com.team.independence.asset.dto.ManualAssetResponse;
+import com.team.independence.asset.domain.manual.ManualAsset;
+import com.team.independence.asset.dto.manual.ManualAssetRequest;
+import com.team.independence.asset.dto.manual.ManualAssetResponse;
 import com.team.independence.asset.mapper.ManualAssetMapper;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
