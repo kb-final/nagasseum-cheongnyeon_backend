@@ -46,6 +46,13 @@ public class GoalController {
         return ApiResponse.ok(goalService.createGoal(memberId, request));
     }
 
+    @GetMapping("/{goalId}")
+    public ApiResponse<GoalResponse> getGoal(
+            @LoginMember Long memberId,
+            @PathVariable Long goalId) {
+        return ApiResponse.ok(goalService.getGoal(memberId, goalId));
+    }
+
     @PutMapping("/{goalId}")
     public ApiResponse<GoalResponse> updateGoal(
             @LoginMember Long memberId,

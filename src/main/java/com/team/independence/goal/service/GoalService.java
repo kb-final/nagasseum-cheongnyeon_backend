@@ -17,6 +17,13 @@ public interface GoalService {
     GoalResponse createGoal(Long memberId, GoalSaveRequest request);
 
     /**
+     * 목표 하나를 조회한다. 수정 화면의 폼을 기존 값으로 채우는 용도라 생성·수정과 같은 응답을 쓴다.
+     * 목표가 없으면 GOAL_NOT_FOUND, 다른 회원의 목표면 GOAL_FORBIDDEN.
+     * 상태는 보지 않는다 — 삭제(ARCHIVED)하거나 달성(ACHIEVED)한 목표도 조회된다.
+     */
+    GoalResponse getGoal(Long memberId, Long goalId);
+
+    /**
      * 목표의 금액·시점·월 저축액과 주거 희망 조건을 통째로 교체한다.
      * 목표가 없으면 GOAL_NOT_FOUND, 다른 회원의 목표면 GOAL_FORBIDDEN,
      * 진행 중이 아닌 목표면 GOAL_NOT_ACTIVE.

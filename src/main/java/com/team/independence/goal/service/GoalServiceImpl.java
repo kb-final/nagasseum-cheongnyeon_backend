@@ -211,6 +211,18 @@ public class GoalServiceImpl implements GoalService {
     }
 
     /**
+     * 목표 하나를 조회한다. 수정 화면이 폼을 채우는 데 쓰므로 응답은 생성·수정과 같은 GoalResponse다.
+     * 상태로 거르지 않는다 — 삭제는 행을 지우지 않는 소프트 삭제고, 지난 목표 열람을 막을 이유가 없다.
+     * 수정 가능 여부는 updateGoal의 GOAL_NOT_ACTIVE가 판정한다.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public GoalResponse getGoal(Long memberId, Long goalId) {
+        Goal goal = findOwnedGoal(memberId, goalId);
+        return toGoalResponse(goal, goalHousingMapper.findByGoalId(goalId));
+    }
+
+    /**
      * 목표의 조건을 통째로 교체한다. 저장 계약은 생성과 같다 — 프론트가 진단을 다시 호출해 받은
      * targetAmount/targetRentMiddleAmount를 실어 보내면 서버는 재계산 없이 그대로 고정 저장한다.
      * 이미 끝난(ACHIEVED/ARCHIVED) 목표는 수정할 수 없다.
