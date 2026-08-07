@@ -1,4 +1,4 @@
-package com.team.independence.asset.domain;
+package com.team.independence.asset.domain.codef;
 
 import lombok.*;
 
