@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.team.independence.asset.dto.AssetLinkRequest;
 import com.team.independence.asset.dto.AssetLinkResponse;
 import com.team.independence.asset.dto.AssetNetWorthBreakdown;
+import com.team.independence.asset.dto.CardAccountResponse;
 import com.team.independence.asset.dto.LinkedOrganizationResponse;
 import com.team.independence.asset.dto.UnlinkOrganizationResponse;
 import com.team.independence.asset.service.AssetService;
@@ -430,6 +431,16 @@ class GoalDetailServiceImplTest {
         public List<Long> findAllActiveGoalIds() {
             throw new UnsupportedOperationException();
         }
+
+        @Override
+        public int update(Goal goal) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int archive(Long goalId, Long memberId) {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private static class FakeGoalHousingMapper implements GoalHousingMapper {
@@ -454,6 +465,11 @@ class GoalDetailServiceImplTest {
 
         @Override
         public void insert(GoalHousing goalHousing) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int update(GoalHousing goalHousing) {
             throw new UnsupportedOperationException();
         }
     }
@@ -502,6 +518,11 @@ class GoalDetailServiceImplTest {
 
         @Override
         public UnlinkOrganizationResponse unlinkOrganization(Long memberId, String organizationCode) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<CardAccountResponse> getCardList(Long memberId) {
             throw new UnsupportedOperationException();
         }
     }

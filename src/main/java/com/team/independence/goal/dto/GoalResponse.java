@@ -24,4 +24,5 @@ public class GoalResponse {
     private Long targetAmount;
     private Long targetRentMiddleAmount;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

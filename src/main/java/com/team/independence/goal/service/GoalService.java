@@ -2,19 +2,33 @@ package com.team.independence.goal.service;
 
 import com.team.independence.asset.dto.AssetNetWorthBreakdown;
 import com.team.independence.goal.domain.Goal;
-import com.team.independence.goal.dto.GoalCreateRequest;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
 import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalResponse;
+import com.team.independence.goal.dto.GoalSaveRequest;
 import com.team.independence.goal.dto.GoalSummaryResponse;
 
 public interface GoalService {
     GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request);
 
     /** 진단 결과를 목표로 저장한다. 이미 ACTIVE 목표가 있으면 GOAL_ALREADY_EXISTS로 거부한다. */
-    GoalResponse createGoal(Long memberId, GoalCreateRequest request);
+    GoalResponse createGoal(Long memberId, GoalSaveRequest request);
+
+    /**
+     * 목표의 금액·시점·월 저축액과 주거 희망 조건을 통째로 교체한다.
+     * 목표가 없으면 GOAL_NOT_FOUND, 다른 회원의 목표면 GOAL_FORBIDDEN,
+     * 진행 중이 아닌 목표면 GOAL_NOT_ACTIVE.
+     */
+    GoalResponse updateGoal(Long memberId, Long goalId, GoalSaveRequest request);
+
+    /**
+     * 목표를 삭제한다. 실제로는 status를 ARCHIVED로 내리는 소프트 삭제라 저축 기록과 또래 비교
+     * 스냅샷은 그대로 남는다. 목표가 없으면 GOAL_NOT_FOUND, 다른 회원의 목표면 GOAL_FORBIDDEN,
+     * 이미 삭제했거나 달성한 목표면 GOAL_NOT_ACTIVE.
+     */
+    void deleteGoal(Long memberId, Long goalId);
 
     /**
      * 목표를 찾고 요청자가 소유자인지 확인한다.

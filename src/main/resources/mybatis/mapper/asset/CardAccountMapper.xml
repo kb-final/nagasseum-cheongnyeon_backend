@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.asset.mapper.CardAccountMapper">
+
+    <resultMap id="cardAccountMap" type="com.team.independence.asset.domain.CardAccount">
+        <id     property="id"                       column="id"/>
+        <result property="connectedInstitutionId"   column="connected_institution_id"/>
+        <result property="cardNo"                   column="card_no"/>
+        <result property="isSleep"                  column="is_sleep"/>
+        <result property="cardName"                 column="card_name"/>
+        <result property="cardType"                 column="card_type"/>
+        <result property="isTraffic"                column="is_traffic"/>
+        <result property="imageLink"                column="image_link"/>
+        <result property="issueDate"                column="issue_date"/>
+        <result property="validPeriod"              column="valid_period"/>
+        <result property="state"                    column="state"/>
+        <result property="rawResponse"              column="raw_response"/>
+        <result property="createdAt"                column="created_at"/>
+        <result property="updatedAt"                column="updated_at"/>
+    </resultMap>
+
+    <insert id="insertAll">
+        INSERT INTO card_account
+            (connected_institution_id, card_no, is_sleep, card_name,
+             card_type, is_traffic, image_link, issue_date, valid_period, state, raw_response)
+        VALUES
+        <foreach collection="list" item="c" separator=",">
+            (#{c.connectedInstitutionId}, #{c.cardNo}, #{c.isSleep}, #{c.cardName},
+             #{c.cardType}, #{c.isTraffic}, #{c.imageLink}, #{c.issueDate}, #{c.validPeriod}, #{c.state}, #{c.rawResponse})
+        </foreach>
+    </insert>
+
+    <delete id="deleteByConnectedInstitutionId" parameterType="long">
+        DELETE FROM card_account WHERE connected_institution_id = #{connectedInstitutionId}
+    </delete>
+
+    <select id="findByMemberId" parameterType="long" resultMap="cardAccountMap">
+        SELECT ca.id, ca.connected_institution_id,
+               ca.card_no, ca.is_sleep, ca.card_name, ca.card_type,
+               ca.is_traffic, ca.image_link, ca.issue_date, ca.valid_period,
+               ca.state, ca.created_at, ca.updated_at
+          FROM card_account ca
+          JOIN connected_institution ci ON ca.connected_institution_id = ci.id
+          JOIN connected_account coa ON ci.connected_account_id = coa.id
+         WHERE coa.member_id = #{memberId}
+         ORDER BY ci.institution_code, ca.card_name
+    </select>
+
+</mapper>

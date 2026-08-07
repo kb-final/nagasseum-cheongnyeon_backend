@@ -20,6 +20,7 @@ public class AssetSyncResponse {
         private boolean success;
         private int assetAccountCount;
         private int loanAccountCount;
+        private int cardAccountCount;
         private String errorCode;
         private String errorMessage;
     }

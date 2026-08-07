@@ -55,6 +55,14 @@ public class GoalMarketTrendCacheStore {
         }
     }
 
+    /**
+     * 캐시된 시세 변화를 지운다. 캐시 값에 목표 금액·최초 중앙값·주거 조건이 모두 들어 있어
+     * 목표가 수정되면 그대로 stale해지므로, 다음 조회 때 새 조건으로 다시 계산되도록 무효화한다.
+     */
+    public void delete(Long goalId) {
+        redisTemplate.delete(key(goalId));
+    }
+
     private String key(Long goalId) {
         return KEY_PREFIX + goalId;
     }

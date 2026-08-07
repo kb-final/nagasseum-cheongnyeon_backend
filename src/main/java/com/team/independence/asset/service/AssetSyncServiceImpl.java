@@ -3,6 +3,7 @@ package com.team.independence.asset.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team.independence.asset.domain.AssetAccount;
+import com.team.independence.asset.domain.CardAccount;
 import com.team.independence.asset.domain.ConnectedAccount;
 import com.team.independence.asset.domain.ConnectedInstitution;
 import com.team.independence.asset.domain.LoanAccount;
@@ -12,6 +13,7 @@ import com.team.independence.asset.dto.SyncJobStatusResponse;
 import com.team.independence.asset.domain.AssetSummary;
 import com.team.independence.asset.mapper.AssetAccountMapper;
 import com.team.independence.asset.mapper.AssetSummaryMapper;
+import com.team.independence.asset.mapper.CardAccountMapper;
 import com.team.independence.asset.mapper.ConnectedAccountMapper;
 import com.team.independence.asset.mapper.ConnectedInstitutionMapper;
 import com.team.independence.asset.mapper.InstitutionMapper;
@@ -26,6 +28,8 @@ import com.team.independence.external.codef.CodefTokenManager;
 import com.team.independence.external.codef.dto.CodefBankAccountResponse;
 import com.team.independence.external.codef.dto.CodefBankAccountResponse.CodefDepositItem;
 import com.team.independence.external.codef.dto.CodefBankAccountResponse.CodefLoanItem;
+import com.team.independence.external.codef.dto.CodefCardResponse;
+import com.team.independence.external.codef.dto.CodefCardResponse.CodefCardItem;
 import com.team.independence.external.codef.dto.CodefStockAccountResponse;
 import com.team.independence.external.codef.dto.CodefStockAccountResponse.CodefStockAccountItem;
 import com.team.independence.external.codef.dto.CodefStockFinancialAssetsResponse;
@@ -49,6 +53,7 @@ public class AssetSyncServiceImpl implements AssetSyncService {
 
     private static final String BUSINESS_TYPE_STOCK = "ST";
     private static final String BUSINESS_TYPE_BANK = "BK";
+    private static final String BUSINESS_TYPE_CARD = "CD";
 
     private static final String DEPOSIT_CODE_DEMAND = "11";
     private static final String DEPOSIT_CODE_SAVINGS = "12";
@@ -66,6 +71,7 @@ public class AssetSyncServiceImpl implements AssetSyncService {
     private final ConnectedInstitutionMapper connectedInstitutionMapper;
     private final InstitutionMapper institutionMapper;
     private final AssetAccountMapper assetAccountMapper;
+    private final CardAccountMapper cardAccountMapper;
     private final LoanAccountMapper loanAccountMapper;
     private final AssetSummaryMapper assetSummaryMapper;
     private final CodefClient codefClient;
@@ -179,11 +185,62 @@ public class AssetSyncServiceImpl implements AssetSyncService {
             if (BUSINESS_TYPE_STOCK.equals(businessType)) {
                 return syncStockInstitution(institution, connectedId, accessToken, institutionCode, orgName);
             }
+            if (BUSINESS_TYPE_CARD.equals(businessType)) {
+                return syncCardInstitution(institution, connectedId, birthDate, accessToken, institutionCode, orgName);
+            }
             return syncBankInstitution(institution, connectedId, birthDate, accessToken, institutionCode, orgName);
         } catch (Exception e) {
             log.error("계좌 동기화 실패: org={}", institutionCode, e);
             return recordFailure(institution, orgName, "SYNC_ERROR", e.getMessage());
         }
+    }
+
+    private InstitutionSyncResult syncCardInstitution(ConnectedInstitution institution,
+                                                       String connectedId, String birthDate,
+                                                       String accessToken,
+                                                       String institutionCode, String orgName) {
+        CodefCardResponse response =
+                codefClient.getCardList(accessToken, connectedId, institutionCode, "", "", birthDate);
+
+        if (!response.isSuccess()) {
+            return recordFailure(institution, orgName, response.getResultCode(), response.getResultMessage());
+        }
+
+        List<CardAccount> cardAccounts = new ArrayList<>();
+        for (CodefCardItem item : response.getCards()) {
+            cardAccounts.add(CardAccount.builder()
+                    .connectedInstitutionId(institution.getId())
+                    .cardNo(item.getResCardNo())
+                    .isSleep(item.getResSleepYN() != null ? item.getResSleepYN() : "N")
+                    .cardName(item.getResCardName())
+                    .cardType(item.getResCardType())
+                    .isTraffic(item.getResTrafficYN() != null ? item.getResTrafficYN() : "N")
+                    .imageLink(item.getResImageLink())
+                    .issueDate(parseDate(item.getResIssueDate()))
+                    .validPeriod(item.getResValidPeriod())
+                    .state(item.getResState())
+                    .rawResponse(toJson(item))
+                    .build());
+        }
+
+        cardAccountMapper.deleteByConnectedInstitutionId(institution.getId());
+        if (!cardAccounts.isEmpty()) cardAccountMapper.insertAll(cardAccounts);
+
+        institution.setStatus("ACTIVE");
+        institution.setLastSyncedAt(LocalDateTime.now());
+        institution.setLastAttemptedAt(LocalDateTime.now());
+        institution.setLastErrorCode(null);
+        institution.setLastErrorMessage(null);
+        connectedInstitutionMapper.updateSyncResult(institution);
+
+        log.info("카드 동기화 완료: org={}, 카드수={}", institutionCode, cardAccounts.size());
+
+        return InstitutionSyncResult.builder()
+                .organizationCode(institutionCode)
+                .organizationName(orgName)
+                .success(true)
+                .cardAccountCount(cardAccounts.size())
+                .build();
     }
 
     private InstitutionSyncResult syncBankInstitution(ConnectedInstitution institution,
@@ -464,7 +521,8 @@ public class AssetSyncServiceImpl implements AssetSyncService {
         institution.setStatus("ERROR");
         institution.setLastAttemptedAt(LocalDateTime.now());
         institution.setLastErrorCode(errorCode);
-        institution.setLastErrorMessage(errorMessage);
+        institution.setLastErrorMessage(errorMessage != null && errorMessage.length() > 1000
+                ? errorMessage.substring(0, 1000) : errorMessage);
         connectedInstitutionMapper.updateSyncResult(institution);
 
         return InstitutionSyncResult.builder()
