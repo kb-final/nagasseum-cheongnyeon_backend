@@ -4,7 +4,7 @@
 
 <mapper namespace="com.team.independence.asset.mapper.ConnectedInstitutionMapper">
 
-    <resultMap id="connectedInstitutionMap" type="com.team.independence.asset.domain.ConnectedInstitution">
+    <resultMap id="connectedInstitutionMap" type="com.team.independence.asset.domain.codef.ConnectedInstitution">
         <id     property="id"                   column="id"/>
         <result property="connectedAccountId"   column="connected_account_id"/>
         <result property="institutionCode"      column="institution_code"/>
@@ -17,7 +17,7 @@
         <result property="updatedAt"            column="updated_at"/>
     </resultMap>
 
-    <resultMap id="linkedOrgMap" type="com.team.independence.asset.dto.LinkedOrganizationResponse">
+    <resultMap id="linkedOrgMap" type="com.team.independence.asset.dto.connection.LinkedOrganizationResponse">
         <result property="organizationCode" column="institution_code"/>
         <result property="organizationName" column="name"/>
         <result property="businessType"     column="business_type"/>
@@ -33,7 +33,7 @@
          ORDER BY created_at
     </select>
 
-    <update id="updateSyncResult" parameterType="com.team.independence.asset.domain.ConnectedInstitution">
+    <update id="updateSyncResult" parameterType="com.team.independence.asset.domain.codef.ConnectedInstitution">
         UPDATE connected_institution
            SET status              = #{status},
                last_synced_at      = #{lastSyncedAt},
@@ -43,7 +43,7 @@
          WHERE id = #{id}
     </update>
 
-    <insert id="insert" parameterType="com.team.independence.asset.domain.ConnectedInstitution">
+    <insert id="insert" parameterType="com.team.independence.asset.domain.codef.ConnectedInstitution">
         INSERT INTO connected_institution (connected_account_id, institution_code, status)
         VALUES (#{connectedAccountId}, #{institutionCode}, 'ACTIVE')
     </insert>

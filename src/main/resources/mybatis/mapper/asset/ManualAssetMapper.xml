@@ -4,7 +4,7 @@
 
 <mapper namespace="com.team.independence.asset.mapper.ManualAssetMapper">
 
-    <resultMap id="manualAssetMap" type="com.team.independence.asset.domain.ManualAsset">
+    <resultMap id="manualAssetMap" type="com.team.independence.asset.domain.manual.ManualAsset">
         <id     property="id"         column="id"/>
         <result property="memberId"   column="member_id"/>
         <result property="assetType"  column="asset_type"/>
@@ -13,13 +13,13 @@
         <result property="updatedAt"  column="updated_at"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.team.independence.asset.domain.ManualAsset"
+    <insert id="insert" parameterType="com.team.independence.asset.domain.manual.ManualAsset"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO manual_assets (member_id, asset_type, amount)
         VALUES (#{memberId}, #{assetType}, #{amount})
     </insert>
 
-    <update id="update" parameterType="com.team.independence.asset.domain.ManualAsset">
+    <update id="update" parameterType="com.team.independence.asset.domain.manual.ManualAsset">
         UPDATE manual_assets
            SET amount = #{amount}
          WHERE id = #{id}

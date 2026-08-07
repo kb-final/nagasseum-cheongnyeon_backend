@@ -4,7 +4,7 @@
 
 <mapper namespace="com.team.independence.asset.mapper.InstitutionMapper">
 
-    <resultMap id="institutionMap" type="com.team.independence.asset.domain.Institution">
+    <resultMap id="institutionMap" type="com.team.independence.asset.domain.codef.Institution">
         <id     property="code"            column="code"/>
         <result property="name"            column="name"/>
         <result property="institutionType" column="institution_type"/>
@@ -16,7 +16,7 @@
         <result property="isActive"        column="is_active"/>
     </resultMap>
 
-    <resultMap id="institutionWithStatusMap" type="com.team.independence.asset.domain.Institution"
+    <resultMap id="institutionWithStatusMap" type="com.team.independence.asset.domain.codef.Institution"
                extends="institutionMap">
         <result property="isConnected" column="is_connected"/>
     </resultMap>

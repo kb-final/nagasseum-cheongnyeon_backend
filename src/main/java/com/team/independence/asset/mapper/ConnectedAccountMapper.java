@@ -1,6 +1,6 @@
 package com.team.independence.asset.mapper;
 
-import com.team.independence.asset.domain.ConnectedAccount;
+import com.team.independence.asset.domain.codef.ConnectedAccount;
 import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;

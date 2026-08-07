@@ -1,6 +1,6 @@
 package com.team.independence.asset.mapper;
 
-import com.team.independence.asset.domain.ManualAsset;
+import com.team.independence.asset.domain.manual.ManualAsset;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 

@@ -1,8 +1,8 @@
 package com.team.independence.asset.mapper;
 
-import com.team.independence.asset.domain.LoanAccount;
-import com.team.independence.asset.dto.LoanAccountDetailItem;
-import com.team.independence.asset.dto.LoanAccountQueryItem;
+import com.team.independence.asset.domain.account.LoanAccount;
+import com.team.independence.asset.dto.account.LoanAccountDetailItem;
+import com.team.independence.asset.dto.account.LoanAccountQueryItem;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 

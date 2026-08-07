@@ -1,7 +1,7 @@
 package com.team.independence.asset.mapper;
 
-import com.team.independence.asset.domain.ConnectedInstitution;
-import com.team.independence.asset.dto.LinkedOrganizationResponse;
+import com.team.independence.asset.domain.codef.ConnectedInstitution;
+import com.team.independence.asset.dto.connection.LinkedOrganizationResponse;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 

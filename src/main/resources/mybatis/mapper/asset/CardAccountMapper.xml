@@ -4,7 +4,7 @@
 
 <mapper namespace="com.team.independence.asset.mapper.CardAccountMapper">
 
-    <resultMap id="cardAccountMap" type="com.team.independence.asset.domain.CardAccount">
+    <resultMap id="cardAccountMap" type="com.team.independence.asset.domain.account.CardAccount">
         <id     property="id"                       column="id"/>
         <result property="connectedInstitutionId"   column="connected_institution_id"/>
         <result property="cardNo"                   column="card_no"/>

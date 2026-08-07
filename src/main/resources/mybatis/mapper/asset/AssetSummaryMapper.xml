@@ -4,7 +4,7 @@
 
 <mapper namespace="com.team.independence.asset.mapper.AssetSummaryMapper">
 
-    <resultMap id="assetSummaryMap" type="com.team.independence.asset.domain.AssetSummary">
+    <resultMap id="assetSummaryMap" type="com.team.independence.asset.domain.summary.AssetSummary">
         <id     property="id"             column="id"/>
         <result property="memberId"       column="member_id"/>
         <result property="totalAssets"    column="total_assets"/>
@@ -22,7 +22,7 @@
          WHERE member_id = #{memberId}
     </select>
 
-    <insert id="upsert" parameterType="com.team.independence.asset.domain.AssetSummary">
+    <insert id="upsert" parameterType="com.team.independence.asset.domain.summary.AssetSummary">
         INSERT INTO asset_summary (member_id, total_assets, loan_balance, synced_at)
         VALUES (#{memberId}, #{totalAssets}, #{loanBalance}, #{syncedAt})
         ON DUPLICATE KEY UPDATE
