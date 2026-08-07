@@ -3,10 +3,13 @@ package com.team.independence.compare.dto;
 import lombok.Getter;
 import lombok.Setter;
 
-/** 코호트 평균값 묶음. 세 값을 한 번의 쿼리로 가져온다. */
+/** 코호트 평균값 묶음. 한 번의 쿼리로 가져온다. */
 @Getter
 @Setter
 public class CohortAverages {
+
+    /** 평균 순자산(원) */
+    private Long averageNetAssets;
 
     /** 평균 목표 금액(원) */
     private Long averageTargetAmount;

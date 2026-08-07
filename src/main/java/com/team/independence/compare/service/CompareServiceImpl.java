@@ -103,6 +103,7 @@ public class CompareServiceImpl implements CompareService {
                     .build();
         }
 
+        CohortAverages averages = goalSnapshotMapper.findAverages(condition);
         SavingRangeResult savingRange = goalSnapshotMapper.findSavingRange(condition);
         List<IncomeBracketCount> incomeCounts = goalSnapshotMapper.countByIncomeBracket(condition);
         List<OccupationTypeCount> occupationCounts = goalSnapshotMapper.countByOccupationType(condition);
@@ -110,6 +111,8 @@ public class CompareServiceImpl implements CompareService {
         return AssetCompareResponse.builder()
                 .snapshotYm(snapshotYm)
                 .cohort(buildCohort(request.getAssetRange(), request.getAgeRange(), cohortSize, applied, true))
+                .myMonthlyIncome(me.getMonthlyIncome())
+                .cohortAverageNetAssets(averages.getAverageNetAssets())
                 .saving(AssetCompareResponse.Saving.builder()
                         .mine(me.getMonthlySaving())
                         .cohortMin(savingRange.getCohortRangeMin())
@@ -153,6 +156,8 @@ public class CompareServiceImpl implements CompareService {
         return GoalCompareResponse.builder()
                 .snapshotYm(snapshotYm)
                 .cohort(buildCohort(request.getAssetRange(), request.getAgeRange(), cohortSize, applied, true))
+                .myMonthlyIncome(me.getMonthlyIncome())
+                .cohortAverageNetAssets(averages.getAverageNetAssets())
                 .achievement(GoalCompareResponse.Achievement.builder()
                         .mine(me.getAchievementRate())
                         .cohortAverage(averages.getCohortAverageRate())

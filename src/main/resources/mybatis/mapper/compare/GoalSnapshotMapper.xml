@@ -173,7 +173,8 @@
     </select>
 
     <select id="findAverages" resultType="com.team.independence.compare.dto.CohortAverages">
-        SELECT ROUND(AVG(target_amount))       AS averageTargetAmount,
+        SELECT ROUND(AVG(net_assets))          AS averageNetAssets,
+               ROUND(AVG(target_amount))       AS averageTargetAmount,
                ROUND(AVG(prep_months))         AS averagePrepMonths,
                ROUND(AVG(achievement_rate), 1) AS cohortAverageRate
         FROM goal_snapshot

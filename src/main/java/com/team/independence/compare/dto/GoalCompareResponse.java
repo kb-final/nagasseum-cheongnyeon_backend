@@ -18,6 +18,10 @@ public class GoalCompareResponse {
 
     private String snapshotYm;
     private CompareCohort cohort;
+    /** 내 월 소득(원). 미입력 시 null */
+    private Long myMonthlyIncome;
+    /** 코호트 평균 순자산(원) */
+    private Long cohortAverageNetAssets;
     private Achievement achievement;
     private List<DealTypeItem> dealTypeDistribution;
     private Long averageTargetAmount;
