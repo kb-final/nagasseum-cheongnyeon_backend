@@ -1,7 +1,7 @@
 package com.team.independence.goal.service;
 
-import com.team.independence.asset.dto.AssetNetWorthBreakdown;
-import com.team.independence.asset.service.AssetService;
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
+import com.team.independence.asset.service.AssetConnectionService;
 import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
@@ -61,8 +61,8 @@ public class GoalServiceImpl implements GoalService {
     private static final DateTimeFormatter YM_FORMATTER = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final RegionQueryService regionQueryService;
-    private final AssetService assetService; // 자산 정보 조회
-    private final AssetSummaryService assetSummaryService; // asset_summary.monthly_savings 캐시 갱신
+    private final AssetConnectionService assetConnectionService; // 자산 연동 검증
+    private final AssetSummaryService assetSummaryService; // 순자산 조회, asset_summary.monthly_savings 캐시 갱신
     private final RentMedianService rentMedianService; // 조건에 맞는 실거래 4분위값 조회
     private final GoalMapper goalMapper;
     private final GoalHousingMapper goalHousingMapper;
@@ -96,8 +96,8 @@ public class GoalServiceImpl implements GoalService {
                 request.getRegion().getSido(), request.getRegion().getSigungu());
 
         // 자산 연동 여부 확인 후 순 자산 구성 정보 조회
-        assetService.validateConnectedAccountExists(memberId);
-        AssetNetWorthBreakdown netWorth = assetService.getNetWorthBreakdown(memberId);
+        assetConnectionService.validateConnectedAccountExists(memberId);
+        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
         long interestBearingAssets = netWorth.getInterestBearingAssets(); // 목표 시점까지 이자를 적용할 자산 (예적금)
         long flatRecognizedAssets = netWorth.getFlatRecognizedAssets(); // 인정 금액만 반영할 자산
 
@@ -183,7 +183,7 @@ public class GoalServiceImpl implements GoalService {
     public GoalResponse createGoal(Long memberId, GoalSaveRequest request) {
         GoalHousing goalHousing = validateAndBuildHousing(request);
 
-        assetService.validateConnectedAccountExists(memberId);
+        assetConnectionService.validateConnectedAccountExists(memberId);
 
         // 동시 ACTIVE 목표는 1개만 허용 — 이미 있으면 저장을 거부(수정/삭제 후 재시도 유도)
         if (goalMapper.existsActiveByMemberId(memberId)) {
@@ -225,7 +225,7 @@ public class GoalServiceImpl implements GoalService {
             throw new BusinessException(ErrorCode.GOAL_NOT_ACTIVE);
         }
 
-        assetService.validateConnectedAccountExists(memberId);
+        assetConnectionService.validateConnectedAccountExists(memberId);
 
         goal.setTargetAmount(request.getTargetAmount());
         goal.setTargetRentMiddleAmount(request.getTargetRentMiddleAmount());
@@ -432,7 +432,7 @@ public class GoalServiceImpl implements GoalService {
         long initialMiddleAmount = goal.getTargetRentMiddleAmount(); // 목표 생성 당시 중앙값 조회
 
         // 회원의 현재 자산 조회
-        AssetNetWorthBreakdown netWorth = assetService.getNetWorthBreakdown(goal.getMemberId());
+        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(goal.getMemberId());
 
         // 목표 유지 시: 저장된 target_date 그대로 (다른 화면에 노출되는 목표 시점과 일치시킴)
         YearMonth maintainEta = YearMonth.from(goal.getTargetDate());
@@ -473,8 +473,8 @@ public class GoalServiceImpl implements GoalService {
             throw new BusinessException(ErrorCode.GOAL_NOT_ACTIVE);
         }
 
-        assetService.validateConnectedAccountExists(memberId);
-        AssetNetWorthBreakdown netWorth = assetService.getNetWorthBreakdown(memberId);
+        assetConnectionService.validateConnectedAccountExists(memberId);
+        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
 
         long targetAmount = goal.getTargetAmount();
         Long months = calculateMonthToReach(netWorth, monthlySaving, targetAmount);
@@ -510,9 +510,9 @@ public class GoalServiceImpl implements GoalService {
         String regionName = regionQueryService.resolveRegionName(goalHousing.getRegionCode());
 
         // 연동 계좌 있는지 확인
-        assetService.validateConnectedAccountExists(memberId);
+        assetConnectionService.validateConnectedAccountExists(memberId);
         // 현재 순자산 구성 조회
-        AssetNetWorthBreakdown netWorth = assetService.getNetWorthBreakdown(memberId);
+        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
         long currentAmount = netWorth.getInterestBearingAssets() + netWorth.getFlatRecognizedAssets();
 
         long targetAmount = goal.getTargetAmount();
