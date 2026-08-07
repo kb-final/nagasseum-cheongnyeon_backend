@@ -246,9 +246,9 @@ public class RentTransactionSyncServiceImpl implements RentTransactionSyncServic
      * API 응답 필드명/형식이 DB 컬럼과 달라서 여기서 정제한다.
      */
     private RentTransaction toRentTransaction(RentItemDto dto, HousingType housingType, String regionCode) {
-        // "24,000" 형태의 금액 → 콤마 제거 후 숫자 문자열로
-        String deposit = parseAmount(dto.getDeposit());
-        long monthlyRent = parseLong(parseAmount(dto.getMonthlyRent()));
+        // "24,000" 형태의 금액 → 콤마 제거 후 원 단위로 변환 (국토부는 만원 단위로 반환)
+        long deposit = parseLong(parseAmount(dto.getDeposit())) * 10_000;
+        long monthlyRent = parseLong(parseAmount(dto.getMonthlyRent())) * 10_000;
 
         // dealYear("2015") + dealMonth("12") → dealYm("201512")
         String dealYm = dto.getDealYear().trim()
@@ -265,7 +265,7 @@ public class RentTransactionSyncServiceImpl implements RentTransactionSyncServic
             .complexName(dto.getComplexName())          // 4종 단지명 헬퍼로 통일
             .area(area != null ? new BigDecimal(area) : BigDecimal.ZERO)
             .dealType(DealType.from(monthlyRent))
-            .deposit(parseLong(deposit))
+            .deposit(deposit)
             .monthlyRent(monthlyRent)
             .floor(parseInteger(dto.getFloor()))
             .buildYear(parseInteger(dto.getBuildYear()))
