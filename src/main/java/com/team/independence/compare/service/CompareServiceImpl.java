@@ -378,7 +378,7 @@ public class CompareServiceImpl implements CompareService {
         int cohortSize = goalSnapshotMapper.countCohort(condition);
 
         if (cohortSize < MINIMUM_COHORT_SIZE) {
-            return insufficient(snapshotYm, assetRange, ageRange);
+            return insufficient(snapshotYm, assetRange, ageRange, cohortSize);
         }
 
         CohortAverages averages = goalSnapshotMapper.findAverages(condition);
@@ -418,13 +418,13 @@ public class CompareServiceImpl implements CompareService {
     /** @deprecated {@link #getComparison} 전용. 인원 미달 시 cohort만 담아 반환 */
     @Deprecated
     private CompareResponse insufficient(String snapshotYm, Long assetRange,
-                                         Integer ageRange) {
+                                         Integer ageRange, int cohortSize) {
         return CompareResponse.builder()
                 .snapshotYm(snapshotYm)
                 .cohort(Cohort.builder()
                         .assetRange(assetRange)
                         .ageRange(ageRange)
-                        .cohortSize(null)
+                        .cohortSize(cohortSize)
                         .sufficient(false)
                         .minimumRequired(MINIMUM_COHORT_SIZE)
                         .build())
