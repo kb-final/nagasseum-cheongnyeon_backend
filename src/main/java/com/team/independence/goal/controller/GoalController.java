@@ -14,6 +14,7 @@ import com.team.independence.goal.service.GoalDetailService;
 import com.team.independence.goal.service.GoalService;
 import javax.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -51,6 +52,14 @@ public class GoalController {
             @PathVariable Long goalId,
             @Valid @RequestBody GoalSaveRequest request) {
         return ApiResponse.ok(goalService.updateGoal(memberId, goalId, request));
+    }
+
+    @DeleteMapping("/{goalId}")
+    public ApiResponse<Void> deleteGoal(
+            @LoginMember Long memberId,
+            @PathVariable Long goalId) {
+        goalService.deleteGoal(memberId, goalId);
+        return ApiResponse.ok(null);
     }
 
     @GetMapping("/{goalId}/detail")

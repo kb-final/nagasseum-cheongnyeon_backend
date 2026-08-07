@@ -24,6 +24,13 @@ public interface GoalService {
     GoalResponse updateGoal(Long memberId, Long goalId, GoalSaveRequest request);
 
     /**
+     * 목표를 삭제한다. 실제로는 status를 ARCHIVED로 내리는 소프트 삭제라 저축 기록과 또래 비교
+     * 스냅샷은 그대로 남는다. 목표가 없으면 GOAL_NOT_FOUND, 다른 회원의 목표면 GOAL_FORBIDDEN,
+     * 이미 삭제했거나 달성한 목표면 GOAL_NOT_ACTIVE.
+     */
+    void deleteGoal(Long memberId, Long goalId);
+
+    /**
      * 목표를 찾고 요청자가 소유자인지 확인한다.
      * 목표가 없으면 GOAL_NOT_FOUND, 다른 회원의 목표면 GOAL_FORBIDDEN.
      */

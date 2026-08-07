@@ -247,6 +247,31 @@ public class GoalServiceImpl implements GoalService {
     }
 
     /**
+     * 목표를 삭제한다. 행을 지우지 않고 status만 ARCHIVED로 내린다.
+     *
+     * <p>goal을 참조하는 FK 세 개(goal_housing, saving_record, goal_snapshot)에 ON DELETE CASCADE가
+     * 없어 물리 삭제는 제약 위반이고, 특히 goal_snapshot은 또래 비교 집계가 회원 구분 없이
+     * 기준월·순자산·나이로만 묶여 있어 지우면 과거 통계가 소급해서 바뀐다.
+     *
+     * <p>ARCHIVED가 되면 목표 생성을 막는 조건(ACTIVE 목표 존재)에서 빠지므로 새 목표를 만들 수 있다.
+     * asset_summary.monthly_savings는 건드리지 않는다 — 목표가 없으면 화면에 쓰이지 않고
+     * 새 목표를 만들면 그때 덮어쓴다.
+     */
+    @Override
+    @Transactional
+    public void deleteGoal(Long memberId, Long goalId) {
+        Goal goal = findOwnedGoal(memberId, goalId);
+        if (!GOAL_STATUS_ACTIVE.equals(goal.getStatus())) {
+            throw new BusinessException(ErrorCode.GOAL_NOT_ACTIVE);
+        }
+
+        goalMapper.archive(goalId, memberId);
+
+        // 시세 변화 캐시는 TTL이 35일이라 지우지 않으면 삭제한 목표의 데이터가 한 달 넘게 남는다
+        goalMarketTrendCacheStore.delete(goalId);
+    }
+
+    /**
      * 생성·수정 공통. 희망 조건을 진단과 같은 규칙으로 검증하고 goal_housing 저장 형태로 정규화한다.
      * goalId는 아직 모르거나(생성) 호출부가 이미 아는 값(수정)이라 여기서 채우지 않는다.
      */
