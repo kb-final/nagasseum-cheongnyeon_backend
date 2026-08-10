@@ -47,6 +47,8 @@ public enum ErrorCode {
     GOAL_FORBIDDEN("GOAL_008", "접근할 수 없는 목표입니다.", HttpStatus.FORBIDDEN),
     GOAL_INVALID_INPUT("GOAL_009", "월 저축액은 0보다 커야 합니다.", HttpStatus.BAD_REQUEST),
     GOAL_NOT_ACTIVE("GOAL_010", "진행 중인 목표가 아닙니다.", HttpStatus.CONFLICT),
+    GOAL_RECOMMENDATION_NO_CANDIDATE("GOAL_011", "추천 가능한 주거 후보가 없습니다.", HttpStatus.NOT_FOUND),
+    GOAL_ASSET_REQUIRED("GOAL_012", "추천을 위해 자산 연동이 필요합니다.", HttpStatus.BAD_REQUEST),
 
     // ===== 또래 비교 COMPARE_xxx =====
     COMPARE_SNAPSHOT_NOT_FOUND("COMPARE_001", "비교할 집계 데이터가 없습니다.", HttpStatus.NOT_FOUND),
