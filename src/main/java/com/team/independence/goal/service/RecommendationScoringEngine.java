@@ -1,14 +1,14 @@
 package com.team.independence.goal.service;
 
-import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
-import com.team.independence.goal.dto.CandidateStat;
-import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
-import java.util.List;
-import java.util.Map;
+import com.team.independence.goal.dto.ScoringContext;
 
 /**
- * 6개 지표를 0~100점으로 정규화한 뒤 전략별 가중치를 적용해 4가지 추천을 각각 1개씩 선정한다.
+ * 등록된 모든 {@link RecommendationStrategy}를 실행해 추천 결과를 조립한다.
+ *
+ * <p>구현체는 {@code List<RecommendationStrategy>}를 주입받아 각 전략을 순차 실행하고,
+ * {@link java.util.Optional#empty()}를 반환한 전략은 결과에서 제외한다.
+ * 테마 추가·삭제는 전략 클래스만 추가·제거하면 되며, 이 엔진은 수정하지 않는다.
  *
  * <p>가중치 행렬 (순서: 예산여유도 / 저축부담도 / 평수효율 / 신뢰도 / 달성기간 / 선호도):
  * <pre>
@@ -21,18 +21,10 @@ import java.util.Map;
 public interface RecommendationScoringEngine {
 
     /**
-     * 후보 목록과 각 후보의 시점별 계획을 받아 4전략을 스코링하고 최종 응답을 조립한다.
+     * 컨텍스트를 각 전략에 넘겨 실행하고, 전략별 최고 점수 결과를 모아 응답을 구성한다.
      *
-     * @param candidates 후보군 전체 (RecommendationCandidateService 결과)
-     * @param planMap    후보별 PeriodPlan 목록 (GoalRecommendationService에서 사전 계산)
-     * @param breakdown  회원 순자산 분류 (미래 자산 계산에 사용)
-     * @param req        원본 요청 (선호도 점수 계산에 사용)
-     * @return 전략별 최고 점수 후보 최대 4개
+     * @param context 스코링에 필요한 자산·소득·후보 목록을 담은 컨텍스트
+     * @return 전략별 추천 결과 (적합한 후보가 없는 전략은 결과에서 제외)
      */
-    GoalRecommendationResponse selectTop4(
-            List<CandidateStat> candidates,
-            Map<CandidateStat, List<GoalRecommendationResponse.PeriodPlan>> planMap,
-            AssetNetWorthBreakdown breakdown,
-            GoalRecommendationRequest req
-    );
+    GoalRecommendationResponse score(ScoringContext context);
 }

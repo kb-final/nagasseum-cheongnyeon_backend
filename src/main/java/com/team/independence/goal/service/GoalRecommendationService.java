@@ -12,10 +12,9 @@ import com.team.independence.goal.dto.GoalRecommendationResponse;
  *   <li>순자산 분류 및 자산 요약 조회</li>
  *   <li>회원 소득 정보 조회 (DSR 계산용)</li>
  *   <li>후보군 생성 (빈 결과 → GOAL_RECOMMENDATION_NO_CANDIDATE)</li>
- *   <li>목표 시점 목록 생성 (targetDate −12 ~ +36개월, 6개월 단위)</li>
  *   <li>기존 대출 월 상환액 추정</li>
- *   <li>후보별 PeriodPlan 계산</li>
- *   <li>4전략 스코링 → 각 1개 선정</li>
+ *   <li>{@link com.team.independence.goal.dto.ScoringContext} 조립</li>
+ *   <li>{@link RecommendationScoringEngine#score}로 전략별 추천 실행</li>
  * </ol>
  */
 public interface GoalRecommendationService {

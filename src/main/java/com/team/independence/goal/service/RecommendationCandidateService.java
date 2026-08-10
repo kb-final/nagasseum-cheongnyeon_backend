@@ -1,11 +1,11 @@
 package com.team.independence.goal.service;
 
-import com.team.independence.goal.dto.CandidateStat;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
+import com.team.independence.goal.dto.RecommendationCandidate;
 import java.util.List;
 
 /**
- * 추천 후보군 생성 — 요청 조건과 확장 조건으로 CandidateStat 목록을 수집한다.
+ * 추천 후보군 생성 — 요청 조건과 확장 조건으로 후보 목록을 수집한다.
  *
  * <ul>
  *   <li>사용자 조건 그대로 조회 (PREFERENCE용)</li>
@@ -17,8 +17,8 @@ import java.util.List;
 public interface RecommendationCandidateService {
 
     /**
-     * 추천 가능한 전체 후보 통계 목록을 반환한다.
+     * 추천 가능한 전체 후보 목록을 반환한다.
      * 후보가 전혀 없으면 빈 리스트를 반환하고, 호출자가 GOAL_RECOMMENDATION_NO_CANDIDATE를 던진다.
      */
-    List<CandidateStat> generateCandidates(GoalRecommendationRequest req);
+    List<RecommendationCandidate> generateCandidates(GoalRecommendationRequest req);
 }

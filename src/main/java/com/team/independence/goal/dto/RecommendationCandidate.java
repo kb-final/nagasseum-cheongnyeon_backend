@@ -6,22 +6,25 @@ import java.math.BigDecimal;
 import lombok.Builder;
 import lombok.Getter;
 
-/** RentCandidateStatMapper 조회 결과를 담는 내부 전달 객체. 5평 단위 구간화된 통계. */
+/**
+ * 스코링 엔진이 각 전략에 넘기는 후보 단위.
+ * DB 조회 결과(시세 통계)와 지역명을 함께 담는다.
+ */
 @Getter
 @Builder
-public class CandidateStat {
+public class RecommendationCandidate {
     private String regionCode;
+    private String regionName;
     private HousingType housingType;
     private DealType dealType;
-    /** 면적 구간 하한 (평, FLOOR(area / 3.3058 / 5) * 5) */
-    private int areaRangeStart;
-    /** 면적 구간 상한 (평, areaRangeStart + 5) */
-    private int areaRangeEnd;
-    private long p25Deposit;
+    private int areaMin;
+    private int areaMax;
+    /** 전세 보증금 or 월세 보증금 중앙값 */
     private long medianDeposit;
-    private long p75Deposit;
     /** WOLSE만 의미 있음. JEONSE = 0 */
     private long medianMonthlyRent;
+    /** VALUE 전략 평수 효율 점수에 사용 */
     private BigDecimal pricePerPyeong;
+    /** 신뢰도 점수에 사용 (최소 3건 필터 통과 후) */
     private int sampleCount;
 }
