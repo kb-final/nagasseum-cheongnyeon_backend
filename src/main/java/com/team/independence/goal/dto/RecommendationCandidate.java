@@ -23,8 +23,4 @@ public class RecommendationCandidate {
     private long medianDeposit;
     /** WOLSE만 의미 있음. JEONSE = 0 */
     private long medianMonthlyRent;
-    /** VALUE 전략 평수 효율 점수에 사용 */
-    private BigDecimal pricePerPyeong;
-    /** 신뢰도 점수에 사용 (최소 3건 필터 통과 후) */
-    private int sampleCount;
 }

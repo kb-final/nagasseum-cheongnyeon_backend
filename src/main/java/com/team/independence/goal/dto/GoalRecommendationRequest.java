@@ -11,13 +11,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class GoalRecommendationRequest {
 
-    @NotNull
     private String regionCode;
 
     /** 선택. null이면 전 주거유형 탐색 */
     private HousingType propertyType;
 
-    @NotNull
     private DealType tradeType;
 
     /** 선택. 단위: 평. null이면 10~30평 전 구간 자동 탐색 */
@@ -26,6 +24,5 @@ public class GoalRecommendationRequest {
     /** 선택. 단위: 평. null이면 10~30평 전 구간 자동 탐색 */
     private Integer sizeMax;
 
-    @NotNull
     private YearMonth targetDate;
 }
