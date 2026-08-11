@@ -16,6 +16,8 @@ public class GoalRecommendationResponse {
     @Getter
     @Builder
     public static class RecommendationItem {
+        /** 이 대안을 만든 추천 알고리즘 */
+        private AlgorithmType type;
         private String title;
         private String reason;
         private Condition condition;
