@@ -1,4 +1,4 @@
-name: CD - Build & Push Image
+name: CD - Build, Push & Deploy
 
 on:
   push:
@@ -39,9 +39,45 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/nagasseum-backend:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/nagasseum-backend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: AWS 자격증명 설정
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: API 서버 배포
+        run: |
+          aws ssm send-command \
+            --targets "Key=tag:Role,Values=api" \
+            --document-name "AWS-RunShellScript" \
+            --comment "deploy ${{ github.sha }}" \
+            --parameters 'commands=["cd /home/ssm-user/nagasseum && docker compose pull && docker compose up -d && docker image prune -f"]'
+
+      - name: Batch 서버 배포
+        run: |
+          aws ssm send-command \
+            --targets "Key=tag:Role,Values=batch" \
+            --document-name "AWS-RunShellScript" \
+            --comment "deploy ${{ github.sha }}" \
+            --parameters 'commands=["cd /home/ssm-user/nagasseum && docker compose pull && docker compose up -d && docker image prune -f"]'
+
+      - name: 배포 결과 확인
+        run: |
+          sleep 60
+          curl -f https://api.nagasseum.com/api/v1/members/health
+          echo ""
+          echo "배포 성공"
