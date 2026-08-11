@@ -5,6 +5,7 @@ import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 /**
  * HoldOut 알고리즘 로컬 수동 실행용 통합 테스트.
  *
+ * <p>실행 방법: @Disabled 제거 후 로컬에서 실행
+ *
  * <p>사전 조건:
  * <ul>
  *   <li>docker compose up -d (MySQL, Redis)</li>
@@ -26,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  *   <li>rent_transaction에 해당 region/type/deal 최근 6개월 데이터 10건 이상</li>
  * </ul>
  */
+@Disabled("로컬 MySQL + Redis 환경 전용")
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = RootConfig.class)
 class HoldOutAlgorithmIntegrationTest {
