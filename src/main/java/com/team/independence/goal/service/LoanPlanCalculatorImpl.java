@@ -1,69 +1,108 @@
 package com.team.independence.goal.service;
 
+import com.team.independence.asset.dto.account.LoanAccountDetailItem;
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
+import com.team.independence.asset.service.AssetSummaryService;
+import com.team.independence.asset.service.LoanAccountService;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.goal.dto.LoanPlans;
+import com.team.independence.member.service.MemberService;
+import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-/**
- * ⚠️ 임시 스텁 — 실제 계산 로직이 없습니다.
- *
- * <p><b>이 클래스는 구현하지 마세요.</b> 담당자가 따로 채울 예정입니다.
- * 추천 알고리즘 담당자들이 {@link LoanPlanCalculator} 구현을 기다리지 않고 바로 개발을 시작할 수
- * 있도록, 호출하면 고정된 더미 값을 돌려주는 껍데기만 먼저 올려 둔 것입니다.
- *
- * <p>알고리즘 쪽에서는 평소처럼 {@link LoanPlanCalculator}를 주입받아 호출하면 됩니다.
- * 지금은 값이 가짜지만 시그니처와 반환 구조는 최종본과 동일하므로,
- * 나중에 이 클래스 내용만 채워지면 알고리즘 코드는 손대지 않아도 됩니다.
- *
- * <p>더미 값이라는 것을 한눈에 알 수 있도록 월 저축액 100만원, 대출 한도 1억으로 고정해 두었습니다.
- * 화면에 이 숫자가 그대로 보인다면 아직 계산기가 안 붙은 것입니다.
- */
+/** {@link LoanPlanCalculator} 구현체. 계산 가정은 인터페이스 주석 참고. */
 @Service
 @RequiredArgsConstructor
 public class LoanPlanCalculatorImpl implements LoanPlanCalculator {
 
-    /** 더미 월 저축액 (원) */
-    private static final long STUB_MONTHLY_SAVING = 1_000_000L;
+    private static final double DSR_LIMIT               = 0.40;
+    // 실제 대출 조건을 알 수 없으므로 신규·기존 대출 모두 동일한 금리로 추정한다
+    private static final double ASSUMED_LOAN_ANNUAL_RATE = 0.035;
+    private static final int    NEW_LOAN_TERM_MONTHS     = 360;
 
-    /** 더미 대출 한도 (원) */
-    private static final long STUB_LOAN_AMOUNT = 100_000_000L;
+    private final MemberService       memberService;
+    private final LoanAccountService  loanAccountService;
+    private final AssetSummaryService assetSummaryService;
+    private final BudgetCalculator    budgetCalculator;
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>⚠️ 스텁: 입력을 그대로 되돌려주고 나머지는 더미 값으로 채웁니다.
-     * 소득·자산 조회, DSR 한도 산출, 복리 저축 역산 모두 아직 없습니다.
-     */
     @Override
     public LoanPlans calculate(long memberId, long requiredAmount, YearMonth targetDate) {
+        long months = ChronoUnit.MONTHS.between(YearMonth.now(), targetDate);
+        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
+
+        long loanXSaving = calcMonthlySavingNeeded(netWorth, requiredAmount, months);
         GoalRecommendationResponse.LoanXPlan loanX = GoalRecommendationResponse.LoanXPlan.builder()
                 .targetAmount(requiredAmount)
                 .targetDate(targetDate)
-                .monthlySaving(STUB_MONTHLY_SAVING)
+                .monthlySaving(loanXSaving)
                 .build();
 
+        long loanAmount = Math.min(calcMaxLoanAmount(memberId), requiredAmount);
+        if (loanAmount <= 0) {
+            return LoanPlans.builder().loanX(loanX).loanO(null).build();
+        }
+
+        long selfFunded = requiredAmount - loanAmount;
+        long loanOSaving = calcMonthlySavingNeeded(netWorth, selfFunded, months);
         GoalRecommendationResponse.LoanOPlan loanO = GoalRecommendationResponse.LoanOPlan.builder()
-                .loanAmount(STUB_LOAN_AMOUNT)
-                .targetAmount(Math.max(requiredAmount - STUB_LOAN_AMOUNT, 0L))
+                .loanAmount(loanAmount)
+                .targetAmount(selfFunded)
                 .targetDate(targetDate)
-                .monthlySaving(STUB_MONTHLY_SAVING)
+                .monthlySaving(loanOSaving)
                 .build();
 
-        return LoanPlans.builder()
-                .loanX(loanX)
-                .loanO(loanO)
-                .build();
+        return LoanPlans.builder().loanX(loanX).loanO(loanO).build();
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>⚠️ 스텁: 회원과 무관하게 고정 한도를 반환합니다.
-     */
     @Override
     public long calcMaxLoanAmount(long memberId) {
-        return STUB_LOAN_AMOUNT;
+        Long monthlyIncome = memberService.getMember(memberId).monthlyIncome();
+        if (monthlyIncome == null || monthlyIncome <= 0) return 0L;
+
+        double r = ASSUMED_LOAN_ANNUAL_RATE / 12.0;
+        double factor = Math.pow(1 + r, NEW_LOAN_TERM_MONTHS);
+
+        double existingMonthlyPayments = loanAccountService.getLoanAccounts(memberId).stream()
+                .mapToDouble(loan -> calcExistingMonthlyPayment(loan, r))
+                .sum();
+
+        double availableMonthly = monthlyIncome * DSR_LIMIT - existingMonthlyPayments;
+        if (availableMonthly <= 0) return 0L;
+
+        // 연금 현가: M × (factor − 1) / (r × factor)
+        return (long) (availableMonthly * (factor - 1) / (r * factor));
+    }
+
+    // 기존 대출 한 건의 월 원리금 상환액. endDate 기준 잔여 기간으로 역산.
+    // 실제 대출 조건을 사용할 수 없으므로 ASSUMED_LOAN_ANNUAL_RATE, 원리금균등상환으로 추정한다.
+    private double calcExistingMonthlyPayment(LoanAccountDetailItem loan, double r) {
+        if (loan.getLoanBalance() == null || loan.getLoanBalance() <= 0) return 0.0;
+        if (loan.getEndDate() == null) return 0.0;
+        long remaining = ChronoUnit.MONTHS.between(LocalDate.now(), loan.getEndDate());
+        if (remaining <= 0) return 0.0;
+        double f = Math.pow(1 + r, remaining);
+        return loan.getLoanBalance() * r * f / (f - 1);
+    }
+
+    // n개월 안에 targetAmount에 도달하기 위한 최소 월 저축액을 이진탐색으로 역산.
+    private long calcMonthlySavingNeeded(AssetNetWorthBreakdown netWorth, long targetAmount, long months) {
+        if (targetAmount <= 0) return 0L;
+        if (months <= 0) return targetAmount;
+        if (budgetCalculator.calculate(netWorth, 0L, months) >= targetAmount) return 0L;
+
+        long lo = 0L;
+        long hi = targetAmount;
+        while (hi - lo > 1) {
+            long mid = (lo + hi) / 2;
+            if (budgetCalculator.calculate(netWorth, mid, months) >= targetAmount) {
+                hi = mid;
+            } else {
+                lo = mid;
+            }
+        }
+        return hi;
     }
 }
