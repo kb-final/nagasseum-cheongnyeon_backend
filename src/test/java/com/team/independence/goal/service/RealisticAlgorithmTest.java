@@ -241,6 +241,27 @@ class RealisticAlgorithmTest {
     }
 
     @Test
+    @DisplayName("조건을 전부 지정해도 지역만 지키고 나머지는 조정한다")
+    void adjustsEverythingExceptRegion() {
+        // 사용자가 원한 조건(아파트 20~25평 전세)은 예산 2.4억을 훨씬 넘는다.
+        put("11110", HousingType.APT, DealType.JEONSE, 20, 9 * 억, 0);
+        // 같은 구의 더 작은 오피스텔이면 들어온다.
+        put("11110", HousingType.OFFICETEL, DealType.JEONSE, 10, 2 * 억, 0);
+
+        GoalRecommendationRequest request = request("11110", HousingType.APT, DealType.JEONSE);
+        request.setSizeMin(20);
+        request.setSizeMax(25);
+
+        RecommendationItem item = recommend(request);
+
+        // 지역은 그대로, 유형·평수는 조정됐다.
+        assertThat(item.getCondition().getRegionCode()).isEqualTo("11110");
+        assertThat(item.getCondition().getHousingType()).isEqualTo(HousingType.OFFICETEL);
+        assertThat(item.getCondition().getAreaMin()).isEqualTo(10);
+        assertThat(item.getReason()).contains("24개월을 지키면서");
+    }
+
+    @Test
     @DisplayName("실거래 표본이 아무 조합에도 없으면 추천하지 않는다")
     void returnsEmptyWhenNoMarketData() {
         Optional<RecommendationItem> result = algorithm.recommend(
