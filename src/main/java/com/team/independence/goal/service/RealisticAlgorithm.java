@@ -18,7 +18,9 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,17 +62,24 @@ import org.springframework.stereotype.Service;
  * 보증금이다. 월세 매물을 추천하면서 환산값을 목표 금액으로 보여주면 실제보다 몇 배 큰 금액을
  * 모으라는 말이 되기 때문이다.
  *
- * <h3>탐색 순서</h3>
- * <ol>
- *   <li>시군구 선정 — 기준 조합 하나로 시도 내 시군구 시세를 훑어 예산에 맞는 가장 좋은 곳을 고른다</li>
- *   <li>조건 최적화 — 그 시군구 안에서 평수·주거유형·거래유형 조합을 평가해 예산 이하 최선을 고른다</li>
- * </ol>
- * 주거유형과 시군구의 우열은 우리가 정하지 않고 <b>실거래 가격이 정한다</b>. 임의로 정한 선호 순서를
- * 만들지 않기 위해서다.
+ * <h3>조건을 내리는 순서는 없다</h3>
+ * 평수를 먼저 깎고 안 되면 유형을 깎는 식의 순서를 두지 않았다. 그런 순서는 우리가 정할 근거가 없고,
+ * 무엇보다 <b>한 방향으로 내려가면 처음 걸린 곳에서 멈춰 더 나은 답을 놓친다</b>. "아파트 4~9평"에서
+ * 예산이 맞았다고 멈추면 "오피스텔 15~19평"이 더 나은 선택인데도 확인조차 하지 않게 된다.
  *
- * <p><b>알려진 한계</b>: 시군구를 1단계에서 확정하므로, "지역을 더 낮추면 더 좋은 평수·유형이
- * 가능한" 조합은 놓칠 수 있다. 전 조합 탐색은 시군구 수 × 유형 × 평수 × 거래유형이라 요청 한 번에
- * 수백 번의 실거래 집계 쿼리가 필요해 의도적으로 포기한 범위다. 사전집계 테이블이 생기면 넓힐 수 있다.
+ * <p>대신 후보를 <b>전부 평가한 뒤 예산에 맞는 것 중 가장 비싼 것</b>을 고른다. 가격이 곧 주거 수준의
+ * 대리 지표라, 이 규칙 하나가 "여유로우면 더 좋은 조건, 모자라면 낮은 조건"을 모두 처리한다.
+ * 주거유형과 시군구의 우열도 우리가 정하지 않고 실거래 가격이 정한다.
+ *
+ * <h3>지역은 한 번만 정하고 다시 내리지 않는다</h3>
+ * 시군구는 조건 탐색보다 <b>먼저</b> 확정한다. 이때 예산에 맞는 시군구가 하나도 없으면 가장 싼
+ * 시군구를 고르므로, 지역을 낮추는 일은 이 시점에 이미 끝난다. 조건을 다 풀어도 목표 시점을 못
+ * 지키는 경우에도 지역을 다시 건드리지 않는다. 더 내릴 지역이 남아 있지 않기 때문이다.
+ *
+ * <p><b>알려진 한계</b>: 여기서 고르는 "가장 싼 시군구"는 어디까지나 <b>시작 조합 기준</b>이다.
+ * 다른 유형·평수로 보면 더 싼 시군구가 있을 수 있는데, 지역과 조건을 함께 훑으려면
+ * 시군구 수 × 유형 × 평수 × 거래유형이라 요청 한 번에 수백 번의 집계 쿼리가 필요해
+ * 의도적으로 포기한 범위다. 사전집계 테이블이 생기면 넓힐 수 있다.
  */
 @Slf4j
 @Service
@@ -145,10 +154,10 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
         long monthlySaving = resolveMonthlySaving(memberId);
 
-        Budget budget = new Budget(netWorth, monthlySaving, desiredMonths);
+        Search search = new Search(netWorth, monthlySaving, desiredMonths);
 
         // 1단계: 시군구 확정
-        String regionCode = selectRegion(request, budget);
+        String regionCode = selectRegion(request, search);
         if (regionCode == null) {
             log.warn("추천 가능한 시군구를 찾지 못했습니다. memberId={}, regionCode={}",
                     memberId, request.getRegionCode());
@@ -156,7 +165,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         }
 
         // 2단계: 사용자가 준 조건을 지킨 채, 주지 않은 항목만 움직여 본다
-        List<Candidate> asRequested = evaluateConditions(regionCode, request, budget, true);
+        List<Candidate> asRequested = evaluateConditions(regionCode, request, search, true);
         Optional<Candidate> keepingInput = bestWithinTarget(asRequested);
         if (keepingInput.isPresent()) {
             return Optional.of(assemble(memberId, keepingInput.get(), targetDate, desiredMonths, false));
@@ -165,7 +174,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         // 3단계: 입력한 조건으로는 목표 시점을 못 지킨다. 그때만 조건을 풀고 다시 찾는다.
         // 준 조건이 하나도 없으면 1차가 이미 전 범위 탐색이라 다시 조회하지 않는다.
         List<Candidate> relaxed = hasInputCondition(request)
-                ? evaluateConditions(regionCode, request, budget, false)
+                ? evaluateConditions(regionCode, request, search, false)
                 : asRequested;
         if (relaxed.isEmpty()) {
             log.warn("실거래 표본이 있는 조합이 없습니다. memberId={}, regionCode={}", memberId, regionCode);
@@ -195,7 +204,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      *
      * @return 시군구 코드. 시도에 조회 가능한 시군구가 아예 없으면 null
      */
-    private String selectRegion(GoalRecommendationRequest request, Budget budget) {
+    private String selectRegion(GoalRecommendationRequest request, Search search) {
         String requested = request.getRegionCode();
         if (requested.length() == 5) {
             return requested; // 사용자가 지정한 시군구는 보호 대상
@@ -216,7 +225,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
 
         List<Candidate> ranked = new ArrayList<>();
         for (String code : sigunguCodes) {
-            evaluate(code, housingType, dealType, size[0], size[1], request, budget)
+            evaluate(code, housingType, dealType, size[0], size[1], request, search)
                     .ifPresent(ranked::add);
         }
         if (ranked.isEmpty()) {
@@ -242,13 +251,13 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      *                  false면 사용자가 준 항목까지 전부 펼친다.
      */
     private List<Candidate> evaluateConditions(
-            String regionCode, GoalRecommendationRequest request, Budget budget, boolean keepInput) {
+            String regionCode, GoalRecommendationRequest request, Search search, boolean keepInput) {
 
         List<Candidate> candidates = new ArrayList<>();
         for (int[] size : sizeCandidates(request, keepInput)) {
             for (HousingType housingType : housingTypeCandidates(request, keepInput)) {
                 for (DealType dealType : dealTypeCandidates(request, keepInput)) {
-                    evaluate(regionCode, housingType, dealType, size[0], size[1], request, budget)
+                    evaluate(regionCode, housingType, dealType, size[0], size[1], request, search)
                             .ifPresent(candidates::add);
                 }
             }
@@ -310,10 +319,30 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
 
     // ===== 후보 평가 =====
 
-    /** 조합 하나의 실거래 median을 조회해 환산보증금과 도달 개월까지 계산한다. */
+    /**
+     * 조합 하나의 실거래 median을 조회해 환산보증금과 도달 개월까지 계산한다.
+     *
+     * <p>이미 확인한 조합은 다시 조회하지 않는다. 1차(입력 조건 유지)에서 본 조합은 2차(조건 해제)의
+     * 후보에 그대로 포함되고, 시군구를 고를 때 쓴 조합도 1차 후보와 겹칠 수 있다. 실거래 집계는
+     * 6개월치를 훑는 쿼리라 중복 조회가 그대로 응답 시간이 된다.
+     */
     private Optional<Candidate> evaluate(
             String regionCode, HousingType housingType, DealType dealType,
-            int areaMin, int areaMax, GoalRecommendationRequest request, Budget budget) {
+            int areaMin, int areaMax, GoalRecommendationRequest request, Search search) {
+
+        String key = regionCode + "|" + housingType + "|" + dealType + "|" + areaMin + "|" + areaMax;
+        Optional<Candidate> cached = search.evaluated.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        Optional<Candidate> result = lookUp(regionCode, housingType, dealType, areaMin, areaMax, request, search);
+        search.evaluated.put(key, result);
+        return result;
+    }
+
+    private Optional<Candidate> lookUp(
+            String regionCode, HousingType housingType, DealType dealType,
+            int areaMin, int areaMax, GoalRecommendationRequest request, Search search) {
 
         RentMedianResponse median;
         try {
@@ -336,12 +365,12 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         long comparableAmount = toComparableAmount(deposit, monthlyRent);
 
         Long reachMonths = goalService.calculateMonthToReach(
-                budget.netWorth, budget.monthlySaving, comparableAmount);
+                search.netWorth, search.monthlySaving, comparableAmount);
 
         return Optional.of(new Candidate(
                 regionCode, median.getRegionName(), housingType, dealType,
                 areaMin, areaMax, deposit, monthlyRent, comparableAmount,
-                reachMonths, budget.desiredMonths));
+                reachMonths, search.desiredMonths));
     }
 
     /**
@@ -484,13 +513,20 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         return summary.getMonthlySavings() != null ? summary.getMonthlySavings() : 0L;
     }
 
-    /** 목표 시점이 고정이라 후보마다 다시 계산할 필요가 없는 값들 */
-    private static class Budget {
+    /**
+     * 추천 한 번을 처리하는 동안 바뀌지 않는 값들과, 그동안 이미 확인한 조합.
+     *
+     * <p>목표 시점을 절대 바꾸지 않는 카드라서 예산 계산의 재료가 후보와 무관하게 고정된다.
+     * 같은 이유로 조합별 조회 결과도 한 번의 추천 안에서는 언제 조회하든 같은 값이라 재사용할 수 있다.
+     */
+    private static class Search {
         private final AssetNetWorthBreakdown netWorth;
         private final long monthlySaving;
         private final long desiredMonths;
+        /** 조합 키 → 평가 결과. 표본이 없어 후보가 되지 못한 조합도 담아 재조회를 막는다. */
+        private final Map<String, Optional<Candidate>> evaluated = new HashMap<>();
 
-        private Budget(AssetNetWorthBreakdown netWorth, long monthlySaving, long desiredMonths) {
+        private Search(AssetNetWorthBreakdown netWorth, long monthlySaving, long desiredMonths) {
             this.netWorth = netWorth;
             this.monthlySaving = monthlySaving;
             this.desiredMonths = desiredMonths;

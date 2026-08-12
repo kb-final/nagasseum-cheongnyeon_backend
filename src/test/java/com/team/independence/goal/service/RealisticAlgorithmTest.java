@@ -22,6 +22,7 @@ import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.dto.RentMedianResponse.Quartile;
 import com.team.independence.property.mapper.RegionMapper;
 import com.team.independence.property.service.RentMedianService;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,11 +71,15 @@ class RealisticAlgorithmTest {
     /** "지역|주거유형|거래유형|최소평수" → {보증금, 월세, 표본수} */
     private Map<String, long[]> market;
 
+    /** 실거래 조회가 실제로 일어난 조합. 중복 조회를 잡기 위해 순서대로 쌓는다. */
+    private List<String> lookedUp;
+
     @BeforeEach
     void setUp() {
         algorithm = new RealisticAlgorithm(
                 assetSummaryService, rentMedianService, regionMapper, loanPlanCalculator, goalService);
         market = new HashMap<>();
+        lookedUp = new ArrayList<>();
 
         when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID)).thenReturn(
                 AssetNetWorthBreakdown.builder()
@@ -94,7 +99,12 @@ class RealisticAlgorithmTest {
             return (long) Math.ceil((double) targetAmount / monthlySaving);
         });
 
-        when(rentMedianService.getMedian(any())).thenAnswer(call -> toResponse(call.getArgument(0)));
+        when(rentMedianService.getMedian(any())).thenAnswer(call -> {
+            RentMedianRequest asked = call.getArgument(0);
+            lookedUp.add(key(asked.getRegionCode(), asked.getHousingType(),
+                    asked.getDealType(), asked.getAreaMin()));
+            return toResponse(asked);
+        });
 
         when(loanPlanCalculator.calculate(anyLong(), anyLong(), any()))
                 .thenReturn(LoanPlans.builder().build());
@@ -296,6 +306,18 @@ class RealisticAlgorithmTest {
                 request("11", HousingType.OFFICETEL, DealType.WOLSE));
 
         assertThat(item.getCondition().getRegionCode()).isEqualTo("11140");
+    }
+
+    @Test
+    @DisplayName("1차와 2차에 겹치는 조합을 다시 조회하지 않는다")
+    void doesNotLookUpSameCombinationTwice() {
+        // 주거유형만 입력하면 1차는 아파트로 8가지, 2차는 32가지를 보는데 그 8가지가 2차에 포함된다.
+        // 어느 것도 예산에 맞지 않게 두어 2차까지 반드시 가도록 한다.
+        put("11110", HousingType.APT, DealType.JEONSE, 15, 90 * 억, 0);
+
+        recommend(request("11110", HousingType.APT, null));
+
+        assertThat(lookedUp).doesNotHaveDuplicates();
     }
 
     @Test
