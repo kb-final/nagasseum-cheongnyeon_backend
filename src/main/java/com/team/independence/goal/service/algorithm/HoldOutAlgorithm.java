@@ -250,13 +250,14 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                                              AssetNetWorthBreakdown netWorth, long monthlySaving, long n) {
         long futurePrice = median.getDeposit().getQ3();
 
-        // 월세 후보: 월세만큼 실질 저축 여력이 줄어드는 것으로 반영
         long effectiveSaving = monthlySaving;
         if (candidate.dealType == DealType.WOLSE) {
             Long rentQ3 = median.getMonthlyRent() != null ? median.getMonthlyRent().getQ3() : null;
-            if (rentQ3 != null) {
-                effectiveSaving = Math.max(0, monthlySaving - rentQ3);
+            if (rentQ3 == null) {
+                log.debug("{} → 제외 (월세 Q3 없음 — effectiveSaving 추정 불가)", candidate.label());
+                return null;
             }
+            effectiveSaving = Math.max(0, monthlySaving - rentQ3);
         }
 
         Long totalMonths = budgetCalculator.monthsToReach(netWorth, effectiveSaving, futurePrice);
