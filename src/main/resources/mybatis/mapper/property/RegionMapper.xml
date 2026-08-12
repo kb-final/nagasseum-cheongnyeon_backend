@@ -22,6 +22,14 @@
         ORDER BY code
     </select>
 
+    <!-- 같은 시도의 시군구는 모두 같은 sido 값을 가지므로 한 행만 읽으면 된다. -->
+    <select id="findSidoNameByPrefix" resultType="string">
+        SELECT sido
+        FROM region
+        WHERE code LIKE CONCAT(#{sidoPrefix}, '%')
+        LIMIT 1
+    </select>
+
     <select id="findFullNameByCode" resultType="string">
         SELECT full_name
         FROM region

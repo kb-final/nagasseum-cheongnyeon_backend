@@ -21,5 +21,14 @@ public interface RegionMapper {
      */
     List<String> findCodesBySidoPrefix(@Param("sidoPrefix") String sidoPrefix);
 
+    /**
+     * 시도 코드(법정동코드 앞 2자리)에 해당하는 시도명을 조회한다. 없으면 null.
+     *
+     * <p>region 테이블에 시도 자체를 가리키는 행은 없지만 모든 시군구 행이 {@code sido}를 갖고 있어,
+     * 그중 하나만 읽으면 시도명을 알 수 있다. 시도 행을 따로 만들면 전체 지역을 순회하는 실거래
+     * 동기화가 존재하지 않는 sggCd까지 호출하게 되므로 마스터를 늘리지 않는다.
+     */
+    String findSidoNameByPrefix(@Param("sidoPrefix") String sidoPrefix);
+
     String findFullNameByCode(@Param("code") String code);
 }
