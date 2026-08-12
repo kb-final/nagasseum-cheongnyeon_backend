@@ -34,8 +34,7 @@ public class RentMedianServiceImpl implements RentMedianService {
     @Override
     @Transactional(readOnly = true)
     public RentMedianResponse getMedian(RentMedianRequest request) {
-        // full_name은 NOT NULL이므로 null이면 그 지역 코드가 없다는 뜻이다.
-        String regionName = regionMapper.findFullNameByCode(request.getRegionCode());
+        String regionName = resolveRegionName(request.getRegionCode());
         if (regionName == null) {
             throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
         }
@@ -66,6 +65,24 @@ public class RentMedianServiceImpl implements RentMedianService {
                         ? quartile(amounts, RentMedianAmount::getMonthlyRent)
                         : Quartile.empty())
                 .build();
+    }
+
+    /** 시도 코드 길이(법정동코드 앞 2자리). 이보다 길면 시군구 코드다. */
+    private static final int SIDO_CODE_LENGTH = 2;
+
+    /**
+     * 지역 코드에 해당하는 지명을 찾는다. 없으면 null.
+     *
+     * <p>시군구(5자리)는 그 지역의 전체 지명을, 시도(2자리)는 시도명을 돌려준다.
+     * 시도로 조회하면 그 시도의 시군구 실거래를 모두 한 통에 넣고 집계하므로,
+     * 결과는 "어느 구"가 아니라 "그 시도 전체"의 대표값이 된다.
+     */
+    private String resolveRegionName(String regionCode) {
+        if (regionCode != null && regionCode.length() == SIDO_CODE_LENGTH) {
+            return regionMapper.findSidoNameByPrefix(regionCode);
+        }
+        // full_name은 NOT NULL이므로 null이면 그 지역 코드가 없다는 뜻이다.
+        return regionMapper.findFullNameByCode(regionCode);
     }
 
     /** 평수를 ㎡로 환산한다. 양쪽 모두 버림이라 하한은 넓어지고 상한은 좁아지는데, 명세서가 정한 규칙이다. */

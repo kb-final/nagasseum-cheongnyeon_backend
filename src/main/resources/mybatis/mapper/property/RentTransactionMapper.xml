@@ -59,7 +59,16 @@
     <select id="findAmountsForMedian" resultType="com.team.independence.property.dto.RentMedianAmount">
         SELECT deposit, monthly_rent
           FROM rent_transaction
+        <!-- 지역 코드가 시도 2자리면 그 시도의 시군구 전체를 한 통에 넣고 집계한다.
+             region_code가 idx_rent_reload의 최좌측이라 프리픽스도 레인지 스캔으로 처리된다. -->
+        <choose>
+            <when test="request.regionCode.length() == 2">
+         WHERE region_code LIKE CONCAT(#{request.regionCode}, '%')
+            </when>
+            <otherwise>
          WHERE region_code = #{request.regionCode}
+            </otherwise>
+        </choose>
            AND housing_type = #{request.housingType}
            AND deal_type = #{request.dealType}
            AND deal_ym BETWEEN #{startYm} AND #{endYm}
