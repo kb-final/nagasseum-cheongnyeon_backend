@@ -34,7 +34,7 @@ import java.util.Optional;
  *
  * <p>지역을 기준으로 주거유형·거래유형·면적 버킷의 조합으로 후보를 생성한다.
  * 각 후보에 대해 실거래 Q3 시세와 예산 도달 개월을 구한 뒤
- * 조건 일치(cMS)·대기 패널티(WP)·여유 자산(AM) 스코어로 비교해 가장 높은 점수의 후보를 추천한다.
+ * 조건 개선(cIS)·대기 패널티(WP)·여유 자산(AM) 스코어로 비교해 가장 높은 점수의 후보를 추천한다.
  *
  * <p>기준 조건 결정 우선순위:
  * <ol>
@@ -186,14 +186,26 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
     /**
      * 후보 하나를 평가해 스코어를 계산한다. 필터 탈락 시 null 반환.
-     * 필터 순서: 표본 수 → 보증금 Q3 → 달성 가능 여부 → 추가 대기(m) 범위
-     * 스코어: 0.40×cMS + 0.35×WP + 0.25×AM
+     * 필터 순서: 표본 수 → 보증금 Q3 → 면적 다운그레이드 → 달성 가능 여부 → 추가 대기(m) 범위
+     * 스코어: 0.40×cIS + 0.35×WP + 0.25×AM
      */
     private ScoredCandidate evaluate(HousingCondition candidate, BaseCondition base,
                                      AssetNetWorthBreakdown netWorth, long monthlySaving, long n,
                                      long maxExtra) {
         RentMedianResponse median = fetchAndValidateMedian(candidate);
         if (median == null) return null;
+
+        // Soft filter: 희망 면적 중간값보다 작은 후보(다운그레이드) 제외
+        // Hard Constraint(지역·거래유형·주거유형)는 generateCandidates에서 이미 필터링된 상태
+        int bMin = base.areaMin != null ? base.areaMin : DEFAULT_AREA_MIN;
+        int bMax = base.areaMax != null ? base.areaMax : DEFAULT_AREA_MAX;
+        double baseMidArea      = (bMin + bMax) / 2.0;
+        double candidateMidArea = (candidate.areaMin + candidate.areaMax) / 2.0;
+        if (candidateMidArea < baseMidArea) {
+            log.debug("{} → 제외 (면적 다운그레이드: 후보 {}평 < 기준 {}평)",
+                    candidate.label(), candidateMidArea, baseMidArea);
+            return null;
+        }
 
         BudgetMetrics metrics = calcBudgetMetrics(candidate, median, netWorth, monthlySaving, n);
         if (metrics == null) return null;
@@ -207,15 +219,15 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         // totalMonths <= n+maxExtra 이므로 maxBudget >= futureBudget >= futurePrice → AM >= 0
         long maxBudget = budgetCalculator.calculate(netWorth, metrics.effectiveSaving, n + maxExtra);
         double affordabilityMargin = (double)(maxBudget - metrics.futurePrice) / maxBudget;
-        double condMatchScore = calcConditionMatchScore(base, candidate);
-        double waitPenalty    = 1.0 / (1.0 + metrics.m / 12.0);
-        double score = 0.40 * condMatchScore
+        double condImprovScore = calcConditionImprovementScore(baseMidArea, candidateMidArea);
+        double waitPenalty     = 1.0 / (1.0 + metrics.m / 12.0);
+        double score = 0.40 * condImprovScore
                      + 0.35 * waitPenalty
                      + 0.25 * affordabilityMargin;
 
-        log.debug("{} deposit={} effectiveSaving={} totalMonths={} m={} cMS={} WP={} AM={} score={}",
+        log.debug("{} deposit={} effectiveSaving={} totalMonths={} m={} cIS={} WP={} AM={} score={}",
                 candidate.label(), metrics.futurePrice, metrics.effectiveSaving, metrics.totalMonths, metrics.m,
-                String.format("%.2f", condMatchScore), String.format("%.3f", waitPenalty),
+                String.format("%.2f", condImprovScore), String.format("%.3f", waitPenalty),
                 String.format("%.3f", affordabilityMargin), String.format("%.4f", score));
 
         return new ScoredCandidate(candidate, median, metrics.futurePrice, metrics.totalMonths, metrics.m, score);
@@ -248,6 +260,10 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
      */
     private BudgetMetrics calcBudgetMetrics(HousingCondition candidate, RentMedianResponse median,
                                              AssetNetWorthBreakdown netWorth, long monthlySaving, long n) {
+        // TODO: 현재는 최근 실거래 Q3를 그대로 사용하지만, totalMonths개월 후 시세는 다를 수 있다.
+        //       RentMedianService에 시계열 기반 미래 시세 예측이 추가되면,
+        //       targetYearMonth(= now.plusMonths(totalMonths))를 candidate에 포함해 예측값을 사용해야 한다.
+        //       현재는 예산(미래값) vs 가격(현재값)의 비대칭이 존재한다.
         long futurePrice = median.getDeposit().getQ3();
 
         long effectiveSaving = monthlySaving;
@@ -272,34 +288,22 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     }
 
     /**
-     * 후보 조건이 기준 조건(BaseCondition)과 얼마나 일치하는지 0.0~1.0으로 계산한다.
-     * 조건이 null이면 무관심으로 간주해 만점 처리한다.
+     * CIS (Condition Improvement Score): 후보 면적이 기준 조건 대비 얼마나 개선되었는지 0.0~1.0으로 계산한다.
      *
-     * <p>주거유형(0.5) + 면적 겹침 비율(0.5). 지역은 모든 후보가 동일 지역이므로 포함하지 않는다.
-     * 면적은 희망 범위[areaMin, areaMax]와 후보 버킷의 겹치는 구간 비율로 부분 점수를 부여한다.
+     * <p>Hard Constraint(지역·거래유형·주거유형)는 generateCandidates에서 필터링되므로 포함하지 않는다.
+     * 다운그레이드 후보(candidateMidArea &lt; baseMidArea)는 evaluate에서 이미 제외되므로 delta &ge; 0이 보장된다.
+     * 가격 개선(가격 &darr;)은 AM(Affordability Margin)이 담당하므로 여기서는 면적만 평가한다.
+     *
+     * <p>공식: clamp(0.5 + delta / 20.0, 0.0, 1.0)
+     * <ul>
+     *   <li>delta = 0평 (기준과 동일 면적): 0.5</li>
+     *   <li>delta = +5평 (한 버킷 업그레이드): 0.75</li>
+     *   <li>delta = +10평 이상: 1.0 (최대)</li>
+     * </ul>
      */
-    private double calcConditionMatchScore(BaseCondition base, HousingCondition candidate) {
-        double score = 0.0;
-
-        // 주거 유형 (0.5)
-        if (base.housingType == null || base.housingType == candidate.housingType) {
-            score += 0.5;
-        }
-
-        // 면적 겹침 비율 (0.5) — binary 판정 대신 겹치는 구간으로 부분 점수 부여
-        if (base.areaMin == null && base.areaMax == null) {
-            score += 0.5;
-        } else {
-            int bMin = base.areaMin != null ? base.areaMin : 0;
-            int bMax = base.areaMax != null ? base.areaMax : 999;
-            int overlapStart = Math.max(candidate.areaMin, bMin);
-            int overlapEnd   = Math.min(candidate.areaMax, bMax);
-            if (overlapStart < overlapEnd) {
-                score += 0.5 * (double)(overlapEnd - overlapStart) / AREA_STEP;
-            }
-        }
-
-        return score;
+    private double calcConditionImprovementScore(double baseMidArea, double candidateMidArea) {
+        double delta = candidateMidArea - baseMidArea;
+        return Math.min(1.0, Math.max(0.0, 0.5 + delta / 20.0));
     }
 
     /**
