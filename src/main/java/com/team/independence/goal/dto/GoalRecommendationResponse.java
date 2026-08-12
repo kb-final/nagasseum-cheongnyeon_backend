@@ -36,6 +36,15 @@ public class GoalRecommendationResponse {
         private DealType dealType;
         private int areaMin;
         private int areaMax;
+
+        /**
+         * 월세 중앙값 (원). 전세({@code dealType=JEONSE})면 0.
+         *
+         * <p>월세는 보증금과 함께 봐야 조건이 완성되는데 플랜 쪽에는 목돈만 담기므로 여기에 둔다.
+         * 알고리즘 내부에서는 월세를 전세 환산 금액으로 바꿔 비교하지만, 여기 담기는 값은
+         * 환산값이 아니라 사용자가 실제로 매달 내는 금액이다.
+         */
+        private long monthlyRent;
     }
 
     @Getter

@@ -4,6 +4,8 @@ import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import java.time.YearMonth;
 import javax.validation.constraints.AssertTrue;
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Pattern;
 import javax.validation.constraints.Positive;
 import javax.validation.constraints.PositiveOrZero;
 import lombok.Getter;
@@ -24,7 +26,15 @@ import lombok.Setter;
 @NoArgsConstructor
 public class GoalRecommendationRequest {
 
-    /** 법정동코드 앞 5자리(시군구) 또는 시도 2자리 */
+    /**
+     * 법정동코드 앞 5자리(시군구) 또는 시도 2자리. 유일한 필수 조건이다.
+     *
+     * <p>추천이 사용자가 지정한 시도를 벗어나지 않기 때문에 탐색 범위를 여는 기준점이 되고,
+     * 지역 없이는 어떤 알고리즘도 실거래를 조회할 수 없어 필수로 둔다.
+     * 시도 2자리면 시군구는 알고리즘이 정하고, 5자리면 그 시군구로 고정된다.
+     */
+    @NotBlank(message = "지역 코드는 필수입니다.")
+    @Pattern(regexp = "\\d{2}|\\d{5}", message = "지역 코드는 시도 2자리 또는 시군구 5자리여야 합니다.")
     private String regionCode;
 
     /** 선택. null이면 전 주거유형 탐색 */

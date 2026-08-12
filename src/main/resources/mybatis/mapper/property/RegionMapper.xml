@@ -14,6 +14,14 @@
            AND sigungu = #{sigungu}
     </select>
 
+    <!-- code가 PK라 프리픽스 검색이 인덱스 레인지 스캔으로 처리된다. -->
+    <select id="findCodesBySidoPrefix" resultType="string">
+        SELECT code
+        FROM region
+        WHERE code LIKE CONCAT(#{sidoPrefix}, '%')
+        ORDER BY code
+    </select>
+
     <select id="findFullNameByCode" resultType="string">
         SELECT full_name
         FROM region
