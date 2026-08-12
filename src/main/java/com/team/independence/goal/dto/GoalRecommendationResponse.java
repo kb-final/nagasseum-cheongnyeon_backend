@@ -45,6 +45,15 @@ public class GoalRecommendationResponse {
          * 환산값이 아니라 사용자가 실제로 매달 내는 금액이다.
          */
         private long monthlyRent;
+
+        /**
+         * 이 조건의 대표값을 뽑는 데 쓰인 실거래 건수.
+         *
+         * <p>거래가 드문 조건에서는 한두 건으로 계산된 값일 수 있어, 숫자를 얼마나 믿을지
+         * 화면에서 판단할 수 있도록 함께 내려준다. 지역을 시도로 받으면 그 시도의 시군구
+         * 거래를 모두 합치므로 건수가 크게 늘어난다.
+         */
+        private int sampleCount;
     }
 
     @Getter

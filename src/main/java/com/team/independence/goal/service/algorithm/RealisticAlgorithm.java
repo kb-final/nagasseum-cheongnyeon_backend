@@ -373,7 +373,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         return Optional.of(new Candidate(
                 regionCode, median.getRegionName(), housingType, dealType,
                 areaMin, areaMax, deposit, monthlyRent, comparableAmount,
-                reachMonths, search.desiredMonths));
+                median.getSampleCount(), reachMonths, search.desiredMonths));
     }
 
     /**
@@ -424,6 +424,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                 .areaMin(chosen.getAreaMin())
                 .areaMax(chosen.getAreaMax())
                 .monthlyRent(chosen.getMonthlyRent())
+                .sampleCount(chosen.getSampleCount())
                 .build();
 
         return GoalRecommendationResponse.RecommendationItem.builder()
@@ -550,13 +551,15 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         private final long monthlyRent;
         /** 전세 환산 보증금 — 후보끼리 비교할 때만 쓰는 내부 저울 */
         private final long comparableAmount;
+        /** 대표값을 뽑는 데 쓰인 실거래 건수 */
+        private final int sampleCount;
         /** 도달까지 걸리는 개월. null이면 탐색 상한 안에 도달 불가 */
         private final Long reachMonths;
         private final long desiredMonths;
 
         private Candidate(String regionCode, String regionName, HousingType housingType, DealType dealType,
                 int areaMin, int areaMax, long deposit, long monthlyRent, long comparableAmount,
-                Long reachMonths, long desiredMonths) {
+                int sampleCount, Long reachMonths, long desiredMonths) {
             this.regionCode = regionCode;
             this.regionName = regionName;
             this.housingType = housingType;
@@ -566,6 +569,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
             this.deposit = deposit;
             this.monthlyRent = monthlyRent;
             this.comparableAmount = comparableAmount;
+            this.sampleCount = sampleCount;
             this.reachMonths = reachMonths;
             this.desiredMonths = desiredMonths;
         }
@@ -605,6 +609,10 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
 
         private long getMonthlyRent() {
             return monthlyRent;
+        }
+
+        private int getSampleCount() {
+            return sampleCount;
         }
 
         private long getComparableAmount() {
