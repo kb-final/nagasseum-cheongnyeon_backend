@@ -34,6 +34,11 @@ public interface BudgetCalculator {
      * @param monthlySaving 월 저축액 (원)
      * @param targetAmount  목표 금액 (원)
      * @return 도달 최소 개월수. 저축액이 0 이하이거나 상한 내에 도달하지 못하면 null
+     *
+     * TODO: 현재는 targetAmount가 고정값(현재 실거래 Q3)이라 budget(m) >= currentPrice인 m을 탐색한다.
+     *       RentMedianService에 시계열 기반 미래 시세 예측이 추가되면, 목표 금액도 시점에 따라 변해야 한다.
+     *       이때 시그니처를 LongUnaryOperator(m → 예측가격(m)) 형태로 변경하고,
+     *       루프 조건을 budget(m) >= predictedPrice(m)으로 교체해야 한다.
      */
     Long monthsToReach(AssetNetWorthBreakdown netWorth, long monthlySaving, long targetAmount);
 }
