@@ -241,8 +241,27 @@ class RealisticAlgorithmTest {
     }
 
     @Test
-    @DisplayName("조건을 전부 지정해도 지역만 지키고 나머지는 조정한다")
-    void adjustsEverythingExceptRegion() {
+    @DisplayName("입력한 조건으로 목표 시점 안에 되면 더 나은 게 있어도 그대로 둔다")
+    void keepsInputConditionWhenItAlreadyFits() {
+        // 사용자가 원한 조건. 예산 2.4억 안에 들어온다.
+        put("11110", HousingType.OFFICETEL, DealType.JEONSE, 10, 1 * 억, 0);
+        // 더 비싸고 예산에도 맞지만, 입력 조건이 이미 되므로 이쪽으로 바꾸면 안 된다.
+        put("11110", HousingType.APT, DealType.JEONSE, 20, 2 * 억, 0);
+
+        GoalRecommendationRequest request = request("11110", HousingType.OFFICETEL, DealType.JEONSE);
+        request.setSizeMin(10);
+        request.setSizeMax(14);
+
+        RecommendationItem item = recommend(request);
+
+        assertThat(item.getCondition().getHousingType()).isEqualTo(HousingType.OFFICETEL);
+        assertThat(item.getCondition().getAreaMin()).isEqualTo(10);
+        assertThat(item.getReason()).doesNotContain("입력하신 조건으로는");
+    }
+
+    @Test
+    @DisplayName("입력한 조건으로 목표 시점을 못 지키면 그때 조건을 풀어 대안을 찾는다")
+    void relaxesInputConditionOnlyWhenItFails() {
         // 사용자가 원한 조건(아파트 20~25평 전세)은 예산 2.4억을 훨씬 넘는다.
         put("11110", HousingType.APT, DealType.JEONSE, 20, 9 * 억, 0);
         // 같은 구의 더 작은 오피스텔이면 들어온다.
@@ -258,7 +277,25 @@ class RealisticAlgorithmTest {
         assertThat(item.getCondition().getRegionCode()).isEqualTo("11110");
         assertThat(item.getCondition().getHousingType()).isEqualTo(HousingType.OFFICETEL);
         assertThat(item.getCondition().getAreaMin()).isEqualTo(10);
-        assertThat(item.getReason()).contains("24개월을 지키면서");
+        assertThat(item.getReason()).contains("입력하신 조건으로는");
+    }
+
+    @Test
+    @DisplayName("시군구 순위는 기본값이 아니라 입력한 조건으로 매긴다")
+    void ranksRegionsByInputCondition() {
+        when(regionMapper.findCodesBySidoPrefix("11")).thenReturn(List.of("11110", "11140"));
+
+        // 사용자가 오피스텔·월세를 원했다. 기본값(아파트·전세)으로 줄을 세우면 종로가 뽑히지만,
+        // 입력 조건으로 보면 중구가 더 낫다.
+        put("11110", HousingType.APT, DealType.JEONSE, 15, 1 * 억, 0);
+        put("11140", HousingType.APT, DealType.JEONSE, 15, 5000 * 만, 0);
+        put("11110", HousingType.OFFICETEL, DealType.WOLSE, 15, 500 * 만, 30 * 만);
+        put("11140", HousingType.OFFICETEL, DealType.WOLSE, 15, 2000 * 만, 30 * 만);
+
+        RecommendationItem item = recommend(
+                request("11", HousingType.OFFICETEL, DealType.WOLSE));
+
+        assertThat(item.getCondition().getRegionCode()).isEqualTo("11140");
     }
 
     @Test

@@ -16,6 +16,7 @@ import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -30,13 +31,22 @@ import org.springframework.stereotype.Service;
  * 2년을 그대로 두고 "그 안에 도달 가능한 조건은 여기까지"를 답한다. 조건을 고정하고 시점을 늘리는
  * {@code HOLD_OUT}과 정확히 반대 방향이며, 같은 사람에게 같은 데이터로 상반된 답을 주는 한 쌍이다.
  *
- * <h3>지역만 지키고 나머지는 조정한다</h3>
- * 사용자가 지정한 <b>지역은 어떤 경우에도 벗어나지 않는다.</b> 반면 주거유형·평수·거래유형은
- * 사용자가 값을 줬더라도 조정 대상이다. 예산이 남으면 올려 잡고 모자라면 내려 잡는다.
+ * <h3>사용자 조건에서 출발해, 안 될 때만 푼다</h3>
+ * 탐색의 시작점은 기본값이 아니라 <b>사용자가 입력한 조건</b>이다. 빈 칸만 기본값으로 채운다.
  *
- * <p>입력 조건을 그대로 지키지 않는 이유는, 그 역할이 {@code PREFERENCE} 카드의 것이기 때문이다.
- * 두 카드가 같은 조건을 가리키면 REALISTIC은 "현실적인 대안"을 주는 대신 진단만 하게 된다.
- * 조건을 전부 지정한 사용자에게도 조정된 대안을 내려면 지역 외에는 열어 두어야 한다.
+ * <ol>
+ *   <li><b>1차</b> — 사용자가 준 조건을 지킨 채, 주지 않은 항목만 움직여 본다.
+ *       목표 시점 안에 되는 것이 있으면 <b>거기서 끝낸다.</b> 갈 수 있는 사람의 조건을
+ *       마음대로 바꾸지 않는다</li>
+ *   <li><b>2차</b> — 1차로는 목표 시점을 못 지킬 때만 사용자가 준 조건까지 풀고 다시 찾는다.
+ *       "그 조건으로는 어려우니 이런 대안은 어떠냐"에 해당한다</li>
+ * </ol>
+ *
+ * <p>지역은 2차에서도 풀지 않는다. 사는 곳을 옮기는 것은 조건을 조정하는 것과 성격이 다르다.
+ *
+ * <p>2차까지 가는 이유는, 조건을 전부 지정한 사용자에게 조정 여지가 없다고 "입력하신 조건은
+ * 108개월 걸립니다"라고만 답하면 대안을 주는 카드가 아니라 진단만 하는 카드가 되기 때문이다.
+ * 입력 그대로의 결과는 {@code PREFERENCE} 카드가 이미 보여준다.
  *
  * <h3>전세와 월세를 같은 저울에 올리는 방법</h3>
  * 월세는 "보증금이 작으니 싸다"가 아니다. 전세도 보증금이 묶여 이자를 못 버는 만큼 비용이 있다.
@@ -145,15 +155,32 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
             return Optional.empty();
         }
 
-        // 2단계: 그 시군구 안에서 조건 최적화
-        List<Candidate> candidates = evaluateConditions(regionCode, request, budget);
-        if (candidates.isEmpty()) {
+        // 2단계: 사용자가 준 조건을 지킨 채, 주지 않은 항목만 움직여 본다
+        List<Candidate> asRequested = evaluateConditions(regionCode, request, budget, true);
+        Optional<Candidate> keepingInput = bestWithinTarget(asRequested);
+        if (keepingInput.isPresent()) {
+            return Optional.of(assemble(memberId, keepingInput.get(), targetDate, desiredMonths, false));
+        }
+
+        // 3단계: 입력한 조건으로는 목표 시점을 못 지킨다. 그때만 조건을 풀고 다시 찾는다.
+        // 준 조건이 하나도 없으면 1차가 이미 전 범위 탐색이라 다시 조회하지 않는다.
+        List<Candidate> relaxed = hasInputCondition(request)
+                ? evaluateConditions(regionCode, request, budget, false)
+                : asRequested;
+        if (relaxed.isEmpty()) {
             log.warn("실거래 표본이 있는 조합이 없습니다. memberId={}, regionCode={}", memberId, regionCode);
             return Optional.empty();
         }
 
-        Candidate chosen = choose(candidates);
-        return Optional.of(assemble(memberId, chosen, targetDate, desiredMonths, request));
+        Candidate chosen = bestWithinTarget(relaxed).orElseGet(() -> cheapest(relaxed));
+        return Optional.of(assemble(memberId, chosen, targetDate, desiredMonths, true));
+    }
+
+    /** 사용자가 지역 외에 조정 가능한 조건을 하나라도 줬는가 */
+    private boolean hasInputCondition(GoalRecommendationRequest request) {
+        return request.getPropertyType() != null
+                || request.getTradeType() != null
+                || (request.getSizeMin() != null && request.getSizeMax() != null);
     }
 
     // ===== 1단계: 지역 =====
@@ -179,11 +206,17 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
             return null;
         }
 
-        // 지역끼리 비교하려면 같은 잣대여야 하므로 기준 조합은 요청과 무관하게 고정한다.
-        int[] size = SIZE_BUCKETS[REFERENCE_SIZE_BUCKET];
+        // 지역끼리 비교하려면 같은 잣대여야 하므로 조합 하나를 고정하는데, 그 조합은 기본값이 아니라
+        // 사용자가 입력한 조건이다. 빈 칸만 기본값으로 채운다.
+        HousingType housingType = request.getPropertyType() != null
+                ? request.getPropertyType() : REFERENCE_HOUSING_TYPE;
+        DealType dealType = request.getTradeType() != null
+                ? request.getTradeType() : REFERENCE_DEAL_TYPE;
+        int[] size = inputSize(request) != null ? inputSize(request) : SIZE_BUCKETS[REFERENCE_SIZE_BUCKET];
+
         List<Candidate> ranked = new ArrayList<>();
         for (String code : sigunguCodes) {
-            evaluate(code, REFERENCE_HOUSING_TYPE, REFERENCE_DEAL_TYPE, size[0], size[1], request, budget)
+            evaluate(code, housingType, dealType, size[0], size[1], request, budget)
                     .ifPresent(ranked::add);
         }
         if (ranked.isEmpty()) {
@@ -203,18 +236,18 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     // ===== 2단계: 조건 =====
 
     /**
-     * 확정된 시군구 안에서 평수·주거유형·거래유형의 모든 조합을 평가한다.
+     * 확정된 시군구 안에서 조합들을 평가한다.
      *
-     * <p>사용자가 지정한 값이 있어도 후보를 좁히지 않는다. 좁히면 조정할 여지가 사라져 입력을 그대로
-     * 되돌려주게 되는데, 그건 {@code PREFERENCE} 카드가 할 일이다.
+     * @param keepInput true면 사용자가 준 항목은 그 값으로 고정하고 주지 않은 항목만 펼친다.
+     *                  false면 사용자가 준 항목까지 전부 펼친다.
      */
     private List<Candidate> evaluateConditions(
-            String regionCode, GoalRecommendationRequest request, Budget budget) {
+            String regionCode, GoalRecommendationRequest request, Budget budget, boolean keepInput) {
 
         List<Candidate> candidates = new ArrayList<>();
-        for (int[] size : SIZE_BUCKETS) {
-            for (HousingType housingType : HousingType.values()) {
-                for (DealType dealType : DealType.values()) {
+        for (int[] size : sizeCandidates(request, keepInput)) {
+            for (HousingType housingType : housingTypeCandidates(request, keepInput)) {
+                for (DealType dealType : dealTypeCandidates(request, keepInput)) {
                     evaluate(regionCode, housingType, dealType, size[0], size[1], request, budget)
                             .ifPresent(candidates::add);
                 }
@@ -224,22 +257,55 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     }
 
     /**
-     * 최종 추천을 고른다.
+     * 목표 시점 안에 도달 가능한 것 중 <b>가장 비싼</b> 것.
      *
-     * <p>목표 시점 안에 도달 가능한 것 중 <b>가장 비싼</b> 것을 고른다. 가격이 곧 주거 수준의 대리
-     * 지표라, 예산을 남기지 않고 쓰는 쪽이 사용자에게 더 나은 집이다. 이 규칙 하나로 "여유로우면 상향,
-     * 모자라면 하향"이 모두 처리된다.
-     *
-     * <p>도달 가능한 것이 하나도 없으면 가장 싼 것을 고른다. 그것이 이 조건에서 목표 시점에 가장 가까운
-     * 후보이며, 카드는 "여기까지가 가능하다" 대신 "가장 가까운 것이 이것이고 N개월 걸린다"고 말한다.
+     * <p>가격이 곧 주거 수준의 대리 지표라, 예산을 남기지 않고 쓰는 쪽이 더 나은 집이다.
+     * 이 규칙 하나로 "여유로우면 더 좋은 조건, 모자라면 낮은 조건"이 모두 처리되어
+     * 상향·하향을 따로 구현하지 않아도 된다.
      */
-    private Candidate choose(List<Candidate> candidates) {
+    private Optional<Candidate> bestWithinTarget(List<Candidate> candidates) {
         return candidates.stream()
                 .filter(Candidate::withinTarget)
-                .max(Comparator.comparingLong(Candidate::getComparableAmount))
-                .orElseGet(() -> candidates.stream()
-                        .min(Comparator.comparingLong(Candidate::getComparableAmount))
-                        .orElseThrow(IllegalStateException::new));
+                .max(Comparator.comparingLong(Candidate::getComparableAmount));
+    }
+
+    /**
+     * 가장 싼 것. 목표 시점 안에 되는 것이 하나도 없을 때 쓴다.
+     *
+     * <p>예산이 고정이므로 가장 싼 것이 곧 목표 시점에 가장 가까운 후보다. 카드는 이때
+     * "여기까지 가능하다" 대신 "가장 가까운 것이 이것이고 N개월 걸린다"고 말한다.
+     */
+    private Candidate cheapest(List<Candidate> candidates) {
+        return candidates.stream()
+                .min(Comparator.comparingLong(Candidate::getComparableAmount))
+                .orElseThrow(IllegalStateException::new);
+    }
+
+    // ===== 후보군 산출 =====
+
+    private List<int[]> sizeCandidates(GoalRecommendationRequest request, boolean keepInput) {
+        int[] input = inputSize(request);
+        return keepInput && input != null ? List.of(input) : Arrays.asList(SIZE_BUCKETS);
+    }
+
+    private List<HousingType> housingTypeCandidates(GoalRecommendationRequest request, boolean keepInput) {
+        return keepInput && request.getPropertyType() != null
+                ? List.of(request.getPropertyType())
+                : Arrays.asList(HousingType.values());
+    }
+
+    private List<DealType> dealTypeCandidates(GoalRecommendationRequest request, boolean keepInput) {
+        return keepInput && request.getTradeType() != null
+                ? List.of(request.getTradeType())
+                : Arrays.asList(DealType.values());
+    }
+
+    /** 사용자가 준 평수. 하한·상한 중 하나라도 없으면 범위가 성립하지 않아 없는 것으로 본다. */
+    private int[] inputSize(GoalRecommendationRequest request) {
+        if (request.getSizeMin() == null || request.getSizeMax() == null) {
+            return null;
+        }
+        return new int[]{request.getSizeMin(), request.getSizeMax()};
     }
 
     // ===== 후보 평가 =====
@@ -313,7 +379,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
 
     private GoalRecommendationResponse.RecommendationItem assemble(
             long memberId, Candidate chosen, YearMonth targetDate,
-            long desiredMonths, GoalRecommendationRequest request) {
+            long desiredMonths, boolean adjusted) {
 
         // 화면에 나가는 목표 금액은 환산값이 아니라 실제로 모아야 하는 보증금이다.
         LoanPlans plans = loanPlanCalculator.calculate(memberId, chosen.getDeposit(), targetDate);
@@ -331,7 +397,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         return GoalRecommendationResponse.RecommendationItem.builder()
                 .type(AlgorithmType.REALISTIC)
                 .title(buildTitle(chosen, desiredMonths))
-                .reason(buildReason(chosen, desiredMonths))
+                .reason(buildReason(chosen, desiredMonths, adjusted))
                 .condition(condition)
                 .loanX(plans.getLoanX())
                 .loanO(plans.getLoanO())
@@ -352,7 +418,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      * <p>목표 시점 안에 되는 경우와 못 되는 경우는 카드가 하는 말 자체가 다르므로 문구를 갈라 쓴다.
      * 후자는 조건을 조정해도 시점을 못 지킨다는 뜻이라, 가능하다고 말하면 거짓이 된다.
      */
-    private String buildReason(Candidate chosen, long desiredMonths) {
+    private String buildReason(Candidate chosen, long desiredMonths, boolean adjusted) {
         String condition = String.format("%s %s %d~%d평 %s",
                 chosen.getRegionName(), label(chosen.getHousingType()),
                 chosen.getAreaMin(), chosen.getAreaMax(), label(chosen.getDealType()));
@@ -366,7 +432,12 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                     "%d개월 안에 가능한 조건은 찾지 못했습니다. %s가 가장 가까우며 %d개월이 필요합니다.",
                     desiredMonths, condition, chosen.getReachMonths());
         }
-        return String.format("%d개월을 지키면서 갈 수 있는 가장 나은 조건은 %s입니다.", desiredMonths, condition);
+        if (adjusted) {
+            return String.format(
+                    "입력하신 조건으로는 %d개월을 지키기 어렵습니다. %s로 바꾸면 그 안에 도달할 수 있습니다.",
+                    desiredMonths, condition);
+        }
+        return String.format("%s로 %d개월 안에 도달할 수 있습니다.", condition, desiredMonths);
     }
 
     private static String label(HousingType housingType) {
