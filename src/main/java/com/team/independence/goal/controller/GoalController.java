@@ -10,8 +10,10 @@ import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalResponse;
 import com.team.independence.goal.dto.GoalSaveRequest;
 import com.team.independence.goal.dto.GoalSummaryResponse;
+import com.team.independence.goal.dto.MonteCarloResponse;
 import com.team.independence.goal.service.GoalDetailService;
 import com.team.independence.goal.service.GoalService;
+import com.team.independence.goal.service.MonteCarloService;
 import javax.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -31,6 +33,7 @@ public class GoalController {
 
     private final GoalService goalService;
     private final GoalDetailService goalDetailService;
+    private final MonteCarloService monteCarloService;
 
     @PostMapping("/diagnosis")
     public ApiResponse<GoalDiagnosisResponse> diagnose(
@@ -82,6 +85,13 @@ public class GoalController {
             @PathVariable Long goalId,
             @RequestParam Long monthlySaving) {
         return ApiResponse.ok(goalService.simulateMonthlySaving(memberId, goalId, monthlySaving));
+    }
+
+    @GetMapping("/{goalId}/simulation")
+    public ApiResponse<MonteCarloResponse> simulate(
+            @LoginMember Long memberId,
+            @PathVariable Long goalId) {
+        return ApiResponse.ok(monteCarloService.simulate(memberId, goalId));
     }
 
     @GetMapping("/market-trend")
