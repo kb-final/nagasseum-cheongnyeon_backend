@@ -32,7 +32,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
  *
  * <p>사전 조건: docker compose up -d, 환경변수 MOLIT_SERVICE_KEY
  */
-// @Disabled("로컬 MySQL + 국토부 API 환경 전용")
+@Disabled("로컬 MySQL + 국토부 API 환경 전용")
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = RootConfig.class)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
