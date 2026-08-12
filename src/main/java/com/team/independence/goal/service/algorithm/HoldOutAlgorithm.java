@@ -89,33 +89,26 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                 ? goalHousingMapper.findByGoalId(activeGoal.getId())
                 : null;
 
-        BaseCondition base = resolveCondition(request, housing);
+        BaseCondition base = resolveCondition(request, housing, activeGoal);
         if (base == null) return Optional.empty();
 
-        YearMonth now = YearMonth.now(); // 기준 시점 통일 — 이후 계산에서 재사용
+        YearMonth now = YearMonth.now(); // 기준 시점 통일
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
         long monthlySaving = resolveMonthlySaving(memberId);
-        long n = calcRemainingMonths(request, activeGoal, now);
+        long n = base.targetDate != null ? Math.max(0, ChronoUnit.MONTHS.between(now, base.targetDate)) : 0;
 
         long maxExtra = Math.min(Math.max(n, MIN_EXTRA_MONTHS), MAX_EXTRA_MONTHS);
 
-        List<String> evalLogs = new ArrayList<>();
         ScoredCandidate best = null;
         ScoredCandidate bestAlreadyAchievable = null;
         for (HousingCondition candidate : generateCandidates(base)) {
-            ScoredCandidate scored = evaluate(candidate, base, netWorth, monthlySaving, n, maxExtra, evalLogs);
+            ScoredCandidate scored = evaluate(candidate, base, netWorth, monthlySaving, n, maxExtra);
             if (scored == null) continue;
             if (scored.m == 0) {
                 if (bestAlreadyAchievable == null || scored.score > bestAlreadyAchievable.score) bestAlreadyAchievable = scored;
             } else {
                 if (best == null || scored.score > best.score) best = scored;
             }
-        }
-
-        if (log.isDebugEnabled()) {
-            StringBuilder sb = new StringBuilder("\n[HoldOut] 후보 평가 요약 memberId=").append(memberId);
-            evalLogs.forEach(line -> sb.append("\n  ").append(line));
-            log.debug(sb.toString());
         }
 
         // HoldOut 범위(1~maxExtra) 후보가 없으면 현재 계획으로 이미 달성 가능한 후보로 대체
@@ -127,10 +120,8 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
             return Optional.empty();
         }
 
-        log.info("[HoldOut] 최종 선택 memberId={} {}/{} area=[{},{}] futurePrice={} m={}개월 score={} alreadyAchievable={}",
-                memberId,
-                best.candidate.housingType, best.candidate.dealType,
-                best.candidate.areaMin, best.candidate.areaMax,
+        log.info("[HoldOut] 최종 선택 memberId={} {} futurePrice={} m={}개월 score={} alreadyAchievable={}",
+                memberId, best.candidate.label(),
                 best.futurePrice, best.m, String.format("%.4f", best.score), isAlreadyAchievable);
 
         YearMonth targetDate = now.plusMonths(best.totalMonths);
@@ -194,34 +185,70 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     }
 
     /**
-     * 후보 하나를 평가해 스코어를 계산한다. 필터 탈락 시 null 반환. 평가 내역은 evalLogs에 누적.
+     * 후보 하나를 평가해 스코어를 계산한다. 필터 탈락 시 null 반환.
      * 필터 순서: 표본 수 → 보증금 Q3 → 달성 가능 여부 → 추가 대기(m) 범위
      * 스코어: 0.40×cMS + 0.35×WP + 0.25×AM
      */
     private ScoredCandidate evaluate(HousingCondition candidate, BaseCondition base,
                                      AssetNetWorthBreakdown netWorth, long monthlySaving, long n,
-                                     long maxExtra, List<String> evalLogs) {
-        String label = candidate.housingType + "/" + candidate.dealType
-                + " area=[" + candidate.areaMin + "," + candidate.areaMax + "]";
+                                     long maxExtra) {
+        RentMedianResponse median = fetchAndValidateMedian(candidate);
+        if (median == null) return null;
 
+        BudgetMetrics metrics = calcBudgetMetrics(candidate, median, netWorth, monthlySaving, n);
+        if (metrics == null) return null;
+
+        if (metrics.m > maxExtra) {
+            log.debug("{} → 제외 (m={}, 허용범위 0~{})", candidate.label(), metrics.m, maxExtra);
+            return null;
+        }
+
+        // AM: n+maxExtra 시점의 최대 예산 대비 여유 — 후보 가격이 쌀수록 높아져 변별력 있음
+        // totalMonths <= n+maxExtra 이므로 maxBudget >= futureBudget >= futurePrice → AM >= 0
+        long maxBudget = budgetCalculator.calculate(netWorth, metrics.effectiveSaving, n + maxExtra);
+        double affordabilityMargin = (double)(maxBudget - metrics.futurePrice) / maxBudget;
+        double condMatchScore = calcConditionMatchScore(base, candidate);
+        double waitPenalty    = 1.0 / (1.0 + metrics.m / 12.0);
+        double score = 0.40 * condMatchScore
+                     + 0.35 * waitPenalty
+                     + 0.25 * affordabilityMargin;
+
+        log.debug("{} deposit={} effectiveSaving={} totalMonths={} m={} cMS={} WP={} AM={} score={}",
+                candidate.label(), metrics.futurePrice, metrics.effectiveSaving, metrics.totalMonths, metrics.m,
+                String.format("%.2f", condMatchScore), String.format("%.3f", waitPenalty),
+                String.format("%.3f", affordabilityMargin), String.format("%.4f", score));
+
+        return new ScoredCandidate(candidate, median, metrics.futurePrice, metrics.totalMonths, metrics.m, score);
+    }
+
+    /**
+     * 후보의 시세를 조회하고 표본 수·Q3 존재 여부를 검증한다. 탈락 시 null 반환.
+     */
+    private RentMedianResponse fetchAndValidateMedian(HousingCondition candidate) {
         RentMedianResponse median;
         try {
             median = rentMedianService.getMedian(candidate.toMedianRequest());
         } catch (Exception e) {
-            evalLogs.add(label + " → 제외 (가격 조회 실패: " + e.getMessage() + ")");
+            log.debug("{} → 제외 (가격 조회 실패: {})", candidate.label(), e.getMessage());
             return null;
         }
-
         if (median.getSampleCount() < MIN_SAMPLE_COUNT) {
-            evalLogs.add(label + " → 제외 (표본 부족: " + median.getSampleCount() + "건)");
+            log.debug("{} → 제외 (표본 부족: {}건)", candidate.label(), median.getSampleCount());
             return null;
         }
-        Long depositQ3 = median.getDeposit().getQ3();
-        if (depositQ3 == null) {
-            evalLogs.add(label + " → 제외 (보증금 Q3 없음)");
+        if (median.getDeposit().getQ3() == null) {
+            log.debug("{} → 제외 (보증금 Q3 없음)", candidate.label());
             return null;
         }
-        long futurePrice = depositQ3;
+        return median;
+    }
+
+    /**
+     * 시세와 자산 정보를 기반으로 예산 지표를 계산한다. 달성 불가(저축 불충분 등)이면 null 반환.
+     */
+    private BudgetMetrics calcBudgetMetrics(HousingCondition candidate, RentMedianResponse median,
+                                             AssetNetWorthBreakdown netWorth, long monthlySaving, long n) {
+        long futurePrice = median.getDeposit().getQ3();
 
         // 월세 후보: 월세만큼 실질 저축 여력이 줄어드는 것으로 반영
         long effectiveSaving = monthlySaving;
@@ -234,43 +261,13 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
         Long totalMonths = budgetCalculator.monthsToReach(netWorth, effectiveSaving, futurePrice);
         if (totalMonths == null) {
-            evalLogs.add(String.format("%s → 제외 (달성 불가: deposit=%,d effectiveSaving=%,d)",
-                    label, futurePrice, effectiveSaving));
-            return null;
-        }
-
-        long futureBudget = budgetCalculator.calculate(netWorth, effectiveSaving, totalMonths);
-        if (futureBudget < futurePrice) {
-            evalLogs.add(String.format("%s → 제외 (예산 부족: budget=%,d price=%,d)", label, futureBudget, futurePrice));
+            log.debug("{} → 제외 (달성 불가: deposit={} effectiveSaving={})",
+                    candidate.label(), futurePrice, effectiveSaving);
             return null;
         }
 
         long m = Math.max(0, totalMonths - n);
-
-        // m>maxExtra: 너무 긴 대기 → 현실적이지 않음 (m=0은 bestAlreadyAchievable 후보로 올려보냄)
-        if (m > maxExtra) {
-            evalLogs.add(String.format("%s → 제외 (m=%d, 허용범위 0~%d)", label, m, maxExtra));
-            return null;
-        }
-
-        // AM: n+maxExtra 시점의 최대 예산 대비 여유 — 후보 가격이 쌀수록 높아져 변별력 있음
-        // totalMonths <= n+maxExtra 이므로 maxBudget >= futureBudget >= futurePrice → AM >= 0
-        long maxBudget = budgetCalculator.calculate(netWorth, effectiveSaving, n + maxExtra);
-        double affordabilityMargin = (double)(maxBudget - futurePrice) / maxBudget;
-
-        double condMatchScore = calcConditionMatchScore(base, candidate);
-        double waitPenalty    = 1.0 / (1.0 + m / 12.0);
-
-        double score = 0.40 * condMatchScore
-                     + 0.35 * waitPenalty
-                     + 0.25 * affordabilityMargin;
-
-        evalLogs.add(String.format(
-                "%s deposit=%,d effectiveSaving=%,d totalMonths=%d m=%d cMS=%.2f WP=%.3f AM=%.3f score=%.4f",
-                label, futurePrice, effectiveSaving, totalMonths, m,
-                condMatchScore, waitPenalty, affordabilityMargin, score));
-
-        return new ScoredCandidate(candidate, median, futurePrice, totalMonths, m, score);
+        return new BudgetMetrics(futurePrice, effectiveSaving, totalMonths, m);
     }
 
     /**
@@ -305,13 +302,17 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     }
 
     /**
-     * request → housing 순으로 기준 조건을 병합해 BaseCondition을 반환한다.
+     * request → housing 순으로 기준 조건과 목표 시점을 병합해 BaseCondition을 반환한다.
      * regionCode만 필수이며, 나머지가 null이면 generateCandidates에서 기본값 또는 전체 탐색으로 보완한다.
      * regionCode를 확보할 수 없으면 null 반환.
      */
-    private BaseCondition resolveCondition(GoalRecommendationRequest req, GoalHousing housing) {
+    private BaseCondition resolveCondition(GoalRecommendationRequest req, GoalHousing housing, Goal activeGoal) {
         String regionCode = pick(req.getRegionCode(), housing != null ? housing.getRegionCode() : null);
         if (regionCode == null) return null;
+
+        YearMonth targetDate = req.getTargetDate() != null ? req.getTargetDate()
+                : (activeGoal != null && activeGoal.getTargetDate() != null)
+                    ? YearMonth.from(activeGoal.getTargetDate()) : null;
 
         return new BaseCondition(
                 regionCode,
@@ -320,27 +321,14 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                 pick(req.getSizeMin(),        housing != null ? housing.getAreaMin()        : null),
                 pick(req.getSizeMax(),        housing != null ? housing.getAreaMax()        : null),
                 pick(req.getMonthlyRentMin(), housing != null ? housing.getMonthlyRentMin() : null),
-                pick(req.getMonthlyRentMax(), housing != null ? housing.getMonthlyRentMax() : null));
+                pick(req.getMonthlyRentMax(), housing != null ? housing.getMonthlyRentMax() : null),
+                targetDate);
     }
 
     /** 현재 자산 연동 기반의 월 저축액. 0이면 기존 자산만으로 달성 가능한 후보만 살아남는다. */
     private long resolveMonthlySaving(long memberId) {
         Long savings = assetSummaryService.getSummary(memberId).getMonthlySavings();
         return savings != null ? savings : 0L;
-    }
-
-    /**
-     * 현재 시점(now)으로부터 목표 시점까지 남은 개월 수(n)를 반환한다.
-     * 우선순위: request.targetDate > 활성 목표의 targetDate > 0
-     */
-    private long calcRemainingMonths(GoalRecommendationRequest request, Goal activeGoal, YearMonth now) {
-        if (request.getTargetDate() != null) {
-            return Math.max(0, ChronoUnit.MONTHS.between(now, request.getTargetDate()));
-        }
-        if (activeGoal != null && activeGoal.getTargetDate() != null) {
-            return Math.max(0, ChronoUnit.MONTHS.between(now, YearMonth.from(activeGoal.getTargetDate())));
-        }
-        return 0;
     }
 
     private String buildReason(long extraMonths) {
@@ -359,13 +347,18 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     /** resolveCondition 결과 — regionCode 이외 필드는 null 허용 */
     private record BaseCondition(
             String regionCode, HousingType housingType, DealType dealType,
-            Integer areaMin, Integer areaMax, Long rentMin, Long rentMax) { }
+            Integer areaMin, Integer areaMax, Long rentMin, Long rentMax,
+            YearMonth targetDate) { }
 
     private record HousingCondition(
             String regionCode, HousingType housingType, DealType dealType, int areaMin,
             int areaMax, long depositMin, long depositMax, Long monthlyRentMin,
             Long monthlyRentMax
     ) {
+        String label() {
+            return housingType + "/" + dealType + " area=[" + areaMin + "," + areaMax + "]";
+        }
+
         RentMedianRequest toMedianRequest() {
             RentMedianRequest r = new RentMedianRequest();
             r.setRegionCode(regionCode);
@@ -382,6 +375,8 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
             return r;
         }
     }
+
+    private record BudgetMetrics(long futurePrice, long effectiveSaving, long totalMonths, long m) {}
 
     private record ScoredCandidate(
             HousingCondition candidate, RentMedianResponse median, long futurePrice,
