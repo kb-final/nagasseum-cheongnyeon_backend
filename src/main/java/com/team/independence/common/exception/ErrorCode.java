@@ -62,7 +62,8 @@ public enum ErrorCode {
     POLICY_NOT_FOUND("POLICY_001", "정책을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
 
     // ===== 매물 PROPERTY_xxx =====
-    REGION_NOT_FOUND("PROPERTY_001", "존재하지 않는 지역 코드입니다.", HttpStatus.NOT_FOUND);
+    REGION_NOT_FOUND("PROPERTY_001", "존재하지 않는 지역 코드입니다.", HttpStatus.NOT_FOUND),
+    PROPERTY_INSUFFICIENT_DATA("PROPERTY_002", "해당 조건의 거래 데이터가 충분하지 않습니다.", HttpStatus.UNPROCESSABLE_ENTITY);
 
     private final String code;
     private final String message;
