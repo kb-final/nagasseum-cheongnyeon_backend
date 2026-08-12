@@ -1,7 +1,9 @@
 package com.team.independence.property.mapper;
 
+import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.domain.RentTransaction;
+import com.team.independence.property.dto.MonthlyPricePoint;
 import com.team.independence.property.dto.RentMedianAmount;
 import com.team.independence.property.dto.RentMedianRequest;
 import java.util.List;
@@ -30,4 +32,13 @@ public interface RentTransactionMapper {
                                                 @Param("areaMaxSqm") long areaMaxSqm,
                                                 @Param("startYm") String startYm,
                                                 @Param("endYm") String endYm);
+
+    /** 가격 모델(μ, σ) 산출용 월별 (거래연월, 보증금, 면적) 목록. 보증금 0 제외 */
+    List<MonthlyPricePoint> findAmountsForPriceModel(@Param("regionCode") String regionCode,
+                                                     @Param("housingType") HousingType housingType,
+                                                     @Param("dealType") DealType dealType,
+                                                     @Param("areaMinSqm") long areaMinSqm,
+                                                     @Param("areaMaxSqm") long areaMaxSqm,
+                                                     @Param("startYm") String startYm,
+                                                     @Param("endYm") String endYm);
 }
