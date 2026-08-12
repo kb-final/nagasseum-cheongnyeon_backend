@@ -20,6 +20,7 @@ import com.team.independence.goal.domain.GoalHousing;
 import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
+import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.RentMedianRequest;
@@ -56,7 +57,7 @@ class GoalServiceImplMarketTrendTest {
     void setUp() {
         service = new GoalServiceImpl(
                 regionQueryService, assetConnectionService, assetSummaryService, rentMedianService,
-                goalMapper, goalHousingMapper, goalMarketTrendCacheStore, null);
+                goalMapper, goalHousingMapper, goalMarketTrendCacheStore, null, new BudgetCalculator());
     }
 
     private Goal goal(long targetAmount, long targetRentMiddleAmount, long monthlySaving) {

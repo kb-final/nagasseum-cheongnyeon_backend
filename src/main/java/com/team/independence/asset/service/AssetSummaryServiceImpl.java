@@ -114,9 +114,8 @@ public class AssetSummaryServiceImpl implements AssetSummaryService {
         long cashAndEtcAssets = assetAccountMapper.sumCurrentValueByMemberIdAndCategories(
                 memberId, List.of("CASH", "ETC"));
         long manualAssets = manualAssetMapper.sumAmountByMemberId(memberId);
-        long loanBalance = loanAccountMapper.sumLoanBalanceByMemberId(memberId);
 
-        long flatRecognizedAssets = investmentRecognized + cashAndEtcAssets + manualAssets - loanBalance;
+        long flatRecognizedAssets = investmentRecognized + cashAndEtcAssets + manualAssets;
 
         return AssetNetWorthBreakdown.builder()
                 .interestBearingAssets(interestBearingAssets)

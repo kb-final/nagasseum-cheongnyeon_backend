@@ -17,6 +17,7 @@ import com.team.independence.goal.dto.GoalSaveRequest;
 import com.team.independence.goal.dto.GoalSummaryResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
+import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.RentMedianRequest;
@@ -47,15 +48,10 @@ public class GoalServiceImpl implements GoalService {
     private static final String GOAL_TYPE_HOUSING = "HOUSING";
     private static final String GOAL_STATUS_ACTIVE = "ACTIVE";
 
-    /** 예산 계산에 적용하는 연 이자율(고정 상수: 실제 상품 금리 연동 없이 5%로 가정) */
-    private static final double ANNUAL_INTEREST_RATE = 0.05;
-
     /** 기간 연장 제안 탐색 상한(개월) */
     private static final long EXTEND_PERIOD_MAX_MONTHS = 240;
     /** 평수 축소 제안 탐색 상한(평) */
     private static final int REDUCE_SIZE_MAX_STEPS = 10;
-    /** 예상 달성 시점 탐색 상한(개월). 저축액이 미미해 사실상 도달 불가할 때 무한 루프를 막는 안전장치 */
-    private static final long MAX_FORECAST_MONTHS = 1200;
 
     /** RentMedianResponse.baseEndYm("YYYYMM") 파싱용 */
     private static final DateTimeFormatter YM_FORMATTER = DateTimeFormatter.ofPattern("yyyyMM");
@@ -68,6 +64,7 @@ public class GoalServiceImpl implements GoalService {
     private final GoalHousingMapper goalHousingMapper;
     private final GoalMarketTrendCacheStore goalMarketTrendCacheStore;
     private final MonteCarloSimulationStore monteCarloSimulationStore;
+    private final BudgetCalculator budgetCalculator;
 
     @Override
     public GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request) {
@@ -99,15 +96,12 @@ public class GoalServiceImpl implements GoalService {
         // 자산 연동 여부 확인 후 순 자산 구성 정보 조회
         assetConnectionService.validateConnectedAccountExists(memberId);
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
-        long interestBearingAssets = netWorth.getInterestBearingAssets(); // 목표 시점까지 이자를 적용할 자산 (예적금)
-        long flatRecognizedAssets = netWorth.getFlatRecognizedAssets(); // 인정 금액만 반영할 자산
 
         long months = monthsUntil(request.getTargetDate()); // 현재 시점부터 목표 시점까지 남은 개월 수 계산
 
-        // 목표 시점의 예상 인정 자산을 계산
-        long recognizedAssets = calculateGrownAmount(interestBearingAssets, months) + flatRecognizedAssets;
-        long projectedSavings = calculateProjectedSavings(request.getMonthlySavings(), months);
-        long totalBudget = recognizedAssets + projectedSavings;
+        long recognizedAssets = budgetCalculator.calculate(netWorth, 0L, months);
+        long totalBudget = budgetCalculator.calculate(netWorth, request.getMonthlySavings(), months);
+        long projectedSavings = totalBudget - recognizedAssets;
 
         // 사용자 희망 조건에 맞는 실거래 4분위값을 조회
         RentMedianResponse marketStats = rentMedianService.getMedian(buildMedianRequest(
@@ -134,9 +128,9 @@ public class GoalServiceImpl implements GoalService {
             long median = marketStats.getDeposit().getMedian();
             adjustmentSuggestions = GoalDiagnosisResponse.AdjustmentSuggestions.builder()
                     .increaseSavings(calculateIncreaseSavingsSuggestion(
-                            median, recognizedAssets, request.getMonthlySavings(), months))
+                            median, netWorth, request.getMonthlySavings(), months))
                     .extendPeriod(calculateExtendPeriodSuggestion(
-                            interestBearingAssets, flatRecognizedAssets, request.getMonthlySavings(), months,
+                            netWorth, request.getMonthlySavings(), months,
                             median, request.getTargetDate()))
                     .reduceSize(calculateReduceSizeSuggestion(
                             regionCode, housingType, dealType,
@@ -361,24 +355,7 @@ public class GoalServiceImpl implements GoalService {
      */
     @Override
     public Long calculateMonthToReach(AssetNetWorthBreakdown netWorth, long monthlySaving, long targetAmount) {
-        long growingAssets = netWorth.getInterestBearingAssets(); // 이자로 불어나는 자산(예적금)
-        long fixedAssets = netWorth.getFlatRecognizedAssets();  // 원금 그대로 인정하는 자산
-
-        if (growingAssets + fixedAssets >= targetAmount) {
-            return 0L;
-        }
-        if (monthlySaving <= 0) {
-            return null;
-        }
-
-        for (long months = 1; months <= MAX_FORECAST_MONTHS; months++) {
-            long expectedBudget = calculateGrownAmount(growingAssets, months) + fixedAssets
-                    + calculateProjectedSavings(monthlySaving, months);
-            if (expectedBudget >= targetAmount) {
-                return months;
-            }
-        }
-        return null;
+        return budgetCalculator.monthsToReach(netWorth, monthlySaving, targetAmount);
     }
 
     // 현재 활성 목표에 대한 매물 시세 변화 데이터 조회
@@ -582,45 +559,36 @@ public class GoalServiceImpl implements GoalService {
         return medianRequest;
     }
 
-    /** 같은 개월수 기준, budget이 median에 도달하도록 월저축액을 역산 */
+    /** 같은 개월수 기준, budget이 median에 도달하도록 월저축액을 이진탐색으로 역산 */
     private GoalDiagnosisResponse.IncreaseSavingsSuggestion calculateIncreaseSavingsSuggestion(
-            long median, long recognizedAssets, long monthlySavings, long months) {
+            long median, AssetNetWorthBreakdown netWorth, long monthlySavings, long months) {
         if (months == 0) {
             return null;
         }
-
-        // 연 5% 이자율을 월 복리 이자율로 변환
-        double monthlyRate = monthlyInterestRate();
-
-        // 미래 가치 계수
-        double annuityFactor = (Math.pow(1 + monthlyRate, months) - 1) / monthlyRate;
-
-        // 현재 인정 자산을 제외하고 저축으로 추가 확보해야 하는 금액
-        long requiredSavings = median - recognizedAssets;
-
-        // 필요한 월 저축액 역산
-        long adjustedMonthlySavings = Math.round(requiredSavings / annuityFactor);
-
+        long lo = 0L;
+        long hi = median;
+        while (hi - lo > 1) {
+            long mid = (lo + hi) / 2;
+            if (budgetCalculator.calculate(netWorth, mid, months) >= median) {
+                hi = mid;
+            } else {
+                lo = mid;
+            }
+        }
+        long adjustedMonthlySavings = hi;
         return GoalDiagnosisResponse.IncreaseSavingsSuggestion.builder()
-                .additionalMonthlySavings(adjustedMonthlySavings - monthlySavings) // 현재보다 매달 얼마를 더 저축해야 하는지
-                .adjustedMonthlySavings(adjustedMonthlySavings) // 조정 후 필요한 전체 월 저축액
+                .additionalMonthlySavings(adjustedMonthlySavings - monthlySavings)
+                .adjustedMonthlySavings(adjustedMonthlySavings)
                 .build();
     }
 
-    /** 월저축액 고정, budget이 median에 도달하는 최소 개월수를 탐색(최대 EXTEND_PERIOD_MAX_MONTHS).
-     *  interestBearingAssets(예적금)만 개월수에 따라 다시 복리 성장시키고, flatRecognizedAssets는 그대로 더한다. */
+    /** 월저축액 고정, budget이 median에 도달하는 최소 개월수를 탐색(최대 EXTEND_PERIOD_MAX_MONTHS). */
     private GoalDiagnosisResponse.ExtendPeriodSuggestion calculateExtendPeriodSuggestion(
-            long interestBearingAssets, long flatRecognizedAssets, long monthlySavings, long months,
+            AssetNetWorthBreakdown netWorth, long monthlySavings, long months,
             long median, YearMonth targetDate) {
 
-        // 현재 목표 기간보다 한 달 긴 시점부터 검사
         for (long n = months + 1; n <= EXTEND_PERIOD_MAX_MONTHS; n++) {
-            // 연장된 기간을 기준으로 자산의 미래 가치를 다시 계산
-            long recognizedAssetsAtN = calculateGrownAmount(interestBearingAssets, n) + flatRecognizedAssets;
-            long projected = recognizedAssetsAtN + calculateProjectedSavings(monthlySavings, n);
-
-            // 예상 총예산이 중앙값 이상이 되는 첫번째 시점을 찾으면 반환
-            if (projected >= median) {
+            if (budgetCalculator.calculate(netWorth, monthlySavings, n) >= median) {
                 long additionalMonths = n - months;
                 return GoalDiagnosisResponse.ExtendPeriodSuggestion.builder()
                         .additionalMonths(additionalMonths)
@@ -667,30 +635,6 @@ public class GoalServiceImpl implements GoalService {
     private long monthsUntil(YearMonth targetDate) {
         long months = YearMonth.now().until(targetDate, java.time.temporal.ChronoUnit.MONTHS);
         return Math.max(months, 0);
-    }
-
-    /** 연 이자율을 복리 기준 월 이자율로 환산: (1+연이자율)^(1/12) - 1 */
-    private double monthlyInterestRate() {
-        return Math.pow(1 + ANNUAL_INTEREST_RATE, 1.0 / 12) - 1;
-    }
-
-    /** 원금이 목표시점까지 복리로 불어난 값(거치식). 예적금(interestBearingAssets)에만 적용한다. */
-    private long calculateGrownAmount(long principal, long months) {
-        if (months == 0) {
-            return principal;
-        }
-        double monthlyRate = monthlyInterestRate();
-        return Math.round(principal * Math.pow(1 + monthlyRate, months));
-    }
-
-    /** 매달 monthlySavings씩 넣는 적금이 목표시점까지 복리로 불어난 값(적립식 미래가치) */
-    private long calculateProjectedSavings(long monthlySavings, long months) {
-        if (months == 0) {
-            return 0L;
-        }
-        double monthlyRate = monthlyInterestRate();
-        double futureValueFactor = (Math.pow(1 + monthlyRate, months) - 1) / monthlyRate;
-        return Math.round(monthlySavings * futureValueFactor);
     }
 
     /** 전세면 월세 입력값과 무관하게 0으로 고정 */

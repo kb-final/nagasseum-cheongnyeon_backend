@@ -11,6 +11,8 @@ import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
 import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.asset.service.LoanAccountService;
 import com.team.independence.goal.dto.LoanPlans;
+import com.team.independence.goal.service.calculator.BudgetCalculator;
+import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.member.dto.MemberProfileResponse;
 import com.team.independence.member.service.MemberService;
 import java.time.LocalDate;
@@ -24,13 +26,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class LoanPlanCalculatorImplTest {
+class LoanPlanCalculatorTest {
 
     @Mock MemberService      memberService;
     @Mock LoanAccountService loanAccountService;
     @Mock AssetSummaryService assetSummaryService;
 
-    private LoanPlanCalculatorImpl calculator;
+    private LoanPlanCalculator calculator;
 
     /** 기준 월 소득 (원) */
     private static final long MONTHLY_INCOME = 4_000_000L;
@@ -40,11 +42,11 @@ class LoanPlanCalculatorImplTest {
 
     @BeforeEach
     void setUp() {
-        calculator = new LoanPlanCalculatorImpl(
+        calculator = new LoanPlanCalculator(
                 memberService,
                 loanAccountService,
                 assetSummaryService,
-                new BudgetCalculatorImpl()
+                new BudgetCalculator()
         );
     }
 

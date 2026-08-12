@@ -17,7 +17,8 @@ import java.util.Optional;
  *   <li>출력: {@link GoalRecommendationResponse.RecommendationItem} 한 건을 만든다</li>
  * </ul>
  *
- * <p>단, 응답의 loanX / loanO 플랜은 직접 계산하지 말고 반드시 {@link LoanPlanCalculator}에
+ * <p>단, 응답의 loanX / loanO 플랜은 직접 계산하지 말고 반드시
+ * {@link com.team.independence.goal.service.calculator.LoanPlanCalculator}에
  * 위임한다. 카드 여러 장에 나란히 노출되는 금액이라 알고리즘마다 저축 계산식이 다르면
  * 사용자가 서로 비교할 수 없기 때문이다. 알고리즘은 "어떤 조건의 주거를, 언제까지"만 정하면 된다.
  *
@@ -31,7 +32,7 @@ import java.util.Optional;
  * {@literal @}RequiredArgsConstructor
  * public class ValueAlgorithm implements RecommendationAlgorithm {
  *
- *     private final LoanPlanCalculator loanPlanCalculator;
+ *     private final com.team.independence.goal.service.calculator.LoanPlanCalculator loanPlanCalculator;
  *     // 그 외 이 알고리즘에만 필요한 의존성은 자유롭게 추가
  *
  *     public Optional&lt;RecommendationItem&gt; recommend(long memberId, GoalRecommendationRequest req) {

@@ -1,4 +1,4 @@
-package com.team.independence.goal.service;
+package com.team.independence.goal.service.calculator;
 
 import com.team.independence.asset.dto.account.LoanAccountDetailItem;
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
@@ -11,15 +11,27 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
-/** {@link LoanPlanCalculator} 구현체. 계산 가정은 인터페이스 주석 참고. */
-@Service
+/**
+ * 모든 추천 알고리즘이 공유하는 계산기.
+ *
+ * <p>계산 가정
+ * <ul>
+ *   <li>신규 대출: DSR 40% 한도, 연 3.5% 30년 원리금균등상환</li>
+ *   <li>기존 대출 월 상환액: 잔액과 {@code loan_account.end_date} 잔여 기간으로 같은 금리(연 3.5%)로 역산.
+ *       {@code end_date}가 null이거나 이미 만기된 대출은 상환 부담 없음으로 처리</li>
+ *   <li>저축: 연 5% 복리({@link BudgetCalculator}에 위임)</li>
+ *   <li>소득은 {@code member.monthly_income}, 보유 자산은 순자산 분해 결과를 사용한다</li>
+ * </ul>
+ */
+@Component
 @RequiredArgsConstructor
-public class LoanPlanCalculatorImpl implements LoanPlanCalculator {
+public class LoanPlanCalculator {
 
-    private static final double DSR_LIMIT               = 0.40;
-    // 실제 대출 조건을 알 수 없으므로 신규·기존 대출 모두 동일한 금리로 추정한다
+    private static final double DSR_LIMIT                = 0.40;
+    // TODO: 실제 대출 조건을 알 수 없으므로 신규·기존 대출 모두 동일한 금리로 추정한다
+    // TODO: 추후 CODEF API 추가 사용을 통해 각 대출 계좌의 이율을 받아올 수 있다
     private static final double ASSUMED_LOAN_ANNUAL_RATE = 0.035;
     private static final int    NEW_LOAN_TERM_MONTHS     = 360;
 
@@ -28,7 +40,13 @@ public class LoanPlanCalculatorImpl implements LoanPlanCalculator {
     private final AssetSummaryService assetSummaryService;
     private final BudgetCalculator    budgetCalculator;
 
-    @Override
+    /**
+     * 목표 금액과 목표 시점으로 대출 없는 플랜과 대출 낀 플랜을 함께 계산한다.
+     *
+     * <p>DSR 한도가 0이면(소득 미등록·기존 대출 과다) loanO는 null이 된다.
+     * 대출 한도가 목표 금액을 초과하는 경우 대출액은 목표 금액으로 캡되며,
+     * 자력 부담과 월 저축액은 0이 된다.
+     */
     public LoanPlans calculate(long memberId, long requiredAmount, YearMonth targetDate) {
         long months = ChronoUnit.MONTHS.between(YearMonth.now(), targetDate);
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
@@ -57,7 +75,12 @@ public class LoanPlanCalculatorImpl implements LoanPlanCalculator {
         return LoanPlans.builder().loanX(loanX).loanO(loanO).build();
     }
 
-    @Override
+    /**
+     * DSR 40% 기준 신규 대출 최대 가능액을 계산한다.
+     *
+     * <p>공식: (월소득 × 0.4 − 기존 대출 월 원리금 합계)를 30년 연금 현가로 환산.
+     * 소득 미등록이거나 기존 대출이 DSR 40%를 이미 소진한 경우 0을 반환한다.
+     */
     public long calcMaxLoanAmount(long memberId) {
         Long monthlyIncome = memberService.getMember(memberId).monthlyIncome();
         if (monthlyIncome == null || monthlyIncome <= 0) return 0L;
@@ -77,7 +100,7 @@ public class LoanPlanCalculatorImpl implements LoanPlanCalculator {
     }
 
     // 기존 대출 한 건의 월 원리금 상환액. endDate 기준 잔여 기간으로 역산.
-    // 실제 대출 조건을 사용할 수 없으므로 ASSUMED_LOAN_ANNUAL_RATE, 원리금균등상환으로 추정한다.
+    // TODO: 실제 대출 조건을 사용할 수 없으므로 ASSUMED_LOAN_ANNUAL_RATE, 원리금균등상환으로 추정한다.
     private double calcExistingMonthlyPayment(LoanAccountDetailItem loan, double r) {
         if (loan.getLoanBalance() == null || loan.getLoanBalance() <= 0) return 0.0;
         if (loan.getEndDate() == null) return 0.0;

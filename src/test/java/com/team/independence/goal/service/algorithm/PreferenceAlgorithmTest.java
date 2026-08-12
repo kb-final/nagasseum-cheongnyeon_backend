@@ -13,7 +13,7 @@ import com.team.independence.goal.dto.AlgorithmType;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse.RecommendationItem;
 import com.team.independence.goal.dto.LoanPlans;
-import com.team.independence.goal.service.LoanPlanCalculator;
+import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.RentMedianRequest;
