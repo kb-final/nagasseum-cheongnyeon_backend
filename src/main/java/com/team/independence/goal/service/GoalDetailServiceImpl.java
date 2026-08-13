@@ -9,6 +9,7 @@ import com.team.independence.goal.domain.SavingBasis;
 import com.team.independence.goal.domain.SavingRecord;
 import com.team.independence.goal.dto.GoalDetailResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
+import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.SavingRecordMapper;
 import java.time.YearMonth;
@@ -62,7 +63,7 @@ public class GoalDetailServiceImpl implements GoalDetailService {
                         .targetAmount(targetAmount)
                         .currentAmount(currentAmount)
                         .remainingAmount(remainingAmount)
-                        .achievementRate(calculateAchievementRate(currentAmount, targetAmount))
+                        .achievementRate(BudgetCalculator.calculateAchievementRate(currentAmount, targetAmount))
                         .build())
                 .savingStatus(savingStatus)
                 .forecasts(buildForecasts(memberId, netWorth, targetAmount, savingStatus))
@@ -105,16 +106,6 @@ public class GoalDetailServiceImpl implements GoalDetailService {
                 .recentAverageSaving(recentAverageSaving)
                 .latestSaving(latestSaving)
                 .build();
-    }
-
-    /** 달성률(%). 0~100으로 자른다 — 또래 비교 집계(goal_snapshot)와 같은 규칙. */
-    private Double calculateAchievementRate(long currentAmount, long targetAmount) {
-        if (targetAmount <= 0) {
-            return 0.0;
-        }
-        double rate = currentAmount * 100.0 / targetAmount;
-        double clamped = Math.min(100.0, Math.max(0.0, rate));
-        return Math.round(clamped * 100) / 100.0;
     }
 
     /**

@@ -63,6 +63,19 @@ public class BudgetCalculator {
         return null;
     }
 
+    /**
+     * 달성률(%). 0~100으로 자른다.
+     * goal_snapshot 집계·홈 요약·목표 상세가 동일한 규칙을 써야 화면 간 수치가 일치한다.
+     */
+    public static Double calculateAchievementRate(long currentAmount, long targetAmount) {
+        if (targetAmount <= 0) {
+            return 0.0;
+        }
+        double rate = currentAmount * 100.0 / targetAmount;
+        double clamped = Math.min(100.0, Math.max(0.0, rate));
+        return Math.round(clamped * 100) / 100.0;
+    }
+
     private double monthlyInterestRate() {
         return Math.pow(1 + ANNUAL_INTEREST_RATE, 1.0 / 12) - 1;
     }
