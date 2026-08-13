@@ -525,7 +525,7 @@ public class GoalServiceImpl implements GoalService {
 
         long targetAmount = goal.getTargetAmount();
         long remainingAmount = Math.max(0, targetAmount - currentAmount); // 남은 금액
-        Double achievementRate = calculateAchievementRate(currentAmount, targetAmount); // 달성률
+        Double achievementRate = BudgetCalculator.calculateAchievementRate(currentAmount, targetAmount); // 달성률
         Long remainingMonths = monthsUntil(YearMonth.from(goal.getTargetDate())); // 목표 시점
 
         return GoalSummaryResponse.builder()
@@ -547,16 +547,6 @@ public class GoalServiceImpl implements GoalService {
                         .remainingMonths(remainingMonths)
                         .build())
                 .build();
-    }
-
-    /** 달성률(%). 0~100으로 자른다 — GoalDetailServiceImpl과 동일 규칙. */
-    private Double calculateAchievementRate(long currentAmount, long targetAmount) {
-        if (targetAmount <= 0) {
-            return 0.0;
-        }
-        double rate = currentAmount * 100.0 / targetAmount;
-        double clamped = Math.min(100.0, Math.max(0.0, rate));
-        return Math.round(clamped * 100) / 100.0;
     }
 
     /** RentMedianService 호출용 요청 조립. sizeMin/sizeMax는 평 단위 그대로 넘기면 내부에서 ㎡로 환산한다. */
