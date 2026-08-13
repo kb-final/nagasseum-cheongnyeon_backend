@@ -21,6 +21,8 @@ import com.team.independence.goal.dto.GoalDetailResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
+import com.team.independence.goal.service.calculator.BudgetCalculator;
+import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.goal.mapper.SavingRecordMapper;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
@@ -69,7 +71,11 @@ class GoalDetailServiceImplTest {
         // 그 외 의존성은 이 경로에서 쓰이지 않아 null로 둔다.
         service = new GoalDetailServiceImpl(
                 goalHousingMapper, savingRecordMapper, assetConnectionService, assetSummaryService,
-                new GoalServiceImpl(null, null, null, null, goalMapper, null, null, null));
+                new GoalServiceImpl(null, null, null, null, goalMapper, null, null, null, new BudgetCalculator(),
+                        new LoanPlanCalculator(null, null, null, null) {
+                            @Override
+                            public long calcTotalExistingMonthlyPayment(long memberId) { return 0L; }
+                        }));
     }
 
     // ------------------------------------------------------------------

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
+import com.team.independence.goal.service.calculator.BudgetCalculator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,7 @@ class GoalServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new GoalServiceImpl(null, null, null, null, null, null, null, null);
+        service = new GoalServiceImpl(null, null, null, null, null, null, null, null, new BudgetCalculator(), null);
     }
 
     // ------------------------------------------------------------------

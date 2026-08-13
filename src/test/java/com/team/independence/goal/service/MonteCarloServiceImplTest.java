@@ -19,6 +19,7 @@ import com.team.independence.goal.domain.Goal;
 import com.team.independence.goal.domain.GoalHousing;
 import com.team.independence.goal.dto.MonteCarloResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
+import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.PriceModelResponse;

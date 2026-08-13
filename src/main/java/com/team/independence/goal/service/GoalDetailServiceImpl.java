@@ -65,7 +65,7 @@ public class GoalDetailServiceImpl implements GoalDetailService {
                         .achievementRate(calculateAchievementRate(currentAmount, targetAmount))
                         .build())
                 .savingStatus(savingStatus)
-                .forecasts(buildForecasts(netWorth, targetAmount, savingStatus))
+                .forecasts(buildForecasts(memberId, netWorth, targetAmount, savingStatus))
                 .build();
     }
 
@@ -121,15 +121,19 @@ public class GoalDetailServiceImpl implements GoalDetailService {
      * 저축 기준별 예상 달성 시점.
      * 기준 금액이 없거나 0 이하면 계산이 불가하므로 목록에서 뺀다.
      * 항목 하나를 만드는 일은 시뮬레이션 API와 공유해야 해서 GoalService에 맡긴다.
+     *
+     * <p>FIXED(목표 저축액)는 사용자 선언값이므로 기존 대출 상환액을 차감한 실질 저축으로 계산한다.
+     * RECENT_AVERAGE·LATEST는 실제 적립 기록이라 이미 대출 상환 후 저축한 금액이므로 차감하지 않는다.
      */
-    private List<GoalForecastResponse> buildForecasts(AssetNetWorthBreakdown netWorth,
+    private List<GoalForecastResponse> buildForecasts(long memberId,
+                                                      AssetNetWorthBreakdown netWorth,
                                                       long targetAmount,
                                                       GoalDetailResponse.SavingStatus savingStatus) {
-        Long fixedMonths = calculateMonths(netWorth, savingStatus.getFixedSaving(), targetAmount);
+        Long fixedMonths = calculateEffectiveMonths(memberId, netWorth, savingStatus.getFixedSaving(), targetAmount);
 
         List<GoalForecastResponse> forecasts = new ArrayList<>();
-        addForecast(forecasts, SavingBasis.FIXED, savingStatus.getFixedSaving(),
-                netWorth, targetAmount, fixedMonths);
+        addEffectiveForecast(forecasts, SavingBasis.FIXED, savingStatus.getFixedSaving(),
+                memberId, netWorth, targetAmount, fixedMonths);
         addForecast(forecasts, SavingBasis.RECENT_AVERAGE, savingStatus.getRecentAverageSaving(),
                 netWorth, targetAmount, fixedMonths);
         addForecast(forecasts, SavingBasis.LATEST, savingStatus.getLatestSaving(),
@@ -137,6 +141,22 @@ public class GoalDetailServiceImpl implements GoalDetailService {
         return forecasts;
     }
 
+    /** FIXED 저축액용 — 대출 차감 적용 */
+    private void addEffectiveForecast(List<GoalForecastResponse> forecasts,
+                                      SavingBasis basis,
+                                      Long monthlySaving,
+                                      long memberId,
+                                      AssetNetWorthBreakdown netWorth,
+                                      long targetAmount,
+                                      Long fixedMonths) {
+        if (monthlySaving == null || monthlySaving <= 0) {
+            return;
+        }
+        Long months = goalService.calculateEffectiveMonthToReach(memberId, netWorth, monthlySaving, targetAmount);
+        forecasts.add(GoalForecastResponse.of(basis, monthlySaving, months, fixedMonths));
+    }
+
+    /** RECENT_AVERAGE·LATEST용 — 실제 적립 기록이므로 대출 차감 없이 그대로 계산 */
     private void addForecast(List<GoalForecastResponse> forecasts,
                              SavingBasis basis,
                              Long monthlySaving,
@@ -150,10 +170,11 @@ public class GoalDetailServiceImpl implements GoalDetailService {
         forecasts.add(GoalForecastResponse.of(basis, monthlySaving, months, fixedMonths));
     }
 
-    private Long calculateMonths(AssetNetWorthBreakdown netWorth, Long monthlySaving, long targetAmount) {
+    private Long calculateEffectiveMonths(long memberId, AssetNetWorthBreakdown netWorth,
+                                          Long monthlySaving, long targetAmount) {
         if (monthlySaving == null || monthlySaving <= 0) {
             return null;
         }
-        return goalService.calculateMonthToReach(netWorth, monthlySaving, targetAmount);
+        return goalService.calculateEffectiveMonthToReach(memberId, netWorth, monthlySaving, targetAmount);
     }
 }

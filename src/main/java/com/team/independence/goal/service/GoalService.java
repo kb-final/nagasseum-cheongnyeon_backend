@@ -51,6 +51,14 @@ public interface GoalService {
     Long calculateMonthToReach(AssetNetWorthBreakdown netWorth, long monthlySaving, long targetAmount);
 
     /**
+     * calculateMonthToReach와 동일하되, 기존 대출 월상환액을 monthlySaving에서 먼저 차감한 뒤 계산한다.
+     * 대출이 없거나 잔액이 0이면 monthlySaving 그대로 계산한다.
+     * 월저축액이 대출 상환액보다 작으면 effectiveSaving=0으로 처리한다.
+     */
+    Long calculateEffectiveMonthToReach(long memberId, AssetNetWorthBreakdown netWorth,
+                                        long monthlySaving, long targetAmount);
+
+    /**
      * 월 저축액을 monthlySaving으로 바꿨다고 가정했을 때의 예상 달성 시점을 계산한다. 저장하지 않는다.
      * 저축액이 0 이하면 GOAL_INVALID_INPUT, 진행 중이 아닌 목표면 GOAL_NOT_ACTIVE.
      */

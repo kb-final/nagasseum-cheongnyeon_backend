@@ -8,7 +8,7 @@ import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.goal.dto.LoanPlans;
 import com.team.independence.goal.service.GoalService;
-import com.team.independence.goal.service.LoanPlanCalculator;
+import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.goal.service.RecommendationAlgorithm;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
@@ -157,7 +157,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
         long monthlySaving = resolveMonthlySaving(memberId);
 
-        Search search = new Search(netWorth, monthlySaving, desiredMonths);
+        Search search = new Search(memberId, netWorth, monthlySaving, desiredMonths);
 
         // 1단계: 시군구 확정
         String regionCode = selectRegion(request, search);
@@ -367,8 +367,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                 ? median.getMonthlyRent().getMedian() : 0L;
         long comparableAmount = toComparableAmount(deposit, monthlyRent);
 
-        Long reachMonths = goalService.calculateMonthToReach(
-                search.netWorth, search.monthlySaving, comparableAmount);
+        Long reachMonths = goalService.calculateEffectiveMonthToReach(
+                search.memberId, search.netWorth, search.monthlySaving, comparableAmount);
 
         return Optional.of(new Candidate(
                 regionCode, median.getRegionName(), housingType, dealType,
@@ -524,13 +524,15 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      * 같은 이유로 조합별 조회 결과도 한 번의 추천 안에서는 언제 조회하든 같은 값이라 재사용할 수 있다.
      */
     private static class Search {
+        private final long memberId;
         private final AssetNetWorthBreakdown netWorth;
         private final long monthlySaving;
         private final long desiredMonths;
         /** 조합 키 → 평가 결과. 표본이 없어 후보가 되지 못한 조합도 담아 재조회를 막는다. */
         private final Map<String, Optional<Candidate>> evaluated = new HashMap<>();
 
-        private Search(AssetNetWorthBreakdown netWorth, long monthlySaving, long desiredMonths) {
+        private Search(long memberId, AssetNetWorthBreakdown netWorth, long monthlySaving, long desiredMonths) {
+            this.memberId = memberId;
             this.netWorth = netWorth;
             this.monthlySaving = monthlySaving;
             this.desiredMonths = desiredMonths;
