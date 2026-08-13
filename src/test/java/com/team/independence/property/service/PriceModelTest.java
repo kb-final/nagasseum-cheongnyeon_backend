@@ -55,13 +55,14 @@ class  PriceModelTest {
     }
 
     @Test
-    @DisplayName("연 5% 성장 시계열의 annualDrift → ln(1.05) ≈ 0.0488")
-    void annualDrift_연속복리_검증() {
+    @DisplayName("노이즈 없는 시계열의 annualDrift → σ≈0이므로 μ ≈ logDrift ≈ ln(1.05)")
+    void annualDrift_노이즈없는시계열_검증() {
         double annualRate = 0.05;
         List<Double> series = growingSeries(1_000_000, annualRate, 36);
 
         PriceModel model = PriceModel.estimate(series);
 
+        // 노이즈가 없으면 σ≈0 이므로 annualDrift(=μ) ≈ logDrift = ln(1+rate)
         double expectedDrift = Math.log(1 + annualRate);
         assertEquals(expectedDrift, model.annualDrift(), TOLERANCE);
     }

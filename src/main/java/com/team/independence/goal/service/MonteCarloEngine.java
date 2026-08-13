@@ -8,7 +8,7 @@ import java.util.Random;
  * 순수 계산 클래스 — Spring 의존성 없음
  *
  * GBM: P(T) = P(0) × exp((μ − σ²/2) × T + σ × √T × Z), Z ~ N(0,1)
- * Itô 보정 (μ − σ²/2)은 필수. 빠뜨리면 기댓값이 P(0)×exp(μT)가 아닌 P(0)×exp((μ−σ²/2)T)가 된다.
+ * Itô 보정 (μ − σ²/2)은 필수. 빠뜨리면 기댓값이 P(0)×exp(μT)가 아닌 P(0)×exp((μ+σ²/2)T)로 과대평가된다.
  */
 public class MonteCarloEngine {
 
