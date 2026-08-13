@@ -47,7 +47,7 @@ class GoalServiceImplSummaryTest {
     void setUp() {
         service = new GoalServiceImpl(
                 regionQueryService, assetConnectionService, assetSummaryService, rentMedianService,
-                goalMapper, goalHousingMapper, goalMarketTrendCacheStore);
+                goalMapper, goalHousingMapper, goalMarketTrendCacheStore, null);
     }
 
     private Goal goal(long targetAmount, long monthlySaving) {
