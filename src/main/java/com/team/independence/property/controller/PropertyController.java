@@ -1,11 +1,8 @@
 package com.team.independence.property.controller;
 
 import com.team.independence.common.response.ApiResponse;
-import com.team.independence.property.dto.PriceModelRequest;
-import com.team.independence.property.dto.PriceModelResponse;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
-import com.team.independence.property.service.PriceModelService;
 import com.team.independence.property.service.RentMedianService;
 import javax.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class PropertyController {
 
     private final RentMedianService rentMedianService;
-    private final PriceModelService priceModelService;
 
     /**
      * 실거래 매물 중앙값 조회.
@@ -31,10 +27,5 @@ public class PropertyController {
     @GetMapping("/median")
     public ApiResponse<RentMedianResponse> getMedian(@Valid @ModelAttribute RentMedianRequest request) {
         return ApiResponse.ok(rentMedianService.getMedian(request));
-    }
-
-    @GetMapping("/price-model")
-    public ApiResponse<PriceModelResponse> getPriceModel(@Valid @ModelAttribute PriceModelRequest request) {
-        return ApiResponse.ok(priceModelService.estimate(request));
     }
 }
