@@ -26,7 +26,11 @@ class GoalServiceImplTest {
 
     @BeforeEach
     void setUp() {
+<<<<<<< HEAD
         service = new GoalServiceImpl(null, null, null, null, null, null, null, null, new BudgetCalculator());
+=======
+        service = new GoalServiceImpl(null, null, null, null, null, null, null, new BudgetCalculator(), null);
+>>>>>>> e7f9312 (feat: 예산 계산에 기존 대출 월 상환액 차감 반영)
     }
 
     // ------------------------------------------------------------------

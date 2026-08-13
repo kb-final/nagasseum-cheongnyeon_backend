@@ -18,6 +18,7 @@ import com.team.independence.goal.dto.GoalSummaryResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
 import com.team.independence.goal.service.calculator.BudgetCalculator;
+import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.RentMedianRequest;
@@ -65,6 +66,7 @@ public class GoalServiceImpl implements GoalService {
     private final GoalMarketTrendCacheStore goalMarketTrendCacheStore;
     private final MonteCarloSimulationStore monteCarloSimulationStore;
     private final BudgetCalculator budgetCalculator;
+    private final LoanPlanCalculator loanPlanCalculator;
 
     @Override
     public GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request) {
@@ -99,8 +101,9 @@ public class GoalServiceImpl implements GoalService {
 
         long months = monthsUntil(request.getTargetDate()); // 현재 시점부터 목표 시점까지 남은 개월 수 계산
 
+        long effectiveMonthlySavings = calcEffectiveMonthlySaving(memberId, request.getMonthlySavings());
         long recognizedAssets = budgetCalculator.calculate(netWorth, 0L, months);
-        long totalBudget = budgetCalculator.calculate(netWorth, request.getMonthlySavings(), months);
+        long totalBudget = budgetCalculator.calculate(netWorth, effectiveMonthlySavings, months);
         long projectedSavings = totalBudget - recognizedAssets;
 
         // 사용자 희망 조건에 맞는 실거래 4분위값을 조회
@@ -128,9 +131,9 @@ public class GoalServiceImpl implements GoalService {
             long median = marketStats.getDeposit().getMedian();
             adjustmentSuggestions = GoalDiagnosisResponse.AdjustmentSuggestions.builder()
                     .increaseSavings(calculateIncreaseSavingsSuggestion(
-                            median, netWorth, request.getMonthlySavings(), months))
+                            median, netWorth, effectiveMonthlySavings, months))
                     .extendPeriod(calculateExtendPeriodSuggestion(
-                            netWorth, request.getMonthlySavings(), months,
+                            netWorth, effectiveMonthlySavings, months,
                             median, request.getTargetDate()))
                     .reduceSize(calculateReduceSizeSuggestion(
                             regionCode, housingType, dealType,
@@ -358,6 +361,19 @@ public class GoalServiceImpl implements GoalService {
         return budgetCalculator.monthsToReach(netWorth, monthlySaving, targetAmount);
     }
 
+    @Override
+    public Long calculateEffectiveMonthToReach(long memberId, AssetNetWorthBreakdown netWorth,
+                                               long monthlySaving, long targetAmount) {
+        long effective = calcEffectiveMonthlySaving(memberId, monthlySaving);
+        return budgetCalculator.monthsToReach(netWorth, effective, targetAmount);
+    }
+
+    /** 기존 대출 월상환액을 차감한 실질 월저축액. 대출 상환액이 저축액을 초과하면 0으로 처리한다. */
+    private long calcEffectiveMonthlySaving(long memberId, long monthlySaving) {
+        long loanPayment = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
+        return Math.max(0L, monthlySaving - loanPayment);
+    }
+
     // 현재 활성 목표에 대한 매물 시세 변화 데이터 조회
     @Override
     @Transactional(readOnly = true)
@@ -428,7 +444,8 @@ public class GoalServiceImpl implements GoalService {
         // 목표 유지 시: 저장된 target_date 그대로 (다른 화면에 노출되는 목표 시점과 일치시킴)
         YearMonth maintainEta = YearMonth.from(goal.getTargetDate());
         // 현재 시세 반영 시: 오늘 자산 기준으로 다시 계산 (목표 상세 조회와 같은 계산 재사용)
-        Long monthsToReachCurrentMiddle = calculateMonthToReach(netWorth, goal.getMonthlySaving(), currentMiddleAmount);
+        Long monthsToReachCurrentMiddle = calculateEffectiveMonthToReach(
+                goal.getMemberId(), netWorth, goal.getMonthlySaving(), currentMiddleAmount);
         YearMonth reflectEta = monthsToReachCurrentMiddle == null
                 ? null
                 : YearMonth.now().plusMonths(monthsToReachCurrentMiddle);
@@ -468,19 +485,19 @@ public class GoalServiceImpl implements GoalService {
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
 
         long targetAmount = goal.getTargetAmount();
-        Long months = calculateMonthToReach(netWorth, monthlySaving, targetAmount);
-        Long fixedMonths = calculateFixedMonths(netWorth, goal, targetAmount);
+        Long months = calculateEffectiveMonthToReach(memberId, netWorth, monthlySaving, targetAmount);
+        Long fixedMonths = calculateFixedMonths(memberId, netWorth, goal, targetAmount);
 
         return GoalForecastResponse.of(SavingBasis.CUSTOM, monthlySaving, months, fixedMonths);
     }
 
     /** 비교 기준이 되는 고정 저축액의 도달 개월수. 저축액이 0 이하면 비교할 수 없다. */
-    private Long calculateFixedMonths(AssetNetWorthBreakdown netWorth, Goal goal, long targetAmount) {
+    private Long calculateFixedMonths(long memberId, AssetNetWorthBreakdown netWorth, Goal goal, long targetAmount) {
         Long fixedSaving = goal.getMonthlySaving();
         if (fixedSaving == null || fixedSaving <= 0) {
             return null;
         }
-        return calculateMonthToReach(netWorth, fixedSaving, targetAmount);
+        return calculateEffectiveMonthToReach(memberId, netWorth, fixedSaving, targetAmount);
     }
 
     // 홈 화면 「목표 달성 요약」 카드 데이터 조회

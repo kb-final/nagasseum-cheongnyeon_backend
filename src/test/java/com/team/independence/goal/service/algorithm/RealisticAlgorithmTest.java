@@ -100,6 +100,15 @@ class RealisticAlgorithmTest {
             }
             return (long) Math.ceil((double) targetAmount / monthlySaving);
         });
+        // 대출 차감 버전도 같은 단순 나눗셈 식으로 대체한다. (테스트 목적: 선택 로직 검증, 복리 계산 아님)
+        when(goalService.calculateEffectiveMonthToReach(anyLong(), any(), anyLong(), anyLong())).thenAnswer(call -> {
+            long monthlySaving = call.getArgument(2);
+            long targetAmount = call.getArgument(3);
+            if (monthlySaving <= 0) {
+                return null;
+            }
+            return (long) Math.ceil((double) targetAmount / monthlySaving);
+        });
 
         when(rentMedianService.getMedian(any())).thenAnswer(call -> {
             RentMedianRequest asked = call.getArgument(0);

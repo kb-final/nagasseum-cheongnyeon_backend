@@ -76,6 +76,19 @@ public class LoanPlanCalculator {
     }
 
     /**
+     * 기존 대출 계좌 전체의 월 원리금 합계를 반환한다.
+     *
+     * <p>end_date가 없거나 이미 만기된 대출은 상환 부담 없음으로 처리한다.
+     * 대출이 없거나 잔액이 0이면 0을 반환한다.
+     */
+    public long calcTotalExistingMonthlyPayment(long memberId) {
+        double r = ASSUMED_LOAN_ANNUAL_RATE / 12.0;
+        return Math.round(loanAccountService.getLoanAccounts(memberId).stream()
+                .mapToDouble(loan -> calcExistingMonthlyPayment(loan, r))
+                .sum());
+    }
+
+    /**
      * DSR 40% 기준 신규 대출 최대 가능액을 계산한다.
      *
      * <p>공식: (월소득 × 0.4 − 기존 대출 월 원리금 합계)를 30년 연금 현가로 환산.
@@ -88,11 +101,8 @@ public class LoanPlanCalculator {
         double r = ASSUMED_LOAN_ANNUAL_RATE / 12.0;
         double factor = Math.pow(1 + r, NEW_LOAN_TERM_MONTHS);
 
-        double existingMonthlyPayments = loanAccountService.getLoanAccounts(memberId).stream()
-                .mapToDouble(loan -> calcExistingMonthlyPayment(loan, r))
-                .sum();
-
-        double availableMonthly = monthlyIncome * DSR_LIMIT - existingMonthlyPayments;
+        long existingMonthlyPayment = calcTotalExistingMonthlyPayment(memberId);
+        double availableMonthly = monthlyIncome * DSR_LIMIT - existingMonthlyPayment;
         if (availableMonthly <= 0) return 0L;
 
         // 연금 현가: M × (factor − 1) / (r × factor)
