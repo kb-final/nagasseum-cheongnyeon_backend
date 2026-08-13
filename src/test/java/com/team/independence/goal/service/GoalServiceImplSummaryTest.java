@@ -48,11 +48,7 @@ class GoalServiceImplSummaryTest {
     void setUp() {
         service = new GoalServiceImpl(
                 regionQueryService, assetConnectionService, assetSummaryService, rentMedianService,
-<<<<<<< HEAD
-                goalMapper, goalHousingMapper, goalMarketTrendCacheStore, null, new BudgetCalculator());
-=======
-                goalMapper, goalHousingMapper, goalMarketTrendCacheStore, new BudgetCalculator(), null);
->>>>>>> e7f9312 (feat: 예산 계산에 기존 대출 월 상환액 차감 반영)
+                goalMapper, goalHousingMapper, goalMarketTrendCacheStore, null, new BudgetCalculator(), null);
     }
 
     private Goal goal(long targetAmount, long monthlySaving) {

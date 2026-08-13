@@ -71,15 +71,11 @@ class GoalDetailServiceImplTest {
         // 그 외 의존성은 이 경로에서 쓰이지 않아 null로 둔다.
         service = new GoalDetailServiceImpl(
                 goalHousingMapper, savingRecordMapper, assetConnectionService, assetSummaryService,
-<<<<<<< HEAD
-                new GoalServiceImpl(null, null, null, null, goalMapper, null, null, null, new BudgetCalculator()));
-=======
-                new GoalServiceImpl(null, null, null, null, goalMapper, null, null, new BudgetCalculator(),
+                new GoalServiceImpl(null, null, null, null, goalMapper, null, null, null, new BudgetCalculator(),
                         new LoanPlanCalculator(null, null, null, null) {
                             @Override
                             public long calcTotalExistingMonthlyPayment(long memberId) { return 0L; }
                         }));
->>>>>>> e7f9312 (feat: 예산 계산에 기존 대출 월 상환액 차감 반영)
     }
 
     // ------------------------------------------------------------------
