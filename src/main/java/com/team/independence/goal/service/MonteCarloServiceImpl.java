@@ -16,9 +16,11 @@ import com.team.independence.property.service.RegionQueryService;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MonteCarloServiceImpl implements MonteCarloService {
@@ -30,11 +32,24 @@ public class MonteCarloServiceImpl implements MonteCarloService {
     private final BudgetCalculator budgetCalculator;
     private final PriceModelService priceModelService;
     private final RegionQueryService regionQueryService;
+    private final MonteCarloSimulationStore simulationStore;
 
     @Override
     @Transactional(readOnly = true)
     public MonteCarloResponse simulate(Long memberId, Long goalId) {
+        // 소유권 확인은 캐시 조회 전에 수행한다
         Goal goal = goalService.findOwnedGoal(memberId, goalId);
+
+        // 캐시 HIT: 목표 조건이 바뀌지 않았으면 재계산 없이 반환
+        return simulationStore.find(goalId).orElseGet(() -> {
+            log.info("[Monte Carlo] 캐시 MISS: 계산 후 캐싱 goalId={}", goalId);
+            MonteCarloResponse response = compute(memberId, goal, goalId);
+            simulationStore.save(goalId, response);
+            return response;
+        });
+    }
+
+    private MonteCarloResponse compute(Long memberId, Goal goal, Long goalId) {
 
         GoalHousing housing = goalHousingMapper.findByGoalId(goalId);
         if (housing == null) {
@@ -52,10 +67,9 @@ public class MonteCarloServiceImpl implements MonteCarloService {
         long currentBudget = netWorth.getInterestBearingAssets() + netWorth.getFlatRecognizedAssets();
         long budgetAtT = budgetCalculator.calculate(netWorth, goal.getMonthlySaving(), months);
 
-        PriceModelResponse priceModel = priceModelService.estimate(buildPriceModelRequest(housing));
-
         long initialPrice = goal.getTargetRentMiddleAmount();
-
+        PriceModelRequest priceModelRequest = buildPriceModelRequest(housing);
+        PriceModelResponse priceModel = priceModelService.estimate(priceModelRequest);
         MonteCarloEngine.Result result = MonteCarloEngine.simulate(
                 priceModel.getAnnualDrift(), priceModel.getAnnualVol(),
                 initialPrice, budgetAtT,
@@ -82,6 +96,15 @@ public class MonteCarloServiceImpl implements MonteCarloService {
                 .priceP95(result.priceP95())
                 .successProbability(result.successProbability())
                 .build();
+    }
+
+    @Override
+    public MonteCarloEngine.Result simulate(PriceModelRequest housing, long initialPrice, long budgetAtT, int months) {
+        PriceModelResponse priceModel = priceModelService.estimate(housing);
+        return MonteCarloEngine.simulate(
+                priceModel.getAnnualDrift(), priceModel.getAnnualVol(),
+                initialPrice, budgetAtT,
+                months, MonteCarloEngine.DEFAULT_SIMULATIONS, MonteCarloEngine.DEFAULT_SEED);
     }
 
     private PriceModelRequest buildPriceModelRequest(GoalHousing housing) {

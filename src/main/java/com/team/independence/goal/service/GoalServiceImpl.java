@@ -32,10 +32,10 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 프론트 희망조건 입력을 검증·정규화하고 region_code까지 붙여 돌려준다.
  * 순자산 중 예적금만 연 5% 복리로 굴리고(나머지는 인정률만 반영한 원금 그대로) + 월저축액 예상값으로
- * budget을, 조건에 맞는 실거래 보증금 4분위값을 marketStats로 계산해 반환.
+ * budget을, 조건에 맞는 실거래 보증금 4분위값을 marketStats로 계산해 반환
  * budget과 median을 비교해 status/shortfall을 매기고, 부족(INSUFFICIENT)할 때
  * 저축액 증가/기간 연장/평수 축소 3가지 조정 제안을 함께 계산한다.
- * 목표 저장은 다음 단계에서 추가.
+ * 목표 저장은 다음 단계에서 추가
  */
 @Service
 @RequiredArgsConstructor
@@ -47,14 +47,14 @@ public class GoalServiceImpl implements GoalService {
     private static final String GOAL_TYPE_HOUSING = "HOUSING";
     private static final String GOAL_STATUS_ACTIVE = "ACTIVE";
 
-    /** 예산 계산에 적용하는 연 이자율(고정 상수). 실제 상품 금리 연동 없이 5%로 가정. */
+    /** 예산 계산에 적용하는 연 이자율(고정 상수: 실제 상품 금리 연동 없이 5%로 가정) */
     private static final double ANNUAL_INTEREST_RATE = 0.05;
 
     /** 기간 연장 제안 탐색 상한(개월) */
     private static final long EXTEND_PERIOD_MAX_MONTHS = 240;
     /** 평수 축소 제안 탐색 상한(평) */
     private static final int REDUCE_SIZE_MAX_STEPS = 10;
-    /** 예상 달성 시점 탐색 상한(개월). 저축액이 미미해 사실상 도달 불가할 때 무한 루프를 막는 안전장치. */
+    /** 예상 달성 시점 탐색 상한(개월). 저축액이 미미해 사실상 도달 불가할 때 무한 루프를 막는 안전장치 */
     private static final long MAX_FORECAST_MONTHS = 1200;
 
     /** RentMedianResponse.baseEndYm("YYYYMM") 파싱용 */
@@ -67,6 +67,7 @@ public class GoalServiceImpl implements GoalService {
     private final GoalMapper goalMapper;
     private final GoalHousingMapper goalHousingMapper;
     private final GoalMarketTrendCacheStore goalMarketTrendCacheStore;
+    private final MonteCarloSimulationStore monteCarloSimulationStore;
 
     @Override
     public GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request) {
@@ -185,7 +186,7 @@ public class GoalServiceImpl implements GoalService {
 
         assetConnectionService.validateConnectedAccountExists(memberId);
 
-        // 동시 ACTIVE 목표는 1개만 허용 — 이미 있으면 저장을 거부(수정/삭제 후 재시도 유도)
+        // 동시 ACTIVE 목표는 1개만 허용: 이미 있으면 저장을 거부(수정/삭제 후 재시도 유도)
         if (goalMapper.existsActiveByMemberId(memberId)) {
             throw new BusinessException(ErrorCode.GOAL_ALREADY_EXISTS);
         }
@@ -211,8 +212,8 @@ public class GoalServiceImpl implements GoalService {
     }
 
     /**
-     * 목표 하나를 조회한다. 수정 화면이 폼을 채우는 데 쓰므로 응답은 생성·수정과 같은 GoalResponse다.
-     * 상태로 거르지 않는다 — 삭제는 행을 지우지 않는 소프트 삭제고, 지난 목표 열람을 막을 이유가 없다.
+     * 목표 하나를 조회한다. 수정 화면이 폼을 채우는 데 쓰므로 응답은 생성, 수정과 같은 GoalResponse다.
+     * 상태로 거르지 않는다: 삭제는 행을 지우지 않는 소프트 삭제고, 지난 목표 열람을 막을 이유가 없다.
      * 수정 가능 여부는 updateGoal의 GOAL_NOT_ACTIVE가 판정한다.
      */
     @Override
@@ -223,7 +224,7 @@ public class GoalServiceImpl implements GoalService {
     }
 
     /**
-     * 목표의 조건을 통째로 교체한다. 저장 계약은 생성과 같다 — 프론트가 진단을 다시 호출해 받은
+     * 목표의 조건을 통째로 교체한다. 저장 계약은 생성과 같다: 프론트가 진단을 다시 호출해 받은
      * targetAmount/targetRentMiddleAmount를 실어 보내면 서버는 재계산 없이 그대로 고정 저장한다.
      * 이미 끝난(ACHIEVED/ARCHIVED) 목표는 수정할 수 없다.
      */
@@ -251,9 +252,10 @@ public class GoalServiceImpl implements GoalService {
         // 생성 때와 같은 이유로 asset_summary 캐시도 함께 갱신한다
         assetSummaryService.updateMonthlySavings(memberId, request.getMonthlySavings());
 
-        // 시세 변화 캐시는 목표 금액과 주거 조건을 그대로 담고 있어 수정 즉시 stale해진다.
-        // 지워두면 다음 조회 때 캐시 미스 경로가 새 조건으로 다시 계산한다.
+        // 목표 조건이 바뀌면 시세 변화 캐시, 시뮬레이션 캐시 모두 stale해진다.
+        // 지워두면 다음 조회 때 새 조건으로 재계산한다.
         goalMarketTrendCacheStore.delete(goalId);
+        monteCarloSimulationStore.delete(goalId);
 
         return toGoalResponse(goalMapper.findById(goalId), goalHousing);
     }
@@ -261,12 +263,12 @@ public class GoalServiceImpl implements GoalService {
     /**
      * 목표를 삭제한다. 행을 지우지 않고 status만 ARCHIVED로 내린다.
      *
-     * <p>goal을 참조하는 FK 세 개(goal_housing, saving_record, goal_snapshot)에 ON DELETE CASCADE가
+     * goal을 참조하는 FK 세 개(goal_housing, saving_record, goal_snapshot)에 ON DELETE CASCADE가
      * 없어 물리 삭제는 제약 위반이고, 특히 goal_snapshot은 또래 비교 집계가 회원 구분 없이
-     * 기준월·순자산·나이로만 묶여 있어 지우면 과거 통계가 소급해서 바뀐다.
+     * 기준월, 순자산, 나이로만 묶여 있어 지우면 과거 통계가 소급해서 바뀐다.
      *
-     * <p>ARCHIVED가 되면 목표 생성을 막는 조건(ACTIVE 목표 존재)에서 빠지므로 새 목표를 만들 수 있다.
-     * asset_summary.monthly_savings는 건드리지 않는다 — 목표가 없으면 화면에 쓰이지 않고
+     * ARCHIVED가 되면 목표 생성을 막는 조건(ACTIVE 목표 존재)에서 빠지므로 새 목표를 만들 수 있다.
+     * asset_summary.monthly_savings는 건드리지 않는다: 목표가 없으면 화면에 쓰이지 않고
      * 새 목표를 만들면 그때 덮어쓴다.
      */
     @Override
@@ -279,12 +281,12 @@ public class GoalServiceImpl implements GoalService {
 
         goalMapper.archive(goalId, memberId);
 
-        // 시세 변화 캐시는 TTL이 35일이라 지우지 않으면 삭제한 목표의 데이터가 한 달 넘게 남는다
         goalMarketTrendCacheStore.delete(goalId);
+        monteCarloSimulationStore.delete(goalId);
     }
 
     /**
-     * 생성·수정 공통. 희망 조건을 진단과 같은 규칙으로 검증하고 goal_housing 저장 형태로 정규화한다.
+     * 생성, 수정 공통. 희망 조건을 진단과 같은 규칙으로 검증하고 goal_housing 저장 형태로 정규화한다.
      * goalId는 아직 모르거나(생성) 호출부가 이미 아는 값(수정)이라 여기서 채우지 않는다.
      */
     private GoalHousing validateAndBuildHousing(GoalSaveRequest request) {
@@ -316,7 +318,7 @@ public class GoalServiceImpl implements GoalService {
                 .build();
     }
 
-    /** 생성·수정 공통 응답 조립. createdAt/updatedAt은 DB가 채운 값을 그대로 쓴다. */
+    /** 생성, 수정 공통 응답 조립. createdAt/updatedAt은 DB가 채운 값을 그대로 쓴다. */
     private GoalResponse toGoalResponse(Goal goal, GoalHousing goalHousing) {
         return GoalResponse.builder()
                 .goalId(goal.getId())
@@ -360,7 +362,7 @@ public class GoalServiceImpl implements GoalService {
     @Override
     public Long calculateMonthToReach(AssetNetWorthBreakdown netWorth, long monthlySaving, long targetAmount) {
         long growingAssets = netWorth.getInterestBearingAssets(); // 이자로 불어나는 자산(예적금)
-        long fixedAssets = netWorth.getFlatRecognizedAssets();    // 원금 그대로 인정하는 자산
+        long fixedAssets = netWorth.getFlatRecognizedAssets();  // 원금 그대로 인정하는 자산
 
         if (growingAssets + fixedAssets >= targetAmount) {
             return 0L;
@@ -422,7 +424,7 @@ public class GoalServiceImpl implements GoalService {
      * 목표의 희망 조건으로 실거래 중앙값을 다시 조회하고, reflectEta(현재 시세 반영 시 도달 예상 시점)만
      * 오늘 기준 자산으로 다시 계산한다.
      *
-     * <p>maintainEta(목표 유지 시 도달 예상 시점)는 재계산하지 않고 goal.target_date를 그대로 쓴다.
+     * maintainEta(목표 유지 시 도달 예상 시점)는 재계산하지 않고 goal.target_date를 그대로 쓴다.
      * 홈 화면 다른 곳에도 같은 target_date가 "목표 시점"으로 노출되는데, 여기서 오늘 자산 기준으로
      * 다시 계산해버리면 같은 화면 안에서 목표 시점이 두 가지 다른 값으로 보이게 된다.
      */
