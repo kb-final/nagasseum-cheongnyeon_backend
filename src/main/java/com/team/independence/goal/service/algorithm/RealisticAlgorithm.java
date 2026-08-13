@@ -105,15 +105,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      */
     private static final int DEFAULT_TARGET_MONTHS = 24;
 
-    /**
-     * 평수 구간(평). 넓은 쪽이 앞이다.
-     *
-     * <p>사용자가 평수를 지정하지 않았을 때 이 구간들을 후보로 쓴다. 구간을 끊어 쓰는 이유는,
-     * 범위를 넓게 잡으면 성격이 다른 매물이 한 median에 섞여 대표값의 의미가 흐려지기 때문이다.
-     */
-    private static final int[][] SIZE_BUCKETS = {{20, 25}, {15, 19}, {10, 14}, {4, 9}};
-
-    /** 시군구 시세를 서로 비교할 때 기준으로 삼는 평수 구간 (15~19평) */
+    /** 시군구 시세를 서로 비교할 때 기준으로 삼는 평수 구간 (15~19평, SIZE_BUCKETS[1]) */
     private static final int REFERENCE_SIZE_BUCKET = 1;
 
     /** 시군구 비교 기준 주거유형. 실거래 표본이 가장 많아 빈 지역이 생길 확률이 낮다. */
