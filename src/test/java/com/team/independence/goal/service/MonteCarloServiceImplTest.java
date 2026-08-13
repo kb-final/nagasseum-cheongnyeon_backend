@@ -8,6 +8,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
+import java.util.Optional;
+
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
 import com.team.independence.asset.service.AssetConnectionService;
 import com.team.independence.asset.service.AssetSummaryService;
@@ -54,6 +56,7 @@ class MonteCarloServiceImplTest {
     @Mock private BudgetCalculator budgetCalculator;
     @Mock private PriceModelService priceModelService;
     @Mock private RegionQueryService regionQueryService;
+    @Mock private MonteCarloSimulationStore simulationStore;
 
     @InjectMocks private MonteCarloServiceImpl service;
 
@@ -86,6 +89,9 @@ class MonteCarloServiceImplTest {
                 .interestBearingAssets(50_000_000L)
                 .flatRecognizedAssets(20_000_000L)
                 .build();
+
+        // 기본적으로 캐시 미스로 처리: 실제 계산 경로를 검증한다
+        when(simulationStore.find(any())).thenReturn(Optional.empty());
     }
 
     // ------------------------------------------------------------------
