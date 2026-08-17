@@ -18,6 +18,13 @@ public class GoalRecommendationResponse {
     public static class RecommendationItem {
         /** 이 대안을 만든 추천 알고리즘 */
         private AlgorithmType type;
+        /**
+         * 이 카드가 실현 가능한지 여부.
+         * false면 예산·조건 부족으로 후보를 찾지 못한 것으로, title/reason만 채워지고
+         * condition·loanX·loanO는 null이다. 프론트엔드는 이 필드를 보고 카드를 비활성 스타일로 표시한다.
+         */
+        @Builder.Default
+        private boolean feasible = true;
         private String title;
         private String reason;
         private Condition condition;

@@ -33,13 +33,24 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * "극한 저축으로 존버하면 원하는 조건을 얼마나 맞출 수 있는가"를 계산하는 HoldOut 추천 알고리즘.
+ * "더 기다리면 더 넓은 평수로 이사할 수 있어요" 카드를 만드는 HoldOut 추천 알고리즘.
  *
- * <p>지역을 기준으로 주거유형·거래유형·면적 버킷의 조합으로 후보를 생성한다.
- * 각 후보에 대해 실거래 Q3 시세와 예산 도달 개월을 구한 뒤
- * 조건 개선(cIS)·대기 패널티(WP)·여유 자산(AM) 스코어로 비교해 가장 높은 점수의 후보를 추천한다.
+ * <h3>핵심 가치</h3>
+ * 사용자가 지정한 조건(주거유형·거래유형)은 그대로 유지하되,
+ * {@link #PATIENCE_BONUS} 개월 더 인내하면 <b>더 넓은 평수</b>를 얻을 수 있음을 보여준다.
+ * 주거유형·거래유형의 "더 좋다"는 기준은 주관적이지만, 평수는 크면 클수록 명확한 업그레이드다.
  *
- * <p>기준 조건 결정 우선순위:
+ * <h3>평수 업그레이드 필터</h3>
+ * 사용자가 평수를 지정했으면 {@link RecommendationAlgorithm#SIZE_BUCKETS} 중
+ * {@code areaMin > base.areaMax} 인 버킷만 후보로 허용한다.
+ * 같은 평수대를 반환하면 "더 기다려서 얻는 이득"이 없으므로 제외한다.
+ * 평수를 지정하지 않은 경우에는 필터 없이 전체 버킷을 탐색하고 스코어링에서 큰 버킷을 선호한다.
+ *
+ * <h3>지역 확장 폴백</h3>
+ * 요청 지역이 시군구(5자리)이고 업그레이드 후보가 없으면 상위 시도(2자리)로 확장해 재탐색한다.
+ * 이때 "요청 지역은 예산 초과지만 인내하면 인근 지역에서 가능" 메시지를 내보낸다.
+ *
+ * <h3>기준 조건 결정 우선순위</h3>
  * <ol>
  *   <li>request에 조건이 있으면 사용 (regionCode만 필수, 나머지는 null 허용)</li>
  *   <li>없으면 활성 목표의 GoalHousing 사용</li>
@@ -51,19 +62,15 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
-    private static final int  MIN_SAMPLE_COUNT = 10;
+    private static final int  MIN_SAMPLE_COUNT  = 10;
     private static final long WIDE_DEPOSIT_MAX  = 1_000_000_000_000L;
     private static final int  MAX_MC_ITERATIONS = 3;
 
     /**
-     * 추가 대기 허용 범위 (개월).
-     * n=0이어도 최소 24개월(2년)까지는 HoldOut 후보로 허용하고,
-     * 어떤 상황에서도 36개월(3년)을 초과하는 대기는 추천하지 않는다.
+     * 추가 인내 허용 개월 수.
+     * targetDate 이후(또는 targetDate 미지정 시 지금부터) 최대 48개월(4년)까지 탐색한다.
      */
-    private static final long MIN_EXTRA_MONTHS = 24;
-    private static final long MAX_EXTRA_MONTHS = 36;
-
-    /** dealType/면적 조건이 없을 때의 탐색 기본값 */
+    private static final long PATIENCE_BONUS   = 48;
     private static final long DEFAULT_RENT_MAX = 2_000_000L;
 
     private final LoanPlanCalculator  loanPlanCalculator;
@@ -91,36 +98,46 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         long rawMonthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
         long loanPayment = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
         long baseSaving = Math.max(0, rawMonthlySaving - loanPayment);
-        long n = base.targetDate != null ? Math.max(0, ChronoUnit.MONTHS.between(now, base.targetDate)) : 0;
 
-        long maxExtra = Math.min(Math.max(n, MIN_EXTRA_MONTHS), MAX_EXTRA_MONTHS);
+        long n = base.targetDate != null
+                ? Math.max(0, ChronoUnit.MONTHS.between(now, base.targetDate))
+                : 0L;
+        long window = n + PATIENCE_BONUS;
 
-        List<FetchedCandidate> pool = buildPool(generateCandidates(base), base, netWorth, baseSaving, n + maxExtra);
+        // 1차: 요청 지역에서 평수 업그레이드 후보 탐색
+        List<FetchedCandidate> pool = buildPool(generateCandidates(base), base, netWorth, baseSaving, window);
+        boolean regionExpanded = false;
+
+        // 2차: 시군구(5자리)로 요청했지만 pool이 비었으면 상위 시도(2자리)로 확장
+        if (pool.isEmpty() && base.regionCode.length() > 2) {
+            String sidoCode = base.regionCode.substring(0, 2);
+            BaseCondition sidoBase = new BaseCondition(
+                    sidoCode, base.housingType, base.dealType,
+                    base.areaMin, base.areaMax, base.rentMin, base.rentMax, base.targetDate);
+            pool = buildPool(generateCandidates(sidoBase), base, netWorth, baseSaving, window);
+            regionExpanded = !pool.isEmpty();
+        }
 
         ScoredCandidate best = null;
-        ScoredCandidate bestAlreadyAchievable = null;
         for (FetchedCandidate fc : pool) {
-            ScoredCandidate scored = evaluate(fc, base, netWorth, baseSaving, n, maxExtra);
+            ScoredCandidate scored = evaluate(fc, base, netWorth, baseSaving, n);
             if (scored == null) continue;
-            if (scored.m == 0) {
-                if (bestAlreadyAchievable == null || scored.score > bestAlreadyAchievable.score) bestAlreadyAchievable = scored;
-            } else {
-                if (best == null || scored.score > best.score) best = scored;
-            }
+            if (best == null || scored.score > best.score) best = scored;
         }
 
-        // HoldOut 범위(1~maxExtra) 후보가 없으면 현재 계획으로 이미 달성 가능한 후보로 대체
-        boolean isAlreadyAchievable = (best == null);
-        if (isAlreadyAchievable) {
-            best = bestAlreadyAchievable;
-        }
         if (best == null) {
-            return Optional.empty();
+            log.info("[HoldOut] 적합한 후보 없음 — soft-fail 반환 memberId={} regionCode={}", memberId, base.regionCode);
+            return Optional.of(GoalRecommendationResponse.RecommendationItem.builder()
+                    .type(AlgorithmType.HOLD_OUT)
+                    .feasible(false)
+                    .title(buildInfeasibleTitle(base))
+                    .reason(buildInfeasibleReason(base, n))
+                    .build());
         }
 
-        log.info("[HoldOut] 최종 선택 memberId={} {} futurePrice={} m={}개월 score={} alreadyAchievable={}",
+        log.info("[HoldOut] 최종 선택 memberId={} {} futurePrice={} m={}개월 score={} regionExpanded={}",
                 memberId, best.candidate.label(),
-                best.futurePrice, best.m, String.format("%.4f", best.score), isAlreadyAchievable);
+                best.futurePrice, best.m, String.format("%.4f", best.score), regionExpanded);
 
         YearMonth targetDate = now.plusMonths(best.totalMonths);
         LoanPlans plans = loanPlanCalculator.calculate(memberId, best.futurePrice, targetDate);
@@ -132,14 +149,10 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
             loanO = loanO.toBuilder().shortenedMonths(shortened).build();
         }
 
-        String title = isAlreadyAchievable
-                ? "현재 계획대로면 원하는 조건을 달성할 수 있어요"
-                : "더 기다리면 원하는 조건을 맞출 수 있어요";
-
         return Optional.of(GoalRecommendationResponse.RecommendationItem.builder()
                 .type(AlgorithmType.HOLD_OUT)
-                .title(title)
-                .reason(buildReason(best.m))
+                .title(buildTitle(base, best, n, regionExpanded))
+                .reason(buildReason(base, best, n, regionExpanded))
                 .condition(GoalRecommendationResponse.Condition.builder()
                         .regionCode(best.median.getRegionCode())
                         .regionName(best.median.getRegionName())
@@ -162,7 +175,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
      * 기준 조건에서 후보 목록을 생성한다.
      * housingType/dealType이 null이면 가능한 모든 타입 조합을 탐색한다.
      * 면적은 {@link RecommendationAlgorithm#SIZE_BUCKETS} 공유 버킷을 그대로 사용한다.
-     * 보증금 범위는 시장 전체 시세를 발견하기 위해 0~1조로 고정한다.
      */
     private List<HousingCondition> generateCandidates(BaseCondition base) {
         List<HousingType> types = base.housingType != null
@@ -191,23 +203,25 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     }
 
     /**
-     * MC 투입 전 파이프라인: 시세 조회 → 표본 필터 → 면적 다운그레이드 → 가격 상한 필터.
+     * 시세 조회 → 평수 업그레이드 필터 → 예산 상한 필터.
      *
-     * <p>가격 상한은 후보별 effectiveSaving(WOLSE면 월세 차감 후)으로 계산해
-     * 실제 평가 기준과 일치시킨다. rentQ3가 없으면 baseSaving으로 근사한다.
+     * <p><b>평수 업그레이드 필터</b>: 사용자가 지정한 {@code base.areaMax}보다
+     * {@code areaMin}이 큰 버킷만 허용한다. 같은 평수대를 반환하면 "더 기다려서 더 넓게"라는
+     * HoldOut의 가치를 전달할 수 없기 때문이다.
+     * 평수 미지정 시에는 필터 없이 전체 버킷을 탐색한다.
+     *
+     * <p>지역 확장 시에도 {@code base}는 항상 사용자의 원래 요청 기준을 사용한다.
+     * 평수 기준은 지역이 바뀌어도 변하지 않는다.
      */
     private List<FetchedCandidate> buildPool(List<HousingCondition> candidates, BaseCondition base,
                                               AssetNetWorthBreakdown netWorth, long baseSaving, long horizon) {
-        double baseMidArea = (base.areaMin != null && base.areaMax != null)
-                ? (base.areaMin + base.areaMax) / 2.0 : 0;
-
         List<FetchedCandidate> pool = new ArrayList<>();
         for (HousingCondition candidate : candidates) {
+            // 평수 업그레이드 필터: 요청 최대 평수(areaMax) 이하 버킷은 업그레이드가 아니므로 제외
+            if (base.areaMin != null && base.areaMax != null && candidate.areaMin <= base.areaMax) continue;
+
             RentMedianResponse median = fetchAndValidateMedian(candidate);
             if (median == null) continue;
-
-            double candidateMidArea = (candidate.areaMin + candidate.areaMax) / 2.0;
-            if (base.areaMin != null && base.areaMax != null && candidateMidArea < baseMidArea) continue;
 
             long effectiveSaving = baseSaving;
             if (candidate.dealType == DealType.WOLSE) {
@@ -222,13 +236,11 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     }
 
     /**
-     * buildPool()을 통과한 후보를 평가해 스코어를 계산한다. 필터 탈락 시 null 반환.
-     * 필터: 달성 가능 여부(MC 포함) → 추가 대기(m) 범위
      * 스코어: 0.35×cIS + 0.30×WP + 0.20×AM + 0.15×SP
+     * m > PATIENCE_BONUS 이면 null 반환 (MC 수렴 후 실제 도달 개월이 window를 넘는 경우).
      */
     private ScoredCandidate evaluate(FetchedCandidate fc, BaseCondition base,
-                                     AssetNetWorthBreakdown netWorth, long baseSaving, long n,
-                                     long maxExtra) {
+                                     AssetNetWorthBreakdown netWorth, long baseSaving, long n) {
         HousingCondition candidate = fc.candidate;
         RentMedianResponse median = fc.median;
 
@@ -236,19 +248,14 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
         BudgetMetrics metrics = calcBudgetMetrics(candidate, median, netWorth, baseSaving, n);
         if (metrics == null) return null;
+        if (metrics.m > PATIENCE_BONUS) return null;
 
-        if (metrics.m > maxExtra) return null;
-
-        // AM: n+maxExtra 시점의 최대 예산 대비 여유 — 후보 가격이 쌀수록 높아져 변별력 있음
-        // totalMonths <= n+maxExtra 이므로 maxBudget >= futureBudget >= futurePrice → AM >= 0
-        long maxBudget = budgetCalculator.calculate(netWorth, metrics.effectiveSaving, n + maxExtra);
+        long maxBudget = budgetCalculator.calculate(netWorth, metrics.effectiveSaving, n + PATIENCE_BONUS);
         double affordabilityMargin = (double)(maxBudget - metrics.futurePrice) / maxBudget;
-        // 면적 미지정 시 cIS는 0.5 중립 고정 — baseMidArea=0으로 계산하면 모든 후보가 1.0에 수렴해 변별력 소실
         double condImprovScore = (base.areaMin == null || base.areaMax == null)
                 ? 0.5
                 : calcConditionImprovementScore((base.areaMin + base.areaMax) / 2.0, candidateMidArea);
-        double waitPenalty     = 1.0 / (1.0 + metrics.m / 12.0);
-        // successProbability: GBM 시뮬레이션 기반 도달 성공 확률. MC 실패 시 null → 0.0(불리 처리)
+        double waitPenalty = 1.0 / (1.0 + metrics.m / 12.0);
         double spScore = metrics.successProbability != null ? metrics.successProbability : 0.0;
         double score = 0.35 * condImprovScore
                      + 0.30 * waitPenalty
@@ -262,12 +269,10 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                 metrics.successProbability != null ? String.format("%.3f", metrics.successProbability) : "null",
                 String.format("%.4f", score));
 
-        return new ScoredCandidate(candidate, median, metrics.futurePrice, metrics.effectiveSaving, metrics.totalMonths, metrics.m, score);
+        return new ScoredCandidate(candidate, median, metrics.futurePrice, metrics.effectiveSaving,
+                metrics.totalMonths, metrics.m, score);
     }
 
-    /**
-     * 후보의 시세를 조회하고 표본 수·Q3 존재 여부를 검증한다. 탈락 시 null 반환.
-     */
     private RentMedianResponse fetchAndValidateMedian(HousingCondition candidate) {
         RentMedianResponse median;
         try {
@@ -281,9 +286,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         return median;
     }
 
-    /**
-     * 시세와 자산 정보를 기반으로 예산 지표를 계산한다. 달성 불가(저축 불충분 등)이면 null 반환.
-     */
     private BudgetMetrics calcBudgetMetrics(HousingCondition candidate, RentMedianResponse median,
                                              AssetNetWorthBreakdown netWorth, long baseSaving, long n) {
         long initialPrice = median.getDeposit().getQ3();
@@ -295,7 +297,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
             effectiveSaving = Math.max(0, baseSaving - rentQ3);
         }
 
-        // 1단계: 현재 시세로 초기 도달 개월 추정 (MC 시작점)
         Long initialMonths = budgetCalculator.monthsToReach(netWorth, effectiveSaving, initialPrice);
         if (initialMonths == null) return null;
         if (initialMonths == 0) {
@@ -331,26 +332,144 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         return new BudgetMetrics(futurePrice, effectiveSaving, totalMonths, m, successProbability);
     }
 
-    /**
-     * CIS (Condition Improvement Score): 후보 면적이 기준 조건 대비 얼마나 개선되었는지 0.0~1.0으로 계산한다.
-     *
-     * <p>Hard Constraint(지역·거래유형·주거유형)는 generateCandidates에서 필터링되므로 포함하지 않는다.
-     *
-     * <p>공식: clamp(0.5 + delta / 20.0, 0.0, 1.0)
-     * <ul>
-     *   <li>delta = 0평 (기준과 동일 면적): 0.5</li>
-     *   <li>delta = +5평 (한 버킷 업그레이드): 0.75</li>
-     *   <li>delta = +10평 이상: 1.0 (최대)</li>
-     * </ul>
-     */
     private double calcConditionImprovementScore(double baseMidArea, double candidateMidArea) {
         double delta = candidateMidArea - baseMidArea;
         return Math.min(1.0, Math.max(0.0, 0.5 + delta / 20.0));
     }
 
+    // ─── 메시지 빌더 ─────────────────────────────────────────────────────────────
+
+    /** feasible=false 카드 제목 — 후보를 전혀 찾지 못한 경우 */
+    private String buildInfeasibleTitle(BaseCondition base) {
+        return base.areaMin != null && base.areaMax != null
+                ? "더 기다려도 더 넓은 평수로 이사하기 어려워요"
+                : "현재 저축 계획으로는 원하는 조건 달성이 어려워요";
+    }
+
+    /** feasible=false 카드 이유 — 총 탐색 기간(n + PATIENCE_BONUS)을 기준으로 설명 */
+    private String buildInfeasibleReason(BaseCondition base, long n) {
+        String waitStr = formatMonths(n + PATIENCE_BONUS);
+        if (base.areaMin != null && base.areaMax != null) {
+            return String.format(
+                    "%s을 기다려도 현재 저축 계획으로는 %d~%d평보다 넓은 집을 마련하기 어려워요. 저축액을 늘리거나 조건을 조정해 보세요.",
+                    waitStr, base.areaMin, base.areaMax);
+        }
+        String housingLabel = base.housingType != null ? RecommendationAlgorithm.label(base.housingType) : "주택";
+        String dealLabel    = base.dealType    != null ? RecommendationAlgorithm.label(base.dealType)    : "";
+        String typePart     = dealLabel.isEmpty() ? housingLabel : housingLabel + " " + dealLabel;
+        return String.format(
+                "%s을 기다려도 현재 저축 계획으로는 요청하신 지역의 %s을 마련하기 어려워요. 저축액을 늘리거나 조건을 조정해 보세요.",
+                waitStr, typePart);
+    }
+
     /**
-     * request → housing 순으로 기준 조건과 목표 시점을 병합해 BaseCondition을 반환한다.
+     * 상황별 카드 제목.
+     *
+     * <table>
+     *   <tr><th>상황</th><th>제목</th></tr>
+     *   <tr><td>m=0 · 평수 지정</td><td>현재 계획으로도 더 넓은 평수를 노려볼 수 있어요</td></tr>
+     *   <tr><td>m=0 · 평수 미지정</td><td>현재 저축 계획으로도 더 좋은 조건의 집이 가능해요</td></tr>
+     *   <tr><td>지역 확장 · m>0</td><td>N 더 기다리면 원하는 조건으로 이사할 수 있어요</td></tr>
+     *   <tr><td>같은 지역 · 평수 지정 · m>0</td><td>N 더 기다리면 더 넓은 집으로 이사할 수 있어요</td></tr>
+     *   <tr><td>같은 지역 · 평수 미지정 · m>0</td><td>N 더 기다리면 더 좋은 조건의 집을 마련할 수 있어요</td></tr>
+     * </table>
      */
+    private String buildTitle(BaseCondition base, ScoredCandidate best, long n, boolean regionExpanded) {
+        boolean sizeSpecified = base.areaMin != null && base.areaMax != null;
+        long m = best.m;
+
+        if (m == 0) {
+            return sizeSpecified
+                    ? "현재 계획으로도 더 넓은 평수를 노려볼 수 있어요"
+                    : "현재 저축 계획으로도 더 좋은 조건의 집이 가능해요";
+        }
+        if (regionExpanded) {
+            return formatMonths(m) + " 더 기다리면 원하는 조건으로 이사할 수 있어요";
+        }
+        return sizeSpecified
+                ? formatMonths(m) + " 더 기다리면 더 넓은 집으로 이사할 수 있어요"
+                : formatMonths(m) + " 더 기다리면 더 좋은 조건의 집을 마련할 수 있어요";
+    }
+
+    /**
+     * 상황별 카드 이유 문구.
+     *
+     * <table>
+     *   <tr><th>상황</th><th>핵심 메시지</th></tr>
+     *   <tr><td>m=0 · 평수 지정</td><td>"현재 목표 저축이면 A평 → B평 업그레이드 가능"</td></tr>
+     *   <tr><td>m=0 · 평수 미지정</td><td>"현재 예산으로 지역 유형 B평 가능"</td></tr>
+     *   <tr><td>지역 확장 · m>0 · 평수 지정</td><td>"요청 지역 예산 초과 → N 저축하면 시도 내 B평 가능"</td></tr>
+     *   <tr><td>지역 확장 · m>0 · 평수 미지정</td><td>"요청 지역 예산 초과 → N 저축하면 시도 내 유형 B평 가능"</td></tr>
+     *   <tr><td>같은 지역 · 평수 지정 · 목표 있음</td><td>"목표 시점보다 N 더 기다리면 A평 → B평"</td></tr>
+     *   <tr><td>같은 지역 · 평수 지정 · 목표 없음</td><td>"N 저축하면 A평 → B평"</td></tr>
+     *   <tr><td>같은 지역 · 평수 미지정</td><td>"N 저축하면 지역 유형 B평 마련 가능"</td></tr>
+     * </table>
+     */
+    private String buildReason(BaseCondition base, ScoredCandidate best, long n, boolean regionExpanded) {
+        boolean sizeSpecified = base.areaMin != null && base.areaMax != null;
+        boolean hasTarget = n > 0;
+        long m = best.m;
+        String regionName = best.median.getRegionName();
+        String housingLabel = RecommendationAlgorithm.label(best.candidate.housingType);
+        String dealLabel    = RecommendationAlgorithm.label(best.candidate.dealType);
+        int rMin = best.candidate.areaMin;
+        int rMax = best.candidate.areaMax;
+
+        // m=0: 현재 계획으로도 이미 업그레이드 가능
+        if (m == 0) {
+            if (sizeSpecified) {
+                return String.format(
+                        "현재 목표대로 저축하면 %s %d~%d평에서 %d~%d평으로 넓혀서 이사할 수도 있어요.",
+                        housingLabel, base.areaMin, base.areaMax, rMin, rMax);
+            }
+            return String.format(
+                    "현재 저축 계획으로 %s %s %d~%d평이 %s에서 가능해요.",
+                    housingLabel, dealLabel, rMin, rMax, regionName);
+        }
+
+        String waitStr = formatMonths(m);
+
+        // 지역 확장(요청 시군구 → 상위 시도)으로 찾은 경우
+        if (regionExpanded) {
+            if (sizeSpecified) {
+                return String.format(
+                        "요청하신 지역은 현재 예산을 초과하지만, %s 더 저축하면 %s에서 %s %s %d~%d평으로 이사할 수 있어요.",
+                        waitStr, regionName, housingLabel, dealLabel, rMin, rMax);
+            }
+            return String.format(
+                    "요청하신 지역은 현재 예산을 초과하지만, %s 더 저축하면 %s에서 %s %s %d~%d평이 가능해요.",
+                    waitStr, regionName, housingLabel, dealLabel, rMin, rMax);
+        }
+
+        // 같은 지역, 평수 지정
+        if (sizeSpecified) {
+            String waitPrefix = hasTarget
+                    ? "목표 시점보다 " + waitStr + " 더 기다리면"
+                    : waitStr + " 저축하면";
+            return String.format(
+                    "%s %s에서 %d~%d평에서 %d~%d평으로 넓혀서 이사할 수 있어요.",
+                    waitPrefix, regionName, base.areaMin, base.areaMax, rMin, rMax);
+        }
+
+        // 같은 지역, 평수 미지정
+        String waitPrefix = hasTarget
+                ? "목표 시점보다 " + waitStr + " 더 기다리면"
+                : waitStr + " 저축하면";
+        return String.format(
+                "%s %s %s %s %d~%d평을 마련할 수 있어요.",
+                waitPrefix, regionName, housingLabel, dealLabel, rMin, rMax);
+    }
+
+    private String formatMonths(long months) {
+        long years = months / 12;
+        long rem   = months % 12;
+        if (years == 0) return months + "개월";
+        if (rem   == 0) return years  + "년";
+        return years + "년 " + rem + "개월";
+    }
+
+    // ─── resolveCondition ────────────────────────────────────────────────────────
+
     private BaseCondition resolveCondition(GoalRecommendationRequest req, GoalHousing housing, Goal activeGoal) {
         String regionCode = pick(req.getRegionCode(), housing != null ? housing.getRegionCode() : null);
         if (regionCode == null) return null;
@@ -370,20 +489,12 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                 targetDate);
     }
 
-    private String buildReason(long extraMonths) {
-        if (extraMonths == 0) return "현재 계획대로 저축하면 원하는 조건에 도달할 수 있어요.";
-        long years  = extraMonths / 12;
-        long months = extraMonths % 12;
-        if (years == 0)  return extraMonths + "개월 더 기다리면 원하는 조건의 집을 구할 수 있어요.";
-        if (months == 0) return years + "년 더 기다리면 원하는 조건의 집을 구할 수 있어요.";
-        return years + "년 " + months + "개월 더 기다리면 원하는 조건의 집을 구할 수 있어요.";
-    }
-
     private <T> T pick(T primary, T fallback) {
         return primary != null ? primary : fallback;
     }
 
-    /** resolveCondition 결과 — regionCode 이외 필드는 null 허용 */
+    // ─── 내부 타입 ────────────────────────────────────────────────────────────────
+
     private record BaseCondition(
             String regionCode, HousingType housingType, DealType dealType,
             Integer areaMin, Integer areaMax, Long rentMin, Long rentMax,
@@ -425,7 +536,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         }
     }
 
-    /** 시세 조회·표본·상한 필터를 통과한 후보 (MC 투입 전 단계) */
     private record FetchedCandidate(HousingCondition candidate, RentMedianResponse median) {}
 
     private record BudgetMetrics(long futurePrice, long effectiveSaving, long totalMonths, long m,
