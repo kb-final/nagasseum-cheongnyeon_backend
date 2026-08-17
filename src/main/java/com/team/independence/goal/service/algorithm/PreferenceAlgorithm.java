@@ -1,17 +1,24 @@
 package com.team.independence.goal.service.algorithm;
 
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
+import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.goal.dto.AlgorithmType;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.goal.dto.LoanPlans;
-import com.team.independence.goal.service.calculator.LoanPlanCalculator;
+import com.team.independence.goal.service.MonteCarloEngine;
+import com.team.independence.goal.service.MonteCarloService;
 import com.team.independence.goal.service.RecommendationAlgorithm;
+import com.team.independence.goal.service.calculator.BudgetCalculator;
+import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
+import com.team.independence.property.dto.PriceModelRequest;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -70,8 +77,11 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
     /** 보증금 필터 미지정 시 사용할 상한(원). 사실상 무제한. */
     private static final long DEPOSIT_MAX_DEFAULT = 100_000_000_000L;
 
+    private final AssetSummaryService assetSummaryService;
     private final RentMedianService rentMedianService;
     private final LoanPlanCalculator loanPlanCalculator;
+    private final BudgetCalculator budgetCalculator;
+    private final MonteCarloService monteCarloService;
 
     @Override
     public Optional<GoalRecommendationResponse.RecommendationItem> recommend(
@@ -80,6 +90,13 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         YearMonth targetDate = request.getTargetDate() != null
                 ? request.getTargetDate()
                 : YearMonth.now().plusMonths(DEFAULT_TARGET_MONTHS);
+        long targetMonths = monthsUntil(targetDate);
+
+        // DSR 차감: 기존 대출 월상환액을 제외한 실질 저축 여력
+        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
+        long rawMonthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
+        long loanPayment      = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
+        long effectiveSaving  = Math.max(0, rawMonthlySaving - loanPayment);
 
         HousingType housingType = request.getPropertyType() != null
                 ? request.getPropertyType() : DEFAULT_HOUSING_TYPE;
@@ -109,7 +126,33 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         long monthlyRent = dealType == DealType.WOLSE && median.getMonthlyRent().getMedian() != null
                 ? median.getMonthlyRent().getMedian() : 0L;
 
-        LoanPlans plans = loanPlanCalculator.calculate(memberId, deposit, targetDate);
+        // MC로 목표 시점의 예상 보증금을 투영한다.
+        // PREFERENCE는 조건이 고정이므로 REALISTIC과 동일하게 수렴 루프 없이 1회 시뮬레이션으로 끝낸다.
+        // MC 실패 시 현재 시세를 그대로 사용한다.
+        long projectedDeposit = deposit;
+        try {
+            PriceModelRequest priceReq = buildPriceModelRequest(
+                    median.getRegionCode(), housingType, dealType, areaMin, areaMax);
+            long budgetAtT = budgetCalculator.calculate(netWorth, effectiveSaving, targetMonths);
+            MonteCarloEngine.Result mc = monteCarloService.simulate(
+                    priceReq, deposit, budgetAtT, (int) targetMonths);
+            projectedDeposit = mc.priceP50();
+        } catch (RuntimeException e) {
+            log.debug("MC 실패, 현재 시세 폴백. memberId={}, regionCode={}",
+                    memberId, request.getRegionCode(), e);
+        }
+
+        LoanPlans plans = loanPlanCalculator.calculate(memberId, projectedDeposit, targetDate);
+
+        GoalRecommendationResponse.LoanOPlan loanO = plans.getLoanO();
+        if (loanO != null) {
+            Long reachMonths = budgetCalculator.monthsToReach(netWorth, effectiveSaving, projectedDeposit);
+            if (reachMonths != null) {
+                Long shortened = loanPlanCalculator.calcShortenedMonths(
+                        memberId, netWorth, effectiveSaving, projectedDeposit, reachMonths);
+                loanO = loanO.toBuilder().shortenedMonths(shortened).build();
+            }
+        }
 
         GoalRecommendationResponse.Condition condition = GoalRecommendationResponse.Condition.builder()
                 .regionCode(median.getRegionCode())
@@ -130,8 +173,14 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
                         areaMin, areaMax, label(dealType)))
                 .condition(condition)
                 .loanX(plans.getLoanX())
-                .loanO(plans.getLoanO())
+                .loanO(loanO)
                 .build());
+    }
+
+    /** 배수의 분모다. 0이 되면 나눗셈이 깨지므로 최소 1개월로 본다. */
+    private long monthsUntil(YearMonth targetDate) {
+        long months = YearMonth.now().until(targetDate, ChronoUnit.MONTHS);
+        return Math.max(months, 1);
     }
 
     private RentMedianRequest buildMedianRequest(
@@ -149,6 +198,17 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         median.setMonthlyRentMin(request.getMonthlyRentMin());
         median.setMonthlyRentMax(request.getMonthlyRentMax());
         return median;
+    }
+
+    private PriceModelRequest buildPriceModelRequest(
+            String regionCode, HousingType housingType, DealType dealType, int areaMin, int areaMax) {
+        PriceModelRequest req = new PriceModelRequest();
+        req.setRegionCode(regionCode);
+        req.setHousingType(housingType);
+        req.setDealType(dealType);
+        req.setAreaMin(areaMin);
+        req.setAreaMax(areaMax);
+        return req;
     }
 
     private static String label(HousingType housingType) {
