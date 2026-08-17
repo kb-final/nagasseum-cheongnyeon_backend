@@ -30,7 +30,7 @@ public class PriceModelServiceImpl implements PriceModelService {
     private final RentTransactionMapper rentTransactionMapper;
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = BusinessException.class)
     public PriceModelResponse estimate(PriceModelRequest request) {
         String regionName = regionMapper.findFullNameByCode(request.getRegionCode());
         if (regionName == null) {
