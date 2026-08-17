@@ -2,6 +2,7 @@ package com.team.independence.goal.service.algorithm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -9,16 +10,18 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
-import com.team.independence.asset.dto.summary.AssetSummaryResponse;
 import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.goal.dto.AlgorithmType;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse.RecommendationItem;
 import com.team.independence.goal.dto.LoanPlans;
-import com.team.independence.goal.service.GoalService;
+import com.team.independence.goal.service.MonteCarloEngine;
+import com.team.independence.goal.service.MonteCarloService;
+import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
+import com.team.independence.property.dto.PriceModelRequest;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.dto.RentMedianResponse.Quartile;
@@ -42,8 +45,8 @@ import org.mockito.quality.Strictness;
  * 현실 우선 추천 알고리즘 테스트.
  *
  * <p>실거래 시세를 조합별로 마음대로 정해 놓고, 알고리즘이 그중 무엇을 고르는지만 본다.
- * 저축 복리 계산({@code calculateMonthToReach})은 "목표액 ÷ 월저축액" 이라는 단순한 식으로 대체했다.
- * 복리를 그대로 쓰면 기대값을 손으로 계산하기 어려워 정작 검증하려는 선택 규칙이 가려지기 때문이다.
+ * MC는 가격 변화 없음(priceP50 = initialPrice)으로 스텁해 선택 로직 검증에 집중한다.
+ * 저축 복리 계산은 "목표액 ÷ 월저축액" 단순 나눗셈으로 대체해 기대값을 손으로 계산할 수 있게 했다.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -66,7 +69,9 @@ class RealisticAlgorithmTest {
     @Mock
     private LoanPlanCalculator loanPlanCalculator;
     @Mock
-    private GoalService goalService;
+    private BudgetCalculator budgetCalculator;
+    @Mock
+    private MonteCarloService monteCarloService;
 
     private RealisticAlgorithm algorithm;
 
@@ -79,7 +84,8 @@ class RealisticAlgorithmTest {
     @BeforeEach
     void setUp() {
         algorithm = new RealisticAlgorithm(
-                assetSummaryService, rentMedianService, regionMapper, loanPlanCalculator, goalService);
+                assetSummaryService, rentMedianService, regionMapper, loanPlanCalculator,
+                budgetCalculator, monteCarloService);
         market = new HashMap<>();
         lookedUp = new ArrayList<>();
 
@@ -88,26 +94,31 @@ class RealisticAlgorithmTest {
                         .interestBearingAssets(0L)
                         .flatRecognizedAssets(0L)
                         .build());
-        when(assetSummaryService.getSummary(MEMBER_ID)).thenReturn(
-                AssetSummaryResponse.builder().monthlySavings(MONTHLY_SAVING).build());
+        when(assetSummaryService.getMonthlySavingsOrZero(MEMBER_ID)).thenReturn(MONTHLY_SAVING);
 
-        // 목표액 ÷ 월저축액. 저축이 없으면 도달 불가(null).
-        when(goalService.calculateMonthToReach(any(), anyLong(), anyLong())).thenAnswer(call -> {
+        // 기존 대출 없음 → effectiveSaving = rawMonthlySaving
+        when(loanPlanCalculator.calcTotalExistingMonthlyPayment(MEMBER_ID)).thenReturn(0L);
+
+        // MC: 가격 변화 없음으로 스텁. 선택 로직이 가려지지 않게 priceP50 = initialPrice 반환.
+        when(monteCarloService.simulate(any(PriceModelRequest.class), anyLong(), anyLong(), anyInt()))
+                .thenAnswer(call -> {
+                    long initialPrice = call.getArgument(1);
+                    return new MonteCarloEngine.Result(initialPrice, initialPrice, initialPrice, 1.0);
+                });
+
+        // BudgetCalculator.monthsToReach: 목표액 ÷ 월저축액 (복리 계산 대신 단순 나눗셈)
+        when(budgetCalculator.monthsToReach(any(), anyLong(), anyLong())).thenAnswer(call -> {
             long monthlySaving = call.getArgument(1);
             long targetAmount = call.getArgument(2);
-            if (monthlySaving <= 0) {
-                return null;
-            }
+            if (monthlySaving <= 0) return null;
             return (long) Math.ceil((double) targetAmount / monthlySaving);
         });
-        // 대출 차감 버전도 같은 단순 나눗셈 식으로 대체한다. (테스트 목적: 선택 로직 검증, 복리 계산 아님)
-        when(goalService.calculateEffectiveMonthToReach(anyLong(), any(), anyLong(), anyLong())).thenAnswer(call -> {
-            long monthlySaving = call.getArgument(2);
-            long targetAmount = call.getArgument(3);
-            if (monthlySaving <= 0) {
-                return null;
-            }
-            return (long) Math.ceil((double) targetAmount / monthlySaving);
+
+        // BudgetCalculator.calculate: MC에 넘기는 budgetAtT 용도라 값 자체는 중요하지 않음
+        when(budgetCalculator.calculate(any(), anyLong(), anyLong())).thenAnswer(call -> {
+            long monthlySaving = call.getArgument(1);
+            long months = call.getArgument(2);
+            return monthlySaving * months;
         });
 
         when(rentMedianService.getMedian(any())).thenAnswer(call -> {
@@ -148,8 +159,7 @@ class RealisticAlgorithmTest {
         put("11110", HousingType.APT, DealType.JEONSE, 4, 5000 * 만, 0);
 
         // 월 저축 2천만 → 예산 4.8억. 이제 3억짜리도 들어온다.
-        when(assetSummaryService.getSummary(MEMBER_ID)).thenReturn(
-                AssetSummaryResponse.builder().monthlySavings(20_000_000L).build());
+        when(assetSummaryService.getMonthlySavingsOrZero(MEMBER_ID)).thenReturn(20_000_000L);
 
         RecommendationItem item = recommend(request("11110", HousingType.APT, DealType.JEONSE));
 
@@ -252,8 +262,7 @@ class RealisticAlgorithmTest {
     @Test
     @DisplayName("월 저축액이 등록되지 않았으면 도달 불가로 흘러간다")
     void treatsMissingMonthlySavingAsZero() {
-        when(assetSummaryService.getSummary(MEMBER_ID)).thenReturn(
-                AssetSummaryResponse.builder().monthlySavings(null).build());
+        when(assetSummaryService.getMonthlySavingsOrZero(MEMBER_ID)).thenReturn(0L);
         put("11110", HousingType.APT, DealType.JEONSE, 15, 2 * 억, 0);
 
         RecommendationItem item = recommend(request("11110", HousingType.APT, DealType.JEONSE));

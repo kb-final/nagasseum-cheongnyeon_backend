@@ -6,11 +6,14 @@ import com.team.independence.goal.dto.AlgorithmType;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.goal.dto.LoanPlans;
-import com.team.independence.goal.service.GoalService;
-import com.team.independence.goal.service.calculator.LoanPlanCalculator;
+import com.team.independence.goal.service.MonteCarloEngine;
+import com.team.independence.goal.service.MonteCarloService;
 import com.team.independence.goal.service.RecommendationAlgorithm;
+import com.team.independence.goal.service.calculator.BudgetCalculator;
+import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
+import com.team.independence.property.dto.PriceModelRequest;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.mapper.RegionMapper;
@@ -57,7 +60,7 @@ import org.springframework.stereotype.Service;
  * 그래서 월세를 전세 환산 보증금으로 바꿔 비교한다.
  * <pre>환산보증금 = 보증금 + (월세 × 12 ÷ 이자율)</pre>
  * 이때 쓰는 이자율은 외부 전월세전환율 통계가 아니라 이 서비스가 이미 쓰고 있는 연 5%
- * ({@code GoalServiceImpl.ANNUAL_INTEREST_RATE})다. 자산이 5%로 불어난다고 계산해 놓고 기회비용은
+ * ({@code BudgetCalculator.ANNUAL_INTEREST_RATE})다. 자산이 5%로 불어난다고 계산해 놓고 기회비용은
  * 다른 이율로 잡으면 모순이라, 모델 내부에서 일관된 값을 쓴다.
  *
  * <p>환산보증금은 <b>비교·판정에만</b> 쓴다. 화면에 나가는 목표 금액은 사용자가 실제로 모아야 하는
@@ -126,7 +129,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     /**
      * 월세를 목돈으로 환산할 때 쓰는 연 이자율.
      *
-     * <p>{@code GoalServiceImpl.ANNUAL_INTEREST_RATE}와 같은 값이어야 한다. 자산 성장률과 기회비용률이
+     * <p>{@code BudgetCalculator}의 연 이자율과 같은 값이어야 한다. 자산 성장률과 기회비용률이
      * 어긋나면 "전세가 유리한지 월세가 유리한지"의 판단이 모델 내부에서 모순된다.
      */
     private static final double ANNUAL_INTEREST_RATE = 0.05;
@@ -135,8 +138,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     private final RentMedianService rentMedianService;
     private final RegionMapper regionMapper;
     private final LoanPlanCalculator loanPlanCalculator;
-    /** 저축 복리 계산을 재사용하기 위한 의존. 같은 식을 두 곳에 두지 않으려는 것이다. */
-    private final GoalService goalService;
+    private final BudgetCalculator budgetCalculator;
+    private final MonteCarloService monteCarloService;
 
     @Override
     public Optional<GoalRecommendationResponse.RecommendationItem> recommend(
@@ -146,9 +149,11 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         long desiredMonths = monthsUntil(targetDate);
 
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
-        long monthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
+        long rawMonthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
+        long loanPayment      = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
+        long effectiveSaving  = Math.max(0, rawMonthlySaving - loanPayment);
 
-        Search search = new Search(memberId, netWorth, monthlySaving, desiredMonths);
+        Search search = new Search(memberId, netWorth, effectiveSaving, desiredMonths);
 
         // 1단계: 시군구 확정
         String regionCode = selectRegion(request, search);
@@ -162,7 +167,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         List<Candidate> asRequested = evaluateConditions(regionCode, request, search, true);
         Optional<Candidate> keepingInput = bestWithinTarget(asRequested);
         if (keepingInput.isPresent()) {
-            return Optional.of(assemble(memberId, keepingInput.get(), targetDate, desiredMonths, false));
+            return Optional.of(assemble(memberId, keepingInput.get(), targetDate, desiredMonths, false, search));
         }
 
         // 3단계: 입력한 조건으로는 목표 시점을 못 지킨다. 그때만 조건을 풀고 다시 찾는다.
@@ -176,7 +181,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         }
 
         Candidate chosen = bestWithinTarget(relaxed).orElseGet(() -> cheapest(relaxed));
-        return Optional.of(assemble(memberId, chosen, targetDate, desiredMonths, true));
+        return Optional.of(assemble(memberId, chosen, targetDate, desiredMonths, true, search));
     }
 
     /** 사용자가 지역 외에 조정 가능한 조건을 하나라도 줬는가 */
@@ -229,11 +234,11 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         // 예산에 맞는 곳 중 가장 좋은(비싼) 곳. 없으면 가장 싼 곳.
         return ranked.stream()
                 .filter(Candidate::withinTarget)
-                .max(Comparator.comparingLong(Candidate::getComparableAmount))
+                .max(Comparator.comparingLong(Candidate::comparableAmount))
                 .orElseGet(() -> ranked.stream()
-                        .min(Comparator.comparingLong(Candidate::getComparableAmount))
+                        .min(Comparator.comparingLong(Candidate::comparableAmount))
                         .orElseThrow(IllegalStateException::new))
-                .getRegionCode();
+                .regionCode();
     }
 
     // ===== 2단계: 조건 =====
@@ -269,7 +274,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     private Optional<Candidate> bestWithinTarget(List<Candidate> candidates) {
         return candidates.stream()
                 .filter(Candidate::withinTarget)
-                .max(Comparator.comparingLong(Candidate::getComparableAmount));
+                .max(Comparator.comparingLong(Candidate::comparableAmount));
     }
 
     /**
@@ -280,7 +285,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      */
     private Candidate cheapest(List<Candidate> candidates) {
         return candidates.stream()
-                .min(Comparator.comparingLong(Candidate::getComparableAmount))
+                .min(Comparator.comparingLong(Candidate::comparableAmount))
                 .orElseThrow(IllegalStateException::new);
     }
 
@@ -356,14 +361,29 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         long deposit = median.getDeposit().getMedian();
         long monthlyRent = dealType == DealType.WOLSE && median.getMonthlyRent().getMedian() != null
                 ? median.getMonthlyRent().getMedian() : 0L;
-        long comparableAmount = toComparableAmount(deposit, monthlyRent);
 
-        Long reachMonths = goalService.calculateEffectiveMonthToReach(
-                search.memberId, search.netWorth, search.monthlySaving, comparableAmount);
+        // MC로 목표 시점(desiredMonths)의 예상 가격을 투영한다.
+        // Realistic은 시점이 고정이므로 HoldOut과 달리 수렴 루프 없이 1회 시뮬레이션으로 끝낸다.
+        // MC 실패 시 현재 시세를 그대로 사용한다.
+        long projectedDeposit = deposit;
+        try {
+            PriceModelRequest priceReq = buildPriceModelRequest(regionCode, housingType, dealType, areaMin, areaMax);
+            long budgetAtT = budgetCalculator.calculate(search.netWorth, search.effectiveSaving, search.desiredMonths);
+            MonteCarloEngine.Result mc = monteCarloService.simulate(
+                    priceReq, deposit, budgetAtT, (int) search.desiredMonths);
+            projectedDeposit = mc.priceP50();
+        } catch (RuntimeException e) {
+            log.debug("MC 실패, 현재 시세 폴백. regionCode={}, housingType={}, dealType={}",
+                    regionCode, housingType, dealType, e);
+        }
+
+        long comparableAmount = toComparableAmount(projectedDeposit, monthlyRent);
+        Long reachMonths = budgetCalculator.monthsToReach(
+                search.netWorth, search.effectiveSaving, comparableAmount);
 
         return Optional.of(new Candidate(
                 regionCode, median.getRegionName(), housingType, dealType,
-                areaMin, areaMax, deposit, monthlyRent, comparableAmount,
+                areaMin, areaMax, projectedDeposit, monthlyRent, comparableAmount,
                 median.getSampleCount(), reachMonths, search.desiredMonths));
     }
 
@@ -398,24 +418,43 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         return median;
     }
 
+    private PriceModelRequest buildPriceModelRequest(
+            String regionCode, HousingType housingType, DealType dealType, int areaMin, int areaMax) {
+        PriceModelRequest req = new PriceModelRequest();
+        req.setRegionCode(regionCode);
+        req.setHousingType(housingType);
+        req.setDealType(dealType);
+        req.setAreaMin(areaMin);
+        req.setAreaMax(areaMax);
+        return req;
+    }
+
     // ===== 응답 조립 =====
 
     private GoalRecommendationResponse.RecommendationItem assemble(
             long memberId, Candidate chosen, YearMonth targetDate,
-            long desiredMonths, boolean adjusted) {
+            long desiredMonths, boolean adjusted, Search search) {
 
         // 화면에 나가는 목표 금액은 환산값이 아니라 실제로 모아야 하는 보증금이다.
-        LoanPlans plans = loanPlanCalculator.calculate(memberId, chosen.getDeposit(), targetDate);
+        LoanPlans plans = loanPlanCalculator.calculate(memberId, chosen.deposit(), targetDate);
+
+        GoalRecommendationResponse.LoanOPlan loanO = plans.getLoanO();
+        if (loanO != null && chosen.reachMonths() != null) {
+            Long shortened = loanPlanCalculator.calcShortenedMonths(
+                    memberId, search.netWorth, search.effectiveSaving,
+                    chosen.deposit(), chosen.reachMonths());
+            loanO = loanO.toBuilder().shortenedMonths(shortened).build();
+        }
 
         GoalRecommendationResponse.Condition condition = GoalRecommendationResponse.Condition.builder()
-                .regionCode(chosen.getRegionCode())
-                .regionName(chosen.getRegionName())
-                .housingType(chosen.getHousingType())
-                .dealType(chosen.getDealType())
-                .areaMin(chosen.getAreaMin())
-                .areaMax(chosen.getAreaMax())
-                .monthlyRent(chosen.getMonthlyRent())
-                .sampleCount(chosen.getSampleCount())
+                .regionCode(chosen.regionCode())
+                .regionName(chosen.regionName())
+                .housingType(chosen.housingType())
+                .dealType(chosen.dealType())
+                .areaMin(chosen.areaMin())
+                .areaMax(chosen.areaMax())
+                .monthlyRent(chosen.monthlyRent())
+                .sampleCount(chosen.sampleCount())
                 .build();
 
         return GoalRecommendationResponse.RecommendationItem.builder()
@@ -424,16 +463,16 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                 .reason(buildReason(chosen, desiredMonths, adjusted))
                 .condition(condition)
                 .loanX(plans.getLoanX())
-                .loanO(plans.getLoanO())
+                .loanO(loanO)
                 .build();
     }
 
     private String buildTitle(Candidate chosen, long desiredMonths) {
         if (chosen.withinTarget()) {
             return String.format("%d개월 안에 갈 수 있는 %s %s",
-                    desiredMonths, chosen.getRegionName(), label(chosen.getHousingType()));
+                    desiredMonths, chosen.regionName(), label(chosen.housingType()));
         }
-        return String.format("%s에서 가장 가까운 %s", chosen.getRegionName(), label(chosen.getHousingType()));
+        return String.format("%s에서 가장 가까운 %s", chosen.regionName(), label(chosen.housingType()));
     }
 
     /**
@@ -444,17 +483,17 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      */
     private String buildReason(Candidate chosen, long desiredMonths, boolean adjusted) {
         String condition = String.format("%s %s %d~%d평 %s",
-                chosen.getRegionName(), label(chosen.getHousingType()),
-                chosen.getAreaMin(), chosen.getAreaMax(), label(chosen.getDealType()));
+                chosen.regionName(), label(chosen.housingType()),
+                chosen.areaMin(), chosen.areaMax(), label(chosen.dealType()));
 
         if (!chosen.withinTarget()) {
-            if (chosen.getReachMonths() == null) {
+            if (chosen.reachMonths() == null) {
                 return String.format(
                         "지금 저축 속도로는 %s 조건에 도달하기 어렵습니다. 저축액을 늘리면 목표가 잡힙니다.", condition);
             }
             return String.format(
                     "%d개월 안에 가능한 조건은 찾지 못했습니다. %s가 가장 가까우며 %d개월이 필요합니다.",
-                    desiredMonths, condition, chosen.getReachMonths());
+                    desiredMonths, condition, chosen.reachMonths());
         }
         if (adjusted) {
             return String.format(
@@ -506,103 +545,43 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     private static class Search {
         private final long memberId;
         private final AssetNetWorthBreakdown netWorth;
-        private final long monthlySaving;
+        /** 기존 대출 월상환액 차감 후 순저축액 */
+        private final long effectiveSaving;
         private final long desiredMonths;
         /** 조합 키 → 평가 결과. 표본이 없어 후보가 되지 못한 조합도 담아 재조회를 막는다. */
         private final Map<String, Optional<Candidate>> evaluated = new HashMap<>();
 
-        private Search(long memberId, AssetNetWorthBreakdown netWorth, long monthlySaving, long desiredMonths) {
+        private Search(long memberId, AssetNetWorthBreakdown netWorth, long effectiveSaving, long desiredMonths) {
             this.memberId = memberId;
             this.netWorth = netWorth;
-            this.monthlySaving = monthlySaving;
+            this.effectiveSaving = effectiveSaving;
             this.desiredMonths = desiredMonths;
         }
     }
 
     /** 평가가 끝난 조합 하나 */
-    private static class Candidate {
-        private final String regionCode;
-        private final String regionName;
-        private final HousingType housingType;
-        private final DealType dealType;
-        private final int areaMin;
-        private final int areaMax;
-        /** 실거래 보증금 중앙값 — 사용자가 실제로 모아야 하는 금액 */
-        private final long deposit;
-        /** 실거래 월세 중앙값 — 전세면 0 */
-        private final long monthlyRent;
-        /** 전세 환산 보증금 — 후보끼리 비교할 때만 쓰는 내부 저울 */
-        private final long comparableAmount;
-        /** 대표값을 뽑는 데 쓰인 실거래 건수 */
-        private final int sampleCount;
-        /** 도달까지 걸리는 개월. null이면 탐색 상한 안에 도달 불가 */
-        private final Long reachMonths;
-        private final long desiredMonths;
-
-        private Candidate(String regionCode, String regionName, HousingType housingType, DealType dealType,
-                int areaMin, int areaMax, long deposit, long monthlyRent, long comparableAmount,
-                int sampleCount, Long reachMonths, long desiredMonths) {
-            this.regionCode = regionCode;
-            this.regionName = regionName;
-            this.housingType = housingType;
-            this.dealType = dealType;
-            this.areaMin = areaMin;
-            this.areaMax = areaMax;
-            this.deposit = deposit;
-            this.monthlyRent = monthlyRent;
-            this.comparableAmount = comparableAmount;
-            this.sampleCount = sampleCount;
-            this.reachMonths = reachMonths;
-            this.desiredMonths = desiredMonths;
-        }
+    private record Candidate(
+            String regionCode,
+            String regionName,
+            HousingType housingType,
+            DealType dealType,
+            int areaMin,
+            int areaMax,
+            /** MC P50 투영 보증금 — 사용자가 실제로 모아야 하는 금액 */
+            long deposit,
+            /** 실거래 월세 중앙값 — 전세면 0 */
+            long monthlyRent,
+            /** 전세 환산 보증금 — 후보끼리 비교할 때만 쓰는 내부 저울 */
+            long comparableAmount,
+            /** 대표값을 뽑는 데 쓰인 실거래 건수 */
+            int sampleCount,
+            /** 도달까지 걸리는 개월. null이면 탐색 상한 안에 도달 불가 */
+            Long reachMonths,
+            long desiredMonths) {
 
         /** 목표 시점 안에 도달 가능한가 */
         private boolean withinTarget() {
             return reachMonths != null && (double) reachMonths / desiredMonths <= MAX_REACH_RATIO;
-        }
-
-        private String getRegionCode() {
-            return regionCode;
-        }
-
-        private String getRegionName() {
-            return regionName;
-        }
-
-        private HousingType getHousingType() {
-            return housingType;
-        }
-
-        private DealType getDealType() {
-            return dealType;
-        }
-
-        private int getAreaMin() {
-            return areaMin;
-        }
-
-        private int getAreaMax() {
-            return areaMax;
-        }
-
-        private long getDeposit() {
-            return deposit;
-        }
-
-        private long getMonthlyRent() {
-            return monthlyRent;
-        }
-
-        private int getSampleCount() {
-            return sampleCount;
-        }
-
-        private long getComparableAmount() {
-            return comparableAmount;
-        }
-
-        private Long getReachMonths() {
-            return reachMonths;
         }
     }
 }

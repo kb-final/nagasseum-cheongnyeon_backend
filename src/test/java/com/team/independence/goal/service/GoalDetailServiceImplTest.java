@@ -537,6 +537,11 @@ class GoalDetailServiceImplTest {
         }
 
         @Override
+        public long getMonthlySavingsOrZero(Long memberId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public void updateMonthlySavings(Long memberId, Long monthlySavings) {
             throw new UnsupportedOperationException();
         }
