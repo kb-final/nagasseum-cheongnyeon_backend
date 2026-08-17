@@ -18,7 +18,6 @@ import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
-import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -90,7 +89,7 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         YearMonth targetDate = request.getTargetDate() != null
                 ? request.getTargetDate()
                 : YearMonth.now().plusMonths(DEFAULT_TARGET_MONTHS);
-        long targetMonths = monthsUntil(targetDate);
+        long targetMonths = RecommendationAlgorithm.monthsUntil(targetDate);
 
         // DSR 차감: 기존 대출 월상환액을 제외한 실질 저축 여력
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
@@ -131,7 +130,7 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         // MC 실패 시 현재 시세를 그대로 사용한다.
         long projectedDeposit = deposit;
         try {
-            PriceModelRequest priceReq = buildPriceModelRequest(
+            PriceModelRequest priceReq = RecommendationAlgorithm.buildPriceModelRequest(
                     median.getRegionCode(), housingType, dealType, areaMin, areaMax);
             long budgetAtT = budgetCalculator.calculate(netWorth, effectiveSaving, targetMonths);
             MonteCarloEngine.Result mc = monteCarloService.simulate(
@@ -167,20 +166,14 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
 
         return Optional.of(GoalRecommendationResponse.RecommendationItem.builder()
                 .type(AlgorithmType.PREFERENCE)
-                .title(String.format("%s %s", median.getRegionName(), label(housingType)))
+                .title(String.format("%s %s", median.getRegionName(), RecommendationAlgorithm.label(housingType)))
                 .reason(String.format("최근 6개월 실거래 %d건 기준 %s %s %d~%d평 %s 시세입니다.",
-                        median.getSampleCount(), median.getRegionName(), label(housingType),
-                        areaMin, areaMax, label(dealType)))
+                        median.getSampleCount(), median.getRegionName(), RecommendationAlgorithm.label(housingType),
+                        areaMin, areaMax, RecommendationAlgorithm.label(dealType)))
                 .condition(condition)
                 .loanX(plans.getLoanX())
                 .loanO(loanO)
                 .build());
-    }
-
-    /** 배수의 분모다. 0이 되면 나눗셈이 깨지므로 최소 1개월로 본다. */
-    private long monthsUntil(YearMonth targetDate) {
-        long months = YearMonth.now().until(targetDate, ChronoUnit.MONTHS);
-        return Math.max(months, 1);
     }
 
     private RentMedianRequest buildMedianRequest(
@@ -200,33 +193,4 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         return median;
     }
 
-    private PriceModelRequest buildPriceModelRequest(
-            String regionCode, HousingType housingType, DealType dealType, int areaMin, int areaMax) {
-        PriceModelRequest req = new PriceModelRequest();
-        req.setRegionCode(regionCode);
-        req.setHousingType(housingType);
-        req.setDealType(dealType);
-        req.setAreaMin(areaMin);
-        req.setAreaMax(areaMax);
-        return req;
-    }
-
-    private static String label(HousingType housingType) {
-        switch (housingType) {
-            case APT:
-                return "아파트";
-            case ROW_HOUSE:
-                return "연립다세대";
-            case OFFICETEL:
-                return "오피스텔";
-            case DETACHED:
-                return "단독다가구";
-            default:
-                return housingType.name();
-        }
-    }
-
-    private static String label(DealType dealType) {
-        return dealType == DealType.JEONSE ? "전세" : "월세";
-    }
 }

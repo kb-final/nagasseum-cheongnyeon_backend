@@ -2,6 +2,11 @@ package com.team.independence.goal.service;
 
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
+import com.team.independence.property.domain.DealType;
+import com.team.independence.property.domain.HousingType;
+import com.team.independence.property.dto.PriceModelRequest;
+import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 /**
@@ -65,4 +70,35 @@ public interface RecommendationAlgorithm {
      */
     Optional<GoalRecommendationResponse.RecommendationItem> recommend(
             long memberId, GoalRecommendationRequest request);
+
+    static String label(HousingType housingType) {
+        switch (housingType) {
+            case APT:       return "아파트";
+            case ROW_HOUSE: return "연립다세대";
+            case OFFICETEL: return "오피스텔";
+            case DETACHED:  return "단독다가구";
+            default:        return housingType.name();
+        }
+    }
+
+    static String label(DealType dealType) {
+        return dealType == DealType.JEONSE ? "전세" : "월세";
+    }
+
+    /** 배수의 분모다. 0이 되면 나눗셈이 깨지므로 최소 1개월로 본다. */
+    static long monthsUntil(YearMonth targetDate) {
+        long months = YearMonth.now().until(targetDate, ChronoUnit.MONTHS);
+        return Math.max(months, 1);
+    }
+
+    static PriceModelRequest buildPriceModelRequest(
+            String regionCode, HousingType housingType, DealType dealType, int areaMin, int areaMax) {
+        PriceModelRequest req = new PriceModelRequest();
+        req.setRegionCode(regionCode);
+        req.setHousingType(housingType);
+        req.setDealType(dealType);
+        req.setAreaMin(areaMin);
+        req.setAreaMax(areaMax);
+        return req;
+    }
 }

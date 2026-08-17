@@ -19,7 +19,6 @@ import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.mapper.RegionMapper;
 import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -146,7 +145,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
             long memberId, GoalRecommendationRequest request) {
 
         YearMonth targetDate = resolveTargetDate(request);
-        long desiredMonths = monthsUntil(targetDate);
+        long desiredMonths = RecommendationAlgorithm.monthsUntil(targetDate);
 
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
         long rawMonthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
@@ -367,7 +366,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         // MC 실패 시 현재 시세를 그대로 사용한다.
         long projectedDeposit = deposit;
         try {
-            PriceModelRequest priceReq = buildPriceModelRequest(regionCode, housingType, dealType, areaMin, areaMax);
+            PriceModelRequest priceReq = RecommendationAlgorithm.buildPriceModelRequest(regionCode, housingType, dealType, areaMin, areaMax);
             long budgetAtT = budgetCalculator.calculate(search.netWorth, search.effectiveSaving, search.desiredMonths);
             MonteCarloEngine.Result mc = monteCarloService.simulate(
                     priceReq, deposit, budgetAtT, (int) search.desiredMonths);
@@ -418,17 +417,6 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         return median;
     }
 
-    private PriceModelRequest buildPriceModelRequest(
-            String regionCode, HousingType housingType, DealType dealType, int areaMin, int areaMax) {
-        PriceModelRequest req = new PriceModelRequest();
-        req.setRegionCode(regionCode);
-        req.setHousingType(housingType);
-        req.setDealType(dealType);
-        req.setAreaMin(areaMin);
-        req.setAreaMax(areaMax);
-        return req;
-    }
-
     // ===== 응답 조립 =====
 
     private GoalRecommendationResponse.RecommendationItem assemble(
@@ -470,9 +458,9 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     private String buildTitle(Candidate chosen, long desiredMonths) {
         if (chosen.withinTarget()) {
             return String.format("%d개월 안에 갈 수 있는 %s %s",
-                    desiredMonths, chosen.regionName(), label(chosen.housingType()));
+                    desiredMonths, chosen.regionName(), RecommendationAlgorithm.label(chosen.housingType()));
         }
-        return String.format("%s에서 가장 가까운 %s", chosen.regionName(), label(chosen.housingType()));
+        return String.format("%s에서 가장 가까운 %s", chosen.regionName(), RecommendationAlgorithm.label(chosen.housingType()));
     }
 
     /**
@@ -483,8 +471,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      */
     private String buildReason(Candidate chosen, long desiredMonths, boolean adjusted) {
         String condition = String.format("%s %s %d~%d평 %s",
-                chosen.regionName(), label(chosen.housingType()),
-                chosen.areaMin(), chosen.areaMax(), label(chosen.dealType()));
+                chosen.regionName(), RecommendationAlgorithm.label(chosen.housingType()),
+                chosen.areaMin(), chosen.areaMax(), RecommendationAlgorithm.label(chosen.dealType()));
 
         if (!chosen.withinTarget()) {
             if (chosen.reachMonths() == null) {
@@ -503,37 +491,12 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         return String.format("%s로 %d개월 안에 도달할 수 있습니다.", condition, desiredMonths);
     }
 
-    private static String label(HousingType housingType) {
-        switch (housingType) {
-            case APT:
-                return "아파트";
-            case ROW_HOUSE:
-                return "연립다세대";
-            case OFFICETEL:
-                return "오피스텔";
-            case DETACHED:
-                return "단독다가구";
-            default:
-                return housingType.name();
-        }
-    }
-
-    private static String label(DealType dealType) {
-        return dealType == DealType.JEONSE ? "전세" : "월세";
-    }
-
     // ===== 입력 정규화 =====
 
     private YearMonth resolveTargetDate(GoalRecommendationRequest request) {
         return request.getTargetDate() != null
                 ? request.getTargetDate()
                 : YearMonth.now().plusMonths(DEFAULT_TARGET_MONTHS);
-    }
-
-    /** 배수의 분모다. 0이 되면 나눗셈이 깨지므로 최소 1개월로 본다. */
-    private long monthsUntil(YearMonth targetDate) {
-        long months = YearMonth.now().until(targetDate, ChronoUnit.MONTHS);
-        return Math.max(months, 1);
     }
 
     /**
