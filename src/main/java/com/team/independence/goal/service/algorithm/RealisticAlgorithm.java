@@ -1,7 +1,6 @@
 package com.team.independence.goal.service.algorithm;
 
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
-import com.team.independence.asset.dto.summary.AssetSummaryResponse;
 import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.goal.dto.AlgorithmType;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
@@ -105,8 +104,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      */
     private static final int DEFAULT_TARGET_MONTHS = 24;
 
-    /** 시군구 시세를 서로 비교할 때 기준으로 삼는 평수 구간 (15~19평, SIZE_BUCKETS[1]) */
-    private static final int REFERENCE_SIZE_BUCKET = 1;
+    /** 시군구 시세를 서로 비교할 때 기준으로 삼는 평수 구간 (15~19평, SIZE_BUCKETS[2]) */
+    private static final int REFERENCE_SIZE_BUCKET = 2;
 
     /** 시군구 비교 기준 주거유형. 실거래 표본이 가장 많아 빈 지역이 생길 확률이 낮다. */
     private static final HousingType REFERENCE_HOUSING_TYPE = HousingType.APT;
@@ -147,7 +146,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         long desiredMonths = monthsUntil(targetDate);
 
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
-        long monthlySaving = resolveMonthlySaving(memberId);
+        long monthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
 
         Search search = new Search(memberId, netWorth, monthlySaving, desiredMonths);
 
@@ -496,17 +495,6 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     private long monthsUntil(YearMonth targetDate) {
         long months = YearMonth.now().until(targetDate, ChronoUnit.MONTHS);
         return Math.max(months, 1);
-    }
-
-    /**
-     * 월 저축액을 자산 요약에서 가져온다. 추천 요청이 받는 값이 아니라 이미 등록돼 있는 값이다.
-     *
-     * <p>미등록(null)이면 0으로 본다. 0이면 도달 개월이 계산되지 않아 자연히 "목표 시점 안에 불가"로
-     * 흘러가므로, 별도로 막지 않고 결과가 스스로 말하게 둔다.
-     */
-    private long resolveMonthlySaving(long memberId) {
-        AssetSummaryResponse summary = assetSummaryService.getSummary(memberId);
-        return summary.getMonthlySavings() != null ? summary.getMonthlySavings() : 0L;
     }
 
     /**
