@@ -65,7 +65,7 @@ public class GoalRecommendationResponse {
     }
 
     @Getter
-    @Builder
+    @Builder(toBuilder = true)
     public static class LoanOPlan {
         /** DSR 기준 최대 대출 가능액 */
         private long loanAmount;
@@ -73,5 +73,10 @@ public class GoalRecommendationResponse {
         private long targetAmount;
         private YearMonth targetDate;
         private long monthlySaving;
+        /**
+         * 대출을 받을 경우 단축 가능한 개월 수. 대출로도 달성이 불가능하면 null.
+         * (대출 없는 totalMonths) − (대출 낀 totalMonths)
+         */
+        private Long shortenedMonths;
     }
 }
