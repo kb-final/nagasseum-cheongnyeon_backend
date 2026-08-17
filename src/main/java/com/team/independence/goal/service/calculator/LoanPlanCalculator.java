@@ -58,13 +58,23 @@ public class LoanPlanCalculator {
                 .monthlySaving(loanXSaving)
                 .build();
 
-        long loanAmount = Math.min(calcMaxLoanAmount(memberId), requiredAmount);
+        // existingPayment를 먼저 계산해 calcMaxLoanAmount와 capacity check에서 재사용
+        long existingPayment = calcTotalExistingMonthlyPayment(memberId);
+        long loanAmount = Math.min(calcMaxLoanAmount(memberId, existingPayment), requiredAmount);
         if (loanAmount <= 0) {
             return LoanPlans.builder().loanX(loanX).loanO(null).build();
         }
 
         long selfFunded = requiredAmount - loanAmount;
         long loanOSaving = calcMonthlySavingNeeded(netWorth, selfFunded, months);
+
+        // 실제 저축 가능액 초과 시 달성 불가 → loanO null
+        long rawSaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
+        long capacitySaving = Math.max(0, rawSaving - existingPayment);
+        if (loanOSaving > capacitySaving) {
+            return LoanPlans.builder().loanX(loanX).loanO(null).build();
+        }
+
         GoalRecommendationResponse.LoanOPlan loanO = GoalRecommendationResponse.LoanOPlan.builder()
                 .loanAmount(loanAmount)
                 .targetAmount(selfFunded)
@@ -95,13 +105,16 @@ public class LoanPlanCalculator {
      * 소득 미등록이거나 기존 대출이 DSR 40%를 이미 소진한 경우 0을 반환한다.
      */
     public long calcMaxLoanAmount(long memberId) {
+        return calcMaxLoanAmount(memberId, calcTotalExistingMonthlyPayment(memberId));
+    }
+
+    private long calcMaxLoanAmount(long memberId, long existingMonthlyPayment) {
         Long monthlyIncome = memberService.getMember(memberId).monthlyIncome();
         if (monthlyIncome == null || monthlyIncome <= 0) return 0L;
 
         double r = ASSUMED_LOAN_ANNUAL_RATE / 12.0;
         double factor = Math.pow(1 + r, NEW_LOAN_TERM_MONTHS);
 
-        long existingMonthlyPayment = calcTotalExistingMonthlyPayment(memberId);
         double availableMonthly = monthlyIncome * DSR_LIMIT - existingMonthlyPayment;
         if (availableMonthly <= 0) return 0L;
 
