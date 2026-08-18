@@ -7,8 +7,8 @@ import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.goal.service.GoalRecommendationService;
 import javax.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -19,10 +19,10 @@ public class GoalRecommendationController {
 
     private final GoalRecommendationService recommendationService;
 
-    @PostMapping("/recommendations")
+    @GetMapping("/recommendations")
     public ApiResponse<GoalRecommendationResponse> recommend(
             @LoginMember Long memberId,
-            @Valid @RequestBody GoalRecommendationRequest request) {
+            @Valid @ModelAttribute GoalRecommendationRequest request) {
         return ApiResponse.ok(recommendationService.recommend(memberId, request));
     }
 }
