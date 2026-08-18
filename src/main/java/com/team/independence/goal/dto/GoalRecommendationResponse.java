@@ -6,9 +6,11 @@ import java.time.YearMonth;
 import java.util.List;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.extern.jackson.Jacksonized;
 
 @Getter
 @Builder
+@Jacksonized
 public class GoalRecommendationResponse {
 
     /** 사용자가 요청한 원래 희망 조건 — 세 추천 카드와 비교 기준으로 사용 */
@@ -21,6 +23,7 @@ public class GoalRecommendationResponse {
 
     @Getter
     @Builder
+    @Jacksonized
     public static class OriginalPreference {
         private OriginalCondition condition;
         private YearMonth targetDate;
@@ -30,6 +33,7 @@ public class GoalRecommendationResponse {
     /** 사용자가 입력한 원래 조건을 그대로 담는 객체 — Condition과 구분 */
     @Getter
     @Builder
+    @Jacksonized
     public static class OriginalCondition {
         private String regionCode;
         private String regionName;
@@ -45,6 +49,7 @@ public class GoalRecommendationResponse {
 
     @Getter
     @Builder
+    @Jacksonized
     public static class FinancialContext {
         /** 현재 주거 목표 계산에 활용 가능한 자산(원) */
         private long currentAvailableAmount;
@@ -52,6 +57,7 @@ public class GoalRecommendationResponse {
 
     @Getter
     @Builder
+    @Jacksonized
     public static class RecommendationItem {
         /** 이 대안을 만든 추천 알고리즘 */
         private AlgorithmType type;
@@ -71,6 +77,7 @@ public class GoalRecommendationResponse {
 
     @Getter
     @Builder
+    @Jacksonized
     public static class Condition {
         private String regionCode;
         private String regionName;
@@ -102,6 +109,7 @@ public class GoalRecommendationResponse {
 
     @Getter
     @Builder
+    @Jacksonized
     public static class CalculationBasis {
         /**
          * 사용자가 설정한 목표 시점까지 준비 가능한 총 금액(원).
@@ -114,6 +122,7 @@ public class GoalRecommendationResponse {
 
     @Getter
     @Builder
+    @Jacksonized
     public static class LoanXPlan {
         private long targetAmount;
         private YearMonth targetDate;
@@ -122,6 +131,7 @@ public class GoalRecommendationResponse {
 
     @Getter
     @Builder(toBuilder = true)
+    @Jacksonized
     public static class LoanOPlan {
         /** DSR 기준 최대 대출 가능액 */
         private long loanAmount;
