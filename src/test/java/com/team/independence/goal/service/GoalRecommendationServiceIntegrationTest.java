@@ -104,7 +104,7 @@ class GoalRecommendationServiceIntegrationTest {
         print("오피스텔 월세 / member=" + MEMBER_NO_LOAN, response);
         assertThat(response.getRecommendations()).isNotEmpty();
         response.getRecommendations().stream()
-                .filter(item -> item.isFeasible())
+                .filter(item -> item.getCondition() != null)
                 .forEach(item -> {
                     if (item.getCondition().getDealType() == DealType.WOLSE) {
                         assertThat(item.getCondition().getMonthlyRent()).isPositive();
@@ -128,7 +128,7 @@ class GoalRecommendationServiceIntegrationTest {
         assertThat(response.getRecommendations()).isNotEmpty();
         // 결과 지역이 서울(11xxx) 안에 있어야 한다 (feasible=false 카드는 condition=null이므로 제외)
         response.getRecommendations().stream()
-                .filter(item -> item.isFeasible())
+                .filter(item -> item.getCondition() != null)
                 .forEach(item ->
                         assertThat(item.getCondition().getRegionCode()).startsWith("11"));
     }

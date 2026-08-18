@@ -434,6 +434,9 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
             loanO = loanO.toBuilder().shortenedMonths(shortened).build();
         }
 
+        long reachableAmountAtTargetDate =
+                budgetCalculator.calculate(search.netWorth, search.effectiveSaving, desiredMonths);
+
         GoalRecommendationResponse.Condition condition = GoalRecommendationResponse.Condition.builder()
                 .regionCode(chosen.regionCode())
                 .regionName(chosen.regionName())
@@ -443,6 +446,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                 .areaMax(chosen.areaMax())
                 .monthlyRent(chosen.monthlyRent())
                 .sampleCount(chosen.sampleCount())
+                .marketMedianAmount(chosen.deposit())
                 .build();
 
         return GoalRecommendationResponse.RecommendationItem.builder()
@@ -450,6 +454,9 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                 .title(buildTitle(chosen, desiredMonths))
                 .reason(buildReason(chosen, desiredMonths, adjusted))
                 .condition(condition)
+                .calculationBasis(GoalRecommendationResponse.CalculationBasis.builder()
+                        .reachableAmountAtTargetDate(reachableAmountAtTargetDate)
+                        .build())
                 .loanX(plans.getLoanX())
                 .loanO(loanO)
                 .build();

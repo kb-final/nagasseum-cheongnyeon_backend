@@ -129,7 +129,7 @@ class HoldOutAlgorithmTest {
         Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
 
         assertThat(result).isPresent();
-        assertThat(result.get().isFeasible()).isFalse();
+        assertThat(result.get().getCondition()).isNull();
     }
 
     @Test
@@ -152,7 +152,7 @@ class HoldOutAlgorithmTest {
         Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request);
 
         assertThat(result).isPresent();
-        assertThat(result.get().isFeasible()).isFalse();
+        assertThat(result.get().getCondition()).isNull();
     }
 
     @Test
@@ -165,7 +165,7 @@ class HoldOutAlgorithmTest {
         Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
 
         assertThat(result).isPresent();
-        assertThat(result.get().isFeasible()).isFalse();
+        assertThat(result.get().getCondition()).isNull();
     }
 
     @Test
@@ -174,7 +174,7 @@ class HoldOutAlgorithmTest {
         Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
 
         assertThat(result).isPresent();
-        assertThat(result.get().isFeasible()).isFalse();
+        assertThat(result.get().getCondition()).isNull();
     }
 
     // ===== 평수 업그레이드 필터 =====
@@ -189,7 +189,7 @@ class HoldOutAlgorithmTest {
         Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
 
         assertThat(result).isPresent();
-        assertThat(result.get().isFeasible()).isFalse();
+        assertThat(result.get().getCondition()).isNull();
     }
 
     @Test
@@ -267,7 +267,7 @@ class HoldOutAlgorithmTest {
         Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request);
 
         assertThat(result).isPresent();
-        assertThat(result.get().isFeasible()).isFalse();
+        assertThat(result.get().getCondition()).isNull();
     }
 
     // ===== 메시지 =====
