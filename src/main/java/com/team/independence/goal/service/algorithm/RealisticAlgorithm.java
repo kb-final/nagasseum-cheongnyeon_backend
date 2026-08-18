@@ -224,23 +224,62 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                 ? request.getTradeType() : REFERENCE_DEAL_TYPE;
         int[] size = inputSize(request) != null ? inputSize(request) : SIZE_BUCKETS[REFERENCE_SIZE_BUCKET];
 
-        List<Candidate> ranked = new ArrayList<>();
+        // 시군구 순위 비교는 raw median으로 충분하다. MC 투영을 하면 같은 시도 내 구들이 비슷한
+        // 비율로 오르기 때문에 순위가 거의 바뀌지 않으면서, 구마다 priceModel 36개월 쿼리와
+        // MC 시뮬레이션이 추가되어 응답 시간이 크게 늘어난다.
+        String bestCode = null;
+        long bestAmount = Long.MIN_VALUE;
+        String cheapestCode = null;
+        long cheapestAmount = Long.MAX_VALUE;
+
         for (String code : sigunguCodes) {
-            evaluate(code, housingType, dealType, size[0], size[1], request, search)
-                    .ifPresent(ranked::add);
+            Long amount = quickMedianAmount(code, housingType, dealType, size[0], size[1], request, search);
+            if (amount == null) {
+                continue;
+            }
+            if (amount < cheapestAmount) {
+                cheapestCode = code;
+                cheapestAmount = amount;
+            }
+            Long reachMonths = budgetCalculator.monthsToReach(search.netWorth, search.effectiveSaving, amount);
+            boolean withinTarget = reachMonths != null
+                    && (double) reachMonths / search.desiredMonths <= MAX_REACH_RATIO;
+            if (withinTarget && amount > bestAmount) {
+                bestCode = code;
+                bestAmount = amount;
+            }
         }
-        if (ranked.isEmpty()) {
+
+        return bestCode != null ? bestCode : cheapestCode;
+    }
+
+    /**
+     * 시군구 순위 비교용 raw 환산보증금. priceModel, MC를 생략하고 getMedian 1회만 호출한다.
+     * 결과를 search.evaluated에 저장하지 않아 evaluateConditions에서 전체 평가를 재실행한다.
+     *
+     * @return 환산보증금(원). 표본 부족이면 null.
+     */
+    private Long quickMedianAmount(
+            String regionCode, HousingType housingType, DealType dealType,
+            int areaMin, int areaMax, GoalRecommendationRequest request, Search search) {
+
+        RentMedianResponse median;
+        try {
+            median = rentMedianService.getMedian(
+                    buildMedianRequest(regionCode, housingType, dealType, areaMin, areaMax, request));
+        } catch (RuntimeException e) {
+            log.debug("시군구 시세 조회 실패, 건너뜀. regionCode={}", regionCode, e);
             return null;
         }
 
-        // 예산에 맞는 곳 중 가장 좋은(비싼) 곳. 없으면 가장 싼 곳.
-        return ranked.stream()
-                .filter(Candidate::withinTarget)
-                .max(Comparator.comparingLong(Candidate::comparableAmount))
-                .orElseGet(() -> ranked.stream()
-                        .min(Comparator.comparingLong(Candidate::comparableAmount))
-                        .orElseThrow(IllegalStateException::new))
-                .regionCode();
+        if (median.getSampleCount() < MIN_SAMPLE_COUNT || median.getDeposit().getMedian() == null) {
+            return null;
+        }
+
+        long deposit = median.getDeposit().getMedian();
+        long monthlyRent = dealType == DealType.WOLSE && median.getMonthlyRent().getMedian() != null
+                ? median.getMonthlyRent().getMedian() : 0L;
+        return toComparableAmount(deposit, monthlyRent);
     }
 
     // ===== 2단계: 조건 =====
