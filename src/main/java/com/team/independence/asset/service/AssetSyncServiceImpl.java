@@ -89,8 +89,8 @@ public class AssetSyncServiceImpl implements AssetSyncService {
         return SyncJobStatusResponse.builder()
                 .jobId(jobId)
                 .status(status)
-                .errorMessage("FAILED".equals(status) ? jobStore.getError(jobId) : null)
-                .resultUrl("SUCCESS".equals(status) ? jobStore.getResultUrl(jobId) : null)
+                .errorMessage(AssetSyncJobStore.STATUS_FAILED.equals(status) ? jobStore.getError(jobId) : null)
+                .resultUrl(AssetSyncJobStore.STATUS_SUCCESS.equals(status) ? jobStore.getResultUrl(jobId) : null)
                 .build();
     }
 
