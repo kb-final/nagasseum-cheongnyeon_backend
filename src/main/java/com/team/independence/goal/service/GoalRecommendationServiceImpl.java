@@ -35,6 +35,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
     private final AssetSummaryService assetSummaryService;
     private final RegionMapper regionMapper;
     private final ObjectProvider<RecommendationAlgorithm> algorithmProvider;
+    private final GoalRecommendationStore recommendationStore;
 
     @Override
     @Transactional(readOnly = true)
@@ -65,13 +66,24 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
             throw new BusinessException(ErrorCode.GOAL_RECOMMENDATION_NO_CANDIDATE);
         }
 
-        return GoalRecommendationResponse.builder()
+        GoalRecommendationResponse response = GoalRecommendationResponse.builder()
                 .originalPreference(buildOriginalPreference(request, monthlySaving))
                 .financialContext(GoalRecommendationResponse.FinancialContext.builder()
                         .currentAvailableAmount(currentAvailableAmount)
                         .build())
                 .recommendations(recommendations)
                 .build();
+
+        // 결과 화면 재진입 시 재계산 없이 그대로 돌려주기 위해 저장한다
+        recommendationStore.save(memberId, response);
+        return response;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public GoalRecommendationResponse getSavedRecommendation(long memberId) {
+        return recommendationStore.find(memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.GOAL_RECOMMENDATION_NOT_FOUND));
     }
 
     private GoalRecommendationResponse.OriginalPreference buildOriginalPreference(

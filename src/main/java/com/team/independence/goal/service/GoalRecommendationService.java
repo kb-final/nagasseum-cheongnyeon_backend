@@ -27,4 +27,14 @@ public interface GoalRecommendationService {
      * @return 알고리즘별 추천 대안 (대안을 내지 못한 알고리즘은 제외되므로 알고리즘 수보다 적을 수 있다)
      */
     GoalRecommendationResponse recommend(long memberId, GoalRecommendationRequest request);
+
+    /**
+     * {@link #recommend}로 계산해 저장해 둔 직전 추천 결과를 재계산 없이 그대로 돌려준다.
+     *
+     * @param memberId 요청 회원 ID
+     * @return 저장된 추천 결과
+     * @throws com.team.independence.common.exception.BusinessException 저장된 결과가 없으면
+     *         {@code GOAL_RECOMMENDATION_NOT_FOUND}
+     */
+    GoalRecommendationResponse getSavedRecommendation(long memberId);
 }

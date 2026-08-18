@@ -25,4 +25,11 @@ public class GoalRecommendationController {
             @Valid @ModelAttribute GoalRecommendationRequest request) {
         return ApiResponse.ok(recommendationService.recommend(memberId, request));
     }
+
+    // 조건 재입력 없이, 직전에 계산해 둔 추천 결과를 그대로 재조회한다 (결과 화면 재진입·새로고침용)
+    @GetMapping("/recommendation")
+    public ApiResponse<GoalRecommendationResponse> getSavedRecommendation(
+            @LoginMember Long memberId) {
+        return ApiResponse.ok(recommendationService.getSavedRecommendation(memberId));
+    }
 }
