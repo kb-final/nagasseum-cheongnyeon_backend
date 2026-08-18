@@ -9,10 +9,13 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.goal.dto.AlgorithmType;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse.RecommendationItem;
 import com.team.independence.goal.dto.LoanPlans;
+import com.team.independence.goal.service.MonteCarloService;
+import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
@@ -46,9 +49,15 @@ class PreferenceAlgorithmTest {
     private static final long 만 = 10_000L;
 
     @Mock
+    private AssetSummaryService assetSummaryService;
+    @Mock
     private RentMedianService rentMedianService;
     @Mock
     private LoanPlanCalculator loanPlanCalculator;
+    @Mock
+    private BudgetCalculator budgetCalculator;
+    @Mock
+    private MonteCarloService monteCarloService;
 
     private PreferenceAlgorithm algorithm;
 
@@ -57,7 +66,7 @@ class PreferenceAlgorithmTest {
 
     @BeforeEach
     void setUp() {
-        algorithm = new PreferenceAlgorithm(rentMedianService, loanPlanCalculator);
+        algorithm = new PreferenceAlgorithm(assetSummaryService, rentMedianService, loanPlanCalculator, budgetCalculator, monteCarloService);
         asked = new ArrayList<>();
 
         when(loanPlanCalculator.calculate(anyLong(), anyLong(), any()))

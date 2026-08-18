@@ -123,6 +123,15 @@ public class AssetSummaryServiceImpl implements AssetSummaryService {
                 .build();
     }
 
+    @Override
+    public long getMonthlySavingsOrZero(Long memberId) {
+        AssetSummary summary = assetSummaryMapper.findByMemberId(memberId);
+        if (summary == null) {
+            throw new BusinessException(ErrorCode.ASSET_SUMMARY_NOT_FOUND);
+        }
+        return summary.getMonthlySavings() != null ? summary.getMonthlySavings() : 0L;
+    }
+
     private long investmentRecognizedAmount(Long memberId) {
         long total = 0L;
         for (AssetAccountQueryItem account : assetAccountMapper.findWithInstitutionByMemberId(memberId)) {

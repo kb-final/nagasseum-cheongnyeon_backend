@@ -94,6 +94,6 @@ public class GoalRecommendationRequest {
     /** 목표 시점을 지정했다면 현재 이후여야 한다. */
     @AssertTrue(message = "목표 시점은 현재 이후여야 합니다.")
     public boolean isTargetDateValid() {
-        return targetDate == null || targetDate.isAfter(YearMonth.now());
+        return targetDate == null || !targetDate.isBefore(YearMonth.now());
     }
 }
