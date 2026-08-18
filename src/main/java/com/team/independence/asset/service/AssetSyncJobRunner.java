@@ -23,6 +23,8 @@ public class AssetSyncJobRunner {
         } catch (Exception e) {
             log.error("[비동기 동기화] 실패: memberId={}, jobId={}", memberId, jobId, e);
             jobStore.markFailed(jobId, e.getMessage());
+        } finally {
+            jobStore.clearActiveJob(memberId);
         }
     }
 }
