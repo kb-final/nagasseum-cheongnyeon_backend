@@ -163,10 +163,13 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         }
 
         // 2단계: 사용자가 준 조건을 지킨 채, 주지 않은 항목만 움직여 본다
+        long depositMin = request.getDepositMin() != null ? request.getDepositMin() : 0L;
+        long depositMax = request.getDepositMax() != null ? request.getDepositMax() : DEPOSIT_MAX_DEFAULT;
+
         List<Candidate> asRequested = evaluateConditions(regionCode, request, search, true);
         Optional<Candidate> keepingInput = bestWithinTarget(asRequested);
         if (keepingInput.isPresent()) {
-            return Optional.of(assemble(memberId, keepingInput.get(), targetDate, desiredMonths, false, search));
+            return Optional.of(assemble(memberId, keepingInput.get(), targetDate, desiredMonths, false, search, depositMin, depositMax));
         }
 
         // 3단계: 입력한 조건으로는 목표 시점을 못 지킨다. 그때만 조건을 풀고 다시 찾는다.
@@ -180,7 +183,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         }
 
         Candidate chosen = bestWithinTarget(relaxed).orElseGet(() -> cheapest(relaxed));
-        return Optional.of(assemble(memberId, chosen, targetDate, desiredMonths, true, search));
+        return Optional.of(assemble(memberId, chosen, targetDate, desiredMonths, true, search, depositMin, depositMax));
     }
 
     /** 사용자가 지역 외에 조정 가능한 조건을 하나라도 줬는가 */
@@ -421,7 +424,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
 
     private GoalRecommendationResponse.RecommendationItem assemble(
             long memberId, Candidate chosen, YearMonth targetDate,
-            long desiredMonths, boolean adjusted, Search search) {
+            long desiredMonths, boolean adjusted, Search search,
+            long depositMin, long depositMax) {
 
         // 화면에 나가는 목표 금액은 환산값이 아니라 실제로 모아야 하는 보증금이다.
         LoanPlans plans = loanPlanCalculator.calculate(memberId, chosen.deposit(), targetDate);
@@ -444,6 +448,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                 .dealType(chosen.dealType())
                 .areaMin(chosen.areaMin())
                 .areaMax(chosen.areaMax())
+                .depositMin(depositMin)
+                .depositMax(depositMax)
                 .monthlyRent(chosen.monthlyRent())
                 .sampleCount(chosen.sampleCount())
                 .marketMedianAmount(chosen.deposit())
