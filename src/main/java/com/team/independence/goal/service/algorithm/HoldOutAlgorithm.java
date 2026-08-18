@@ -159,6 +159,8 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                         .dealType(best.candidate.dealType)
                         .areaMin(best.candidate.areaMin)
                         .areaMax(best.candidate.areaMax)
+                        .depositMin(best.candidate.depositMin)
+                        .depositMax(best.candidate.depositMax)
                         .monthlyRent(best.candidate.dealType == DealType.WOLSE
                                 && best.median.getMonthlyRent() != null
                                 && best.median.getMonthlyRent().getQ3() != null

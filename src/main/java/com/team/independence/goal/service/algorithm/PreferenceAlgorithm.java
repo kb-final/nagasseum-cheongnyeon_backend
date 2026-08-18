@@ -160,6 +160,8 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
                 .dealType(dealType)
                 .areaMin(areaMin)
                 .areaMax(areaMax)
+                .depositMin(request.getDepositMin() != null ? request.getDepositMin() : 0L)
+                .depositMax(request.getDepositMax() != null ? request.getDepositMax() : DEPOSIT_MAX_DEFAULT)
                 .monthlyRent(monthlyRent)
                 .sampleCount(median.getSampleCount())
                 .marketMedianAmount(projectedDeposit)
