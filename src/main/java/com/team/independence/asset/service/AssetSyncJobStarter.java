@@ -12,7 +12,10 @@ public class AssetSyncJobStarter {
     private final AssetSyncJobRunner jobRunner;
 
     public SyncJobResponse start(Long memberId) {
-        String jobId = jobStore.createJob();
+        String jobId = jobStore.tryAcquireNewJob(memberId);
+        if (jobId == null) {
+            return SyncJobResponse.builder().jobId(jobStore.getActiveJobId(memberId)).build();
+        }
         jobRunner.runAsync(memberId, jobId);
         return SyncJobResponse.builder().jobId(jobId).build();
     }
