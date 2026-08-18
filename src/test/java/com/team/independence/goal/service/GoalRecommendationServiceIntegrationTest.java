@@ -29,7 +29,7 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
  *       (RentTransactionSyncServiceIntegrationTest#서울_최근6개월_적재 실행)</li>
  * </ol>
  */
-//@Disabled("로컬 DB 환경 전용 — 위 사전 조건 충족 후 @Disabled 제거하고 실행")
+@Disabled("로컬 DB 환경 전용 — 위 사전 조건 충족 후 @Disabled 제거하고 실행")
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = RootConfig.class)
 class GoalRecommendationServiceIntegrationTest {
