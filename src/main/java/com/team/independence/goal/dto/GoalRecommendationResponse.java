@@ -85,6 +85,8 @@ public class GoalRecommendationResponse {
         private DealType dealType;
         private int areaMin;
         private int areaMax;
+        private long depositMin;
+        private long depositMax;
 
         /**
          * 월세 중앙값 (원). 전세({@code dealType=JEONSE})면 0.
