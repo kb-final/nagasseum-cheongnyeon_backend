@@ -9,6 +9,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
+import java.util.Optional;
+
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.property.domain.DealType;
@@ -49,6 +51,7 @@ class PriceModelServiceImplTest {
 
     @Mock private RegionMapper regionMapper;
     @Mock private RentTransactionMapper rentTransactionMapper;
+    @Mock private PriceModelStore priceModelStore;
 
     @InjectMocks private PriceModelServiceImpl service;
 
@@ -56,6 +59,8 @@ class PriceModelServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        when(priceModelStore.find(any())).thenReturn(Optional.empty());
+
         request = new PriceModelRequest();
         request.setRegionCode(REGION_CODE);
         request.setHousingType(HousingType.APT);

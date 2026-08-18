@@ -4,9 +4,11 @@ import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.extern.jackson.Jacksonized;
 
 @Getter
 @Builder
+@Jacksonized
 public class PriceModelResponse {
 
     private String regionCode;
