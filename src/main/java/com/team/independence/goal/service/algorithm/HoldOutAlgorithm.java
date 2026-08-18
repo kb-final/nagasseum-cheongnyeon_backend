@@ -129,7 +129,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
             log.info("[HoldOut] 적합한 후보 없음 — soft-fail 반환 memberId={} regionCode={}", memberId, base.regionCode);
             return Optional.of(GoalRecommendationResponse.RecommendationItem.builder()
                     .type(AlgorithmType.HOLD_OUT)
-                    .feasible(false)
                     .title(buildInfeasibleTitle(base))
                     .reason(buildInfeasibleReason(base, n))
                     .build());
@@ -165,6 +164,10 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                                 && best.median.getMonthlyRent().getQ3() != null
                                 ? best.median.getMonthlyRent().getQ3() : 0L)
                         .sampleCount(best.median.getSampleCount())
+                        .marketMedianAmount(best.futurePrice)
+                        .build())
+                .calculationBasis(GoalRecommendationResponse.CalculationBasis.builder()
+                        .reachableAmountAtTargetDate(null)
                         .build())
                 .loanX(plans.getLoanX())
                 .loanO(loanO)

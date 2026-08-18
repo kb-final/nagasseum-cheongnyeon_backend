@@ -1,10 +1,13 @@
 package com.team.independence.goal.service;
 
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
 import com.team.independence.asset.service.AssetConnectionService;
+import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
+import com.team.independence.property.mapper.RegionMapper;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -29,6 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class GoalRecommendationServiceImpl implements GoalRecommendationService {
 
     private final AssetConnectionService assetConnectionService;
+    private final AssetSummaryService assetSummaryService;
+    private final RegionMapper regionMapper;
     private final ObjectProvider<RecommendationAlgorithm> algorithmProvider;
 
     @Override
@@ -44,6 +49,11 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
             log.warn("등록된 추천 알고리즘이 없습니다. RecommendationAlgorithm 구현체를 추가해야 합니다.");
         }
 
+        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
+        long monthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
+        long currentAvailableAmount = netWorth.getInterestBearingAssets()
+                + netWorth.getFlatRecognizedAssets();
+
         // 대안을 내지 못한 알고리즘은 제외하므로 결과 수가 알고리즘 수보다 적을 수 있다
         List<GoalRecommendationResponse.RecommendationItem> recommendations = algorithms.stream()
                 .map(algorithm -> runSafely(algorithm, memberId, request))
@@ -56,7 +66,40 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
         }
 
         return GoalRecommendationResponse.builder()
+                .originalPreference(buildOriginalPreference(request, monthlySaving))
+                .financialContext(GoalRecommendationResponse.FinancialContext.builder()
+                        .currentAvailableAmount(currentAvailableAmount)
+                        .build())
                 .recommendations(recommendations)
+                .build();
+    }
+
+    private GoalRecommendationResponse.OriginalPreference buildOriginalPreference(
+            GoalRecommendationRequest request, long monthlySaving) {
+
+        String regionCode = request.getRegionCode();
+        String regionName = regionCode.length() == 2
+                ? regionMapper.findSidoNameByPrefix(regionCode)
+                : regionMapper.findFullNameByCode(regionCode);
+
+        GoalRecommendationResponse.OriginalCondition condition =
+                GoalRecommendationResponse.OriginalCondition.builder()
+                        .regionCode(regionCode)
+                        .regionName(regionName)
+                        .housingType(request.getPropertyType())
+                        .dealType(request.getTradeType())
+                        .areaMin(request.getSizeMin())
+                        .areaMax(request.getSizeMax())
+                        .depositMin(request.getDepositMin())
+                        .depositMax(request.getDepositMax())
+                        .monthlyRentMin(request.getMonthlyRentMin())
+                        .monthlyRentMax(request.getMonthlyRentMax())
+                        .build();
+
+        return GoalRecommendationResponse.OriginalPreference.builder()
+                .condition(condition)
+                .targetDate(request.getTargetDate())
+                .monthlySaving(monthlySaving)
                 .build();
     }
 

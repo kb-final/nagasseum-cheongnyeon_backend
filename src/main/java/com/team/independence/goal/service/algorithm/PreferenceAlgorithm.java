@@ -162,6 +162,7 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
                 .areaMax(areaMax)
                 .monthlyRent(monthlyRent)
                 .sampleCount(median.getSampleCount())
+                .marketMedianAmount(projectedDeposit)
                 .build();
 
         return Optional.of(GoalRecommendationResponse.RecommendationItem.builder()
@@ -171,6 +172,9 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
                         median.getSampleCount(), median.getRegionName(), RecommendationAlgorithm.label(housingType),
                         areaMin, areaMax, RecommendationAlgorithm.label(dealType)))
                 .condition(condition)
+                .calculationBasis(GoalRecommendationResponse.CalculationBasis.builder()
+                        .reachableAmountAtTargetDate(null)
+                        .build())
                 .loanX(plans.getLoanX())
                 .loanO(loanO)
                 .build());

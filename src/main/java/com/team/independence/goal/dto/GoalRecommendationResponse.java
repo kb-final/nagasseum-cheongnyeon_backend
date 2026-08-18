@@ -11,23 +11,58 @@ import lombok.Getter;
 @Builder
 public class GoalRecommendationResponse {
 
+    /** 사용자가 요청한 원래 희망 조건 — 세 추천 카드와 비교 기준으로 사용 */
+    private OriginalPreference originalPreference;
+
+    /** 세 추천에 공통으로 사용된 재무 계산 기준 */
+    private FinancialContext financialContext;
+
     private List<RecommendationItem> recommendations;
+
+    @Getter
+    @Builder
+    public static class OriginalPreference {
+        private OriginalCondition condition;
+        private YearMonth targetDate;
+        private long monthlySaving;
+    }
+
+    /** 사용자가 입력한 원래 조건을 그대로 담는 객체 — Condition과 구분 */
+    @Getter
+    @Builder
+    public static class OriginalCondition {
+        private String regionCode;
+        private String regionName;
+        private HousingType housingType;
+        private DealType dealType;
+        private Integer areaMin;
+        private Integer areaMax;
+        private Long depositMin;
+        private Long depositMax;
+        private Long monthlyRentMin;
+        private Long monthlyRentMax;
+    }
+
+    @Getter
+    @Builder
+    public static class FinancialContext {
+        /** 현재 주거 목표 계산에 활용 가능한 자산(원) */
+        private long currentAvailableAmount;
+    }
 
     @Getter
     @Builder
     public static class RecommendationItem {
         /** 이 대안을 만든 추천 알고리즘 */
         private AlgorithmType type;
-        /**
-         * 이 카드가 실현 가능한지 여부.
-         * false면 예산·조건 부족으로 후보를 찾지 못한 것으로, title/reason만 채워지고
-         * condition·loanX·loanO는 null이다. 프론트엔드는 이 필드를 보고 카드를 비활성 스타일로 표시한다.
-         */
-        @Builder.Default
-        private boolean feasible = true;
         private String title;
         private String reason;
+        /**
+         * 추천 주거 조건. 후보를 찾지 못한 경우 null.
+         * 프론트엔드는 이 필드가 null인지 확인해 카드를 비활성 스타일로 표시한다.
+         */
         private Condition condition;
+        private CalculationBasis calculationBasis;
         /** 대출 없는 플랜 */
         private LoanXPlan loanX;
         /** 대출 있는 플랜 */
@@ -57,10 +92,24 @@ public class GoalRecommendationResponse {
          * 이 조건의 대표값을 뽑는 데 쓰인 실거래 건수.
          *
          * <p>거래가 드문 조건에서는 한두 건으로 계산된 값일 수 있어, 숫자를 얼마나 믿을지
-         * 화면에서 판단할 수 있도록 함께 내려준다. 지역을 시도로 받으면 그 시도의 시군구
-         * 거래를 모두 합치므로 건수가 크게 늘어난다.
+         * 화면에서 판단할 수 있도록 함께 내려준다.
          */
         private int sampleCount;
+
+        /** 이 추천 조건의 실거래 중앙값(원). 플랜 계산의 기준이 된 시세. */
+        private long marketMedianAmount;
+    }
+
+    @Getter
+    @Builder
+    public static class CalculationBasis {
+        /**
+         * 사용자가 설정한 목표 시점까지 준비 가능한 총 금액(원).
+         *
+         * <p>REALISTIC 타입만 값을 가진다. "이 금액에 맞는 조건을 찾았다"는 설명에 사용.
+         * PREFERENCE · HOLD_OUT은 이 방식으로 조건을 찾지 않으므로 null.
+         */
+        private Long reachableAmountAtTargetDate;
     }
 
     @Getter
