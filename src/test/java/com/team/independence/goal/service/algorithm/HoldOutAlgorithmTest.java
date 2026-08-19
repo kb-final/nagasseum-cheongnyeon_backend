@@ -12,8 +12,6 @@ import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.service.RecommendationAlgorithm.MemberFinancialContext;
 import com.team.independence.goal.dto.GoalRecommendationResponse.RecommendationItem;
 import com.team.independence.goal.dto.LoanPlans;
-import com.team.independence.goal.mapper.GoalHousingMapper;
-import com.team.independence.goal.mapper.GoalMapper;
 import com.team.independence.goal.service.MonteCarloEngine;
 import com.team.independence.goal.service.MonteCarloService;
 import com.team.independence.goal.service.calculator.BudgetCalculator;
@@ -60,8 +58,6 @@ class HoldOutAlgorithmTest {
     private static final YearMonth NOW = YearMonth.now();
 
     @Mock private LoanPlanCalculator loanPlanCalculator;
-    @Mock private GoalMapper goalMapper;
-    @Mock private GoalHousingMapper goalHousingMapper;
     @Mock private RentMedianService rentMedianService;
     @Mock private MonteCarloService monteCarloService;
 
@@ -77,8 +73,7 @@ class HoldOutAlgorithmTest {
     @BeforeEach
     void setUp() {
         algorithm = new HoldOutAlgorithm(
-                loanPlanCalculator, budgetCalculator, goalMapper, goalHousingMapper,
-                rentMedianService, monteCarloService);
+                loanPlanCalculator, budgetCalculator, rentMedianService, monteCarloService);
 
         when(monteCarloService.simulate(any(PriceModelRequest.class), anyLong(), anyLong(), anyInt()))
                 .thenAnswer(call -> {
@@ -95,8 +90,7 @@ class HoldOutAlgorithmTest {
                 .flatRecognizedAssets(0L)
                 .build();
         ctx = new MemberFinancialContext(defaultNetWorth, 10_000_000L, 0L);
-        when(goalMapper.findActiveByMemberId(MEMBER_ID)).thenReturn(null);
-        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
+        when(loanPlanCalculator.calculateSavingFixed(anyLong(), anyLong(), any(AssetNetWorthBreakdown.class), anyLong()))
                 .thenReturn(LoanPlans.builder().build());
         when(rentMedianService.getBulkMedian(anyString(), anyString(), anyString()))
                 .thenAnswer(call -> toBulkMap(call.getArgument(0)));
@@ -121,14 +115,14 @@ class HoldOutAlgorithmTest {
     @DisplayName("기존 대출 월상환액을 월저축액에서 차감한 뒤 예산을 계산한다")
     void deductsExistingLoanPaymentFromSaving() {
         // 월저축 1천만, 대출 월상환 900만 → baseSaving 100만
-        // 2억을 100만/월로 모으면 ~169개월 → PATIENCE_BONUS(48) 초과 → soft-fail
+        // 2억을 100만/월로 모으면 ~169개월 걸리지만 실거래 데이터가 있으므로 추천 카드가 생성된다
         MemberFinancialContext ctx = ctxWithLoan(9_000_000L);
         put("11110", HousingType.APT, DealType.JEONSE, 26, 40, 2 * 억, 0);
 
         List<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"), ctx);
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNull();
+        assertThat(result.get(0).getCondition()).isNotNull();
     }
 
     @Test
@@ -136,7 +130,7 @@ class HoldOutAlgorithmTest {
     void deductsRentOnTopOfLoanPayment() {
         // 월저축 1천만, 대출 월상환 500만 → baseSaving 500만
         // 월세 Q3 = 450만 → effectiveSaving 50만
-        // 1억 보증금을 50만/월로 모으면 ~180개월 → PATIENCE_BONUS(48) 초과 → 추천 없음
+        // 1억 보증금을 50만/월로 모으면 ~180개월 걸리지만 실거래 데이터가 있으므로 추천 카드가 생성된다
         MemberFinancialContext ctx = ctxWithLoan(5_000_000L);
         put("11110", HousingType.APT, DealType.WOLSE, 26, 40, 1 * 억, 450 * 만);
 
@@ -151,7 +145,7 @@ class HoldOutAlgorithmTest {
         List<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request, ctx);
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNull();
+        assertThat(result.get(0).getCondition()).isNotNull();
     }
 
     @Test

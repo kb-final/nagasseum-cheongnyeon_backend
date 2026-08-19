@@ -1,14 +1,10 @@
 package com.team.independence.goal.service.algorithm;
 
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
-import com.team.independence.goal.domain.Goal;
-import com.team.independence.goal.domain.GoalHousing;
 import com.team.independence.goal.dto.AlgorithmType;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.goal.dto.LoanPlans;
-import com.team.independence.goal.mapper.GoalHousingMapper;
-import com.team.independence.goal.mapper.GoalMapper;
 import com.team.independence.goal.service.MonteCarloEngine;
 import com.team.independence.goal.service.MonteCarloService;
 import com.team.independence.goal.service.calculator.BudgetCalculator;
@@ -21,7 +17,6 @@ import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.service.RentMedianService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.YearMonth;
@@ -33,12 +28,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * "더 기다리면 더 넓은 평수로 이사할 수 있어요" 카드를 만드는 HoldOut 추천 알고리즘.
+ * "조금 더 준비하면 더 넓은 평수로 이사할 수 있어요" 카드를 만드는 HoldOut 추천 알고리즘.
  *
- * <h3>핵심 가치</h3>
- * 사용자가 지정한 조건(주거유형·거래유형)은 그대로 유지하되,
- * {@link #PATIENCE_BONUS} 개월 더 인내하면 <b>더 넓은 평수</b>를 얻을 수 있음을 보여준다.
- * 주거유형·거래유형의 "더 좋다"는 기준은 주관적이지만, 평수는 크면 클수록 명확한 업그레이드다.
+ * <h3>핵심 계산 방식</h3>
+ * 월 저축액을 고정하고, 업그레이드된 조건에 언제 도달하는지를 계산한다
+ * ({@link com.team.independence.goal.service.calculator.LoanPlanCalculator#calculateSavingFixed}).
+ * loanX·loanO의 {@code monthlySaving}에는 입력 저축액이 그대로 담기고,
+ * {@code targetDate}가 계산 결과다.
  *
  * <h3>평수 업그레이드 필터</h3>
  * 사용자가 평수를 지정했으면 {@link RecommendationAlgorithm#SIZE_BUCKETS} 중
@@ -46,18 +42,13 @@ import java.util.Map;
  * 같은 평수대를 반환하면 "더 기다려서 얻는 이득"이 없으므로 제외한다.
  * 평수를 지정하지 않은 경우에는 필터 없이 전체 버킷을 탐색하고 스코어링에서 큰 버킷을 선호한다.
  *
- * <h3>지역 확장 폴백</h3>
+ * <h3>지역 확장</h3>
  * 요청 지역이 시군구(5자리)이고 업그레이드 후보가 없으면 상위 시도(2자리)로 확장해 재탐색한다.
- * 이때 "요청 지역은 예산 초과지만 인내하면 인근 지역에서 가능" 메시지를 내보낸다.
  *
- * <h3>기준 조건 결정 우선순위</h3>
- * <ol>
- *   <li>request에 조건이 있으면 사용 (regionCode만 필수, 나머지는 null 허용)</li>
- *   <li>없으면 활성 목표의 GoalHousing 사용</li>
- *   <li>regionCode마저 없으면 Optional.empty()</li>
- * </ol>
+ * <h3>기준 조건</h3>
+ * request 값을 그대로 사용한다. 평수 미지정 시 {@link #DEFAULT_AREA_MIN}·{@link #DEFAULT_AREA_MAX}로
+ * 채워 업그레이드 비교 기준을 확보한다. 주거유형·거래유형 미지정 시 전체 타입을 탐색한다.
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class HoldOutAlgorithm implements RecommendationAlgorithm {
@@ -66,21 +57,19 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     private static final long WIDE_DEPOSIT_MAX  = 1_000_000_000_000L;
     private static final int  MAX_MC_ITERATIONS = 3;
 
-    /** RentMedianServiceImpl과 동일한 집계 구간 */
     private static final int MONTHS = 6;
     private static final DateTimeFormatter YM = DateTimeFormatter.ofPattern("yyyyMM");
 
-    /**
-     * 추가 인내 허용 개월 수.
-     * targetDate 이후(또는 targetDate 미지정 시 지금부터) 최대 48개월(4년)까지 탐색한다.
-     */
+    /** targetDate 이후(또는 targetDate 미지정 시 지금부터) 최대 48개월(4년)까지 탐색 */
     private static final long PATIENCE_BONUS   = 48;
     private static final long DEFAULT_RENT_MAX = 2_000_000L;
 
+    /** 평수 미지정 시 업그레이드 기준이 되는 기본 면적 구간 (평) */
+    private static final int DEFAULT_AREA_MIN = 10;
+    private static final int DEFAULT_AREA_MAX = 14;
+
     private final LoanPlanCalculator loanPlanCalculator;
     private final BudgetCalculator   budgetCalculator;
-    private final GoalMapper         goalMapper;
-    private final GoalHousingMapper  goalHousingMapper;
     private final RentMedianService  rentMedianService;
     private final MonteCarloService  monteCarloService;
 
@@ -88,13 +77,7 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     public List<GoalRecommendationResponse.RecommendationItem> recommend(
             long memberId, GoalRecommendationRequest request, MemberFinancialContext ctx
     ) {
-        Goal activeGoal = goalMapper.findActiveByMemberId(memberId);
-        GoalHousing housing = (activeGoal != null)
-                ? goalHousingMapper.findByGoalId(activeGoal.getId())
-                : null;
-
-        BaseCondition base = resolveCondition(request, housing, activeGoal);
-        if (base == null) return List.of();
+        BaseCondition base = resolveCondition(request);
 
         YearMonth now = YearMonth.now();
         AssetNetWorthBreakdown netWorth = ctx.netWorth();
@@ -103,7 +86,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         long n = base.targetDate != null
                 ? Math.max(0, ChronoUnit.MONTHS.between(now, base.targetDate))
                 : 0L;
-        long window = n + PATIENCE_BONUS;
 
         String endYm   = now.format(YM);
         String startYm = now.minusMonths(MONTHS - 1).format(YM);
@@ -111,8 +93,7 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         // 1차: 요청 지역에서 평수 업그레이드 후보 탐색 (bulk 1회 쿼리)
         Map<String, RentMedianResponse> bulkMedians =
                 rentMedianService.getBulkMedian(base.regionCode, startYm, endYm);
-        List<FetchedCandidate> pool = buildPool(generateCandidates(base), base, netWorth, baseSaving, window, bulkMedians);
-        boolean regionExpanded = false;
+        List<FetchedCandidate> pool = buildPool(generateCandidates(base), base, bulkMedians);
 
         // 2차: 시군구(5자리)로 요청했지만 pool이 비었으면 상위 시도(2자리)로 확장 (bulk 1회 추가)
         if (pool.isEmpty() && base.regionCode.length() > 2) {
@@ -122,8 +103,7 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
             BaseCondition sidoBase = new BaseCondition(
                     sidoCode, base.housingType, base.dealType,
                     base.areaMin, base.areaMax, base.rentMin, base.rentMax, base.targetDate);
-            pool = buildPool(generateCandidates(sidoBase), base, netWorth, baseSaving, window, sidoBulkMedians);
-            regionExpanded = !pool.isEmpty();
+            pool = buildPool(generateCandidates(sidoBase), base, sidoBulkMedians);
         }
 
         ScoredCandidate best = null;
@@ -134,25 +114,15 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         }
 
         if (best == null) {
-            log.info("[HoldOut] 적합한 후보 없음 — soft-fail 반환 memberId={} regionCode={}", memberId, base.regionCode);
             return List.of(GoalRecommendationResponse.RecommendationItem.builder()
                     .type(AlgorithmType.HOLD_OUT)
                     .build());
         }
 
-        log.info("[HoldOut] 최종 선택 memberId={} {} futurePrice={} m={}개월 score={} regionExpanded={}",
-                memberId, best.candidate.label(),
-                best.futurePrice, best.m, String.format("%.4f", best.score), regionExpanded);
-
-        YearMonth targetDate = now.plusMonths(best.totalMonths);
-        LoanPlans plans = loanPlanCalculator.calculate(memberId, best.futurePrice, targetDate, best.effectiveSaving);
+        LoanPlans plans = loanPlanCalculator.calculateSavingFixed(
+                memberId, best.futurePrice, netWorth, best.effectiveSaving);
 
         GoalRecommendationResponse.LoanOPlan loanO = plans.getLoanO();
-        if (loanO != null) {
-            Long shortened = loanPlanCalculator.calcShortenedMonths(
-                    memberId, netWorth, best.effectiveSaving, best.futurePrice, best.totalMonths);
-            loanO = loanO.toBuilder().shortenedMonths(shortened).build();
-        }
 
         return List.of(GoalRecommendationResponse.RecommendationItem.builder()
                 .type(AlgorithmType.HOLD_OUT)
@@ -209,18 +179,19 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     }
 
     /**
-     * 시세 조회 → 평수 업그레이드 필터 → 예산 상한 필터.
+     * 시세 조회 → 평수 업그레이드 필터.
      *
      * <p><b>평수 업그레이드 필터</b>: 사용자가 지정한 {@code base.areaMax}보다
-     * {@code areaMin}이 큰 버킷만 허용한다. 같은 평수대를 반환하면 "더 기다려서 더 넓게"라는
-     * HoldOut의 가치를 전달할 수 없기 때문이다.
+     * {@code areaMin}이 큰 버킷만 허용한다.
      * 평수 미지정 시에는 필터 없이 전체 버킷을 탐색한다.
      *
      * <p>지역 확장 시에도 {@code base}는 항상 사용자의 원래 요청 기준을 사용한다.
      * 평수 기준은 지역이 바뀌어도 변하지 않는다.
+     *
+     * <p>예산 상한 필터는 적용하지 않는다. 현재 예산으로 감당 안 되는 후보도 스코어링에서
+     * AM이 낮아져 자연스럽게 순위가 밀리며, 실거래 데이터 자체가 없는 경우에만 null을 반환한다.
      */
     private List<FetchedCandidate> buildPool(List<HousingCondition> candidates, BaseCondition base,
-                                              AssetNetWorthBreakdown netWorth, long baseSaving, long horizon,
                                               Map<String, RentMedianResponse> bulkMedians) {
         List<FetchedCandidate> pool = new ArrayList<>();
         for (HousingCondition candidate : candidates) {
@@ -232,13 +203,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
             if (median == null || median.getSampleCount() < MIN_SAMPLE_COUNT) continue;
             if (median.getDeposit().getQ3() == null) continue;
 
-            long effectiveSaving = baseSaving;
-            if (candidate.dealType == DealType.WOLSE) {
-                Long rentQ3 = median.getMonthlyRent() != null ? median.getMonthlyRent().getQ3() : null;
-                if (rentQ3 != null) effectiveSaving = Math.max(0, baseSaving - rentQ3);
-            }
-            if (median.getDeposit().getQ3() > budgetCalculator.calculate(netWorth, effectiveSaving, horizon)) continue;
-
             pool.add(new FetchedCandidate(candidate, median));
         }
         return pool;
@@ -246,7 +210,7 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
     /**
      * 스코어: 0.35×cIS + 0.30×WP + 0.20×AM + 0.15×SP
-     * m > PATIENCE_BONUS 이면 null 반환 (MC 수렴 후 실제 도달 개월이 window를 넘는 경우).
+     * 실거래 데이터가 없어 calcBudgetMetrics가 null을 반환하는 경우에만 null 반환.
      */
     private ScoredCandidate evaluate(FetchedCandidate fc, BaseCondition base,
                                      AssetNetWorthBreakdown netWorth, long baseSaving, long n) {
@@ -257,10 +221,10 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
         BudgetMetrics metrics = calcBudgetMetrics(candidate, median, netWorth, baseSaving, n);
         if (metrics == null) return null;
-        if (metrics.m > PATIENCE_BONUS) return null;
 
         long maxBudget = budgetCalculator.calculate(netWorth, metrics.effectiveSaving, n + PATIENCE_BONUS);
-        double affordabilityMargin = (double)(maxBudget - metrics.futurePrice) / maxBudget;
+        double affordabilityMargin = Math.max(-1.0,
+                (double)(maxBudget - metrics.futurePrice) / maxBudget);
         double condImprovScore = (base.areaMin == null || base.areaMax == null)
                 ? 0.5
                 : calcConditionImprovementScore((base.areaMin + base.areaMax) / 2.0, candidateMidArea);
@@ -270,13 +234,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                      + 0.30 * waitPenalty
                      + 0.20 * affordabilityMargin
                      + 0.15 * spScore;
-
-        log.debug("{} deposit={} effectiveSaving={} totalMonths={} m={} cIS={} WP={} AM={} SP={} score={}",
-                candidate.label(), metrics.futurePrice, metrics.effectiveSaving, metrics.totalMonths, metrics.m,
-                String.format("%.2f", condImprovScore), String.format("%.3f", waitPenalty),
-                String.format("%.3f", affordabilityMargin),
-                metrics.successProbability != null ? String.format("%.3f", metrics.successProbability) : "null",
-                String.format("%.4f", score));
 
         return new ScoredCandidate(candidate, median, metrics.futurePrice, metrics.effectiveSaving,
                 metrics.totalMonths, metrics.m, score);
@@ -318,7 +275,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                 totalMonths = nextMonths;
             }
         } catch (RuntimeException e) {
-            log.warn("[HoldOut] MC 실패, 현재 시세 폴백 {} : {}", candidate.label(), e.getMessage());
             totalMonths = initialMonths;
             futurePrice = initialPrice;
             successProbability = null;
@@ -335,27 +291,16 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
     // ─── resolveCondition ────────────────────────────────────────────────────────
 
-    private BaseCondition resolveCondition(GoalRecommendationRequest req, GoalHousing housing, Goal activeGoal) {
-        String regionCode = pick(req.getRegionCode(), housing != null ? housing.getRegionCode() : null);
-        if (regionCode == null) return null;
-
-        YearMonth targetDate = req.getTargetDate() != null ? req.getTargetDate()
-                : (activeGoal != null && activeGoal.getTargetDate() != null)
-                    ? YearMonth.from(activeGoal.getTargetDate()) : null;
-
+    private BaseCondition resolveCondition(GoalRecommendationRequest req) {
         return new BaseCondition(
-                regionCode,
-                pick(req.getPropertyType(),  housing != null ? housing.getHousingType()    : null),
-                pick(req.getTradeType(),      housing != null ? housing.getDealType()       : null),
-                pick(req.getSizeMin(),        housing != null ? housing.getAreaMin()        : null),
-                pick(req.getSizeMax(),        housing != null ? housing.getAreaMax()        : null),
-                pick(req.getMonthlyRentMin(), housing != null ? housing.getMonthlyRentMin() : null),
-                pick(req.getMonthlyRentMax(), housing != null ? housing.getMonthlyRentMax() : null),
-                targetDate);
-    }
-
-    private <T> T pick(T primary, T fallback) {
-        return primary != null ? primary : fallback;
+                req.getRegionCode(),
+                req.getPropertyType(),
+                req.getTradeType(),
+                req.getSizeMin()        != null ? req.getSizeMin()        : DEFAULT_AREA_MIN,
+                req.getSizeMax()        != null ? req.getSizeMax()        : DEFAULT_AREA_MAX,
+                req.getMonthlyRentMin(),
+                req.getMonthlyRentMax(),
+                req.getTargetDate());
     }
 
     // ─── 내부 타입 ────────────────────────────────────────────────────────────────
@@ -375,13 +320,7 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         }
 
         PriceModelRequest toPriceModelRequest() {
-            PriceModelRequest req = new PriceModelRequest();
-            req.setRegionCode(regionCode);
-            req.setHousingType(housingType);
-            req.setDealType(dealType);
-            req.setAreaMin(areaMin);
-            req.setAreaMax(areaMax);
-            return req;
+            return RecommendationAlgorithm.buildPriceModelRequest(regionCode, housingType, dealType, areaMin, areaMax);
         }
 
         RentMedianRequest toMedianRequest() {
