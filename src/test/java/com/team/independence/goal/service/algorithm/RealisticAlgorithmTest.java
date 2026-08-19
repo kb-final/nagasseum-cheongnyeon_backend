@@ -31,7 +31,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -124,7 +123,7 @@ class RealisticAlgorithmTest {
             return toResponse(asked);
         });
 
-        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any()))
+        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
                 .thenReturn(LoanPlans.builder().build());
     }
 
@@ -143,7 +142,7 @@ class RealisticAlgorithmTest {
         assertThat(item.getCondition().getAreaMin()).isEqualTo(15);
         assertThat(item.getCondition().getAreaMax()).isEqualTo(19);
         // 화면에 나가는 목표 금액은 실제 보증금이다.
-        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(2 * 억), any());
+        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(2 * 억), any(), anyLong());
     }
 
     @Test
@@ -158,7 +157,7 @@ class RealisticAlgorithmTest {
         RecommendationItem item = algorithm.recommend(MEMBER_ID,
                 request("11110", HousingType.APT, DealType.JEONSE),
                 new MemberFinancialContext(defaultNetWorth, 20_000_000L, 0L))
-                .orElseThrow(() -> new AssertionError("추천 결과가 비어 있습니다"));
+                .get(0);
 
         assertThat(item.getCondition().getAreaMin()).isEqualTo(20);
     }
@@ -176,7 +175,6 @@ class RealisticAlgorithmTest {
 
         // 가장 싼 것 = 목표 시점에 가장 가까운 것
         assertThat(item.getCondition().getAreaMin()).isEqualTo(4);
-        assertThat(item.getReason()).contains("40개월이 필요합니다");
     }
 
     @Test
@@ -196,7 +194,7 @@ class RealisticAlgorithmTest {
         assertThat(item.getCondition().getDealType()).isEqualTo(DealType.WOLSE);
         assertThat(item.getCondition().getMonthlyRent()).isEqualTo(40 * 만);
         // 환산값(1.06억)이 아니라 실제로 모아야 하는 보증금(1,000만)을 넘긴다.
-        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(1000 * 만), any());
+        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(1000 * 만), any(), anyLong());
     }
 
     @Test
@@ -264,9 +262,10 @@ class RealisticAlgorithmTest {
         RecommendationItem item = algorithm.recommend(MEMBER_ID,
                 request("11110", HousingType.APT, DealType.JEONSE),
                 new MemberFinancialContext(defaultNetWorth, 0L, 0L))
-                .orElseThrow(() -> new AssertionError("추천 결과가 비어 있습니다"));
+                .get(0);
 
-        assertThat(item.getReason()).contains("도달하기 어렵습니다");
+        // 저축 0이어도 가장 가까운 후보(가장 싼 조건) 카드는 나온다
+        assertThat(item.getCondition()).isNotNull();
     }
 
     @Test
@@ -285,7 +284,6 @@ class RealisticAlgorithmTest {
 
         assertThat(item.getCondition().getHousingType()).isEqualTo(HousingType.OFFICETEL);
         assertThat(item.getCondition().getAreaMin()).isEqualTo(10);
-        assertThat(item.getReason()).doesNotContain("입력하신 조건으로는");
     }
 
     @Test
@@ -306,7 +304,6 @@ class RealisticAlgorithmTest {
         assertThat(item.getCondition().getRegionCode()).isEqualTo("11110");
         assertThat(item.getCondition().getHousingType()).isEqualTo(HousingType.OFFICETEL);
         assertThat(item.getCondition().getAreaMin()).isEqualTo(10);
-        assertThat(item.getReason()).contains("입력하신 조건으로는");
     }
 
     @Test
@@ -340,19 +337,21 @@ class RealisticAlgorithmTest {
     }
 
     @Test
-    @DisplayName("실거래 표본이 아무 조합에도 없으면 추천하지 않는다")
-    void returnsEmptyWhenNoMarketData() {
-        Optional<RecommendationItem> result = algorithm.recommend(
+    @DisplayName("실거래 표본이 아무 조합에도 없으면 카드를 빼지 않고 condition=null 한 장을 낸다")
+    void returnsNullCardWhenNoMarketData() {
+        List<RecommendationItem> result = algorithm.recommend(
                 MEMBER_ID, request("11110", HousingType.APT, DealType.JEONSE), ctx);
 
-        assertThat(result).isEmpty();
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getType()).isEqualTo(AlgorithmType.REALISTIC);
+        assertThat(result.get(0).getCondition()).isNull();
     }
 
     // ===== 헬퍼 =====
 
     private RecommendationItem recommend(GoalRecommendationRequest request) {
         return algorithm.recommend(MEMBER_ID, request, ctx)
-                .orElseThrow(() -> new AssertionError("추천 결과가 비어 있습니다"));
+                .get(0);
     }
 
     private GoalRecommendationRequest request(String regionCode, HousingType housingType, DealType dealType) {

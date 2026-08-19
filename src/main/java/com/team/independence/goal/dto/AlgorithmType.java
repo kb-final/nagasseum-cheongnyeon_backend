@@ -10,12 +10,12 @@ package com.team.independence.goal.dto;
  * 라벨을 붙이는 데 쓰인다.
  */
 public enum AlgorithmType {
-    /** 선호 우선 — 사용자가 입력한 조건에 그대로 부합하는 목표 */
-    PREFERENCE,
+    /** 선호 우선(저축 고정) — 입력한 조건 그대로, 월 저축액을 고정하고 도달 시점을 계산한 목표 */
+    PREFERENCE_SAVING_FIXED,
+    /** 선호 우선(시점 고정) — 입력한 조건 그대로, 목표 시점을 고정하고 필요한 월 저축액을 역산한 목표 */
+    PREFERENCE_DATE_FIXED,
     /** 현실 우선 — 소득·자산에 비추어 무리 없이 달성 가능한 목표 */
     REALISTIC,
-    /** 가성비 우선 — 같은 예산으로 더 나은 조건을 얻을 수 있는 목표 */
-    VALUE,
     /** 미래 가능성 우선 — 더 모은 뒤에 도달할 수 있는 더 좋은 목표 */
     HOLD_OUT
 }

@@ -17,7 +17,7 @@ import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
-import java.util.Optional;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -81,7 +81,7 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
     private final MonteCarloService monteCarloService;
 
     @Override
-    public Optional<GoalRecommendationResponse.RecommendationItem> recommend(
+    public List<GoalRecommendationResponse.RecommendationItem> recommend(
             long memberId, GoalRecommendationRequest request, MemberFinancialContext ctx) {
 
         YearMonth targetDate = request.getTargetDate() != null
@@ -106,14 +106,16 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         } catch (RuntimeException e) {
             log.warn("실거래 조회에 실패해 선호 조건을 추천하지 못했습니다. memberId={}, regionCode={}",
                     memberId, request.getRegionCode(), e);
-            return Optional.empty();
+            return emptyCards();
         }
 
         // 표본이 적은 것은 그대로 두지만, 한 건도 없으면 보여줄 금액 자체가 없다.
+        // 카드를 빼지 않고 condition=null로 내보내, 프론트가 4슬롯(두 PREFERENCE·REALISTIC·HOLD_OUT)을
+        // 항상 같은 자리에 그리도록 한다.
         if (median.getSampleCount() == 0 || median.getDeposit().getMedian() == null) {
             log.info("선호 조건에 해당하는 실거래가 없습니다. memberId={}, regionCode={}",
                     memberId, request.getRegionCode());
-            return Optional.empty();
+            return emptyCards();
         }
 
         long deposit = median.getDeposit().getMedian();
@@ -136,18 +138,7 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
                     memberId, request.getRegionCode(), e);
         }
 
-        LoanPlans plans = loanPlanCalculator.calculate(memberId, projectedDeposit, targetDate);
-
-        GoalRecommendationResponse.LoanOPlan loanO = plans.getLoanO();
-        if (loanO != null) {
-            Long reachMonths = budgetCalculator.monthsToReach(netWorth, effectiveSaving, projectedDeposit);
-            if (reachMonths != null) {
-                Long shortened = loanPlanCalculator.calcShortenedMonths(
-                        memberId, netWorth, effectiveSaving, projectedDeposit, reachMonths);
-                loanO = loanO.toBuilder().shortenedMonths(shortened).build();
-            }
-        }
-
+        // 두 카드가 공유하는 조건. 같은 시세·같은 조건을 계산 방향만 달리해 보여준다.
         GoalRecommendationResponse.Condition condition = GoalRecommendationResponse.Condition.builder()
                 .regionCode(median.getRegionCode())
                 .regionName(median.getRegionName())
@@ -162,19 +153,52 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
                 .marketMedianAmount(projectedDeposit)
                 .build();
 
-        return Optional.of(GoalRecommendationResponse.RecommendationItem.builder()
-                .type(AlgorithmType.PREFERENCE)
-                .title(String.format("%s %s", median.getRegionName(), RecommendationAlgorithm.label(housingType)))
-                .reason(String.format("최근 6개월 실거래 %d건 기준 %s %s %d~%d평 %s 시세입니다.",
-                        median.getSampleCount(), median.getRegionName(), RecommendationAlgorithm.label(housingType),
-                        areaMin, areaMax, RecommendationAlgorithm.label(dealType)))
-                .condition(condition)
-                .calculationBasis(GoalRecommendationResponse.CalculationBasis.builder()
-                        .reachableAmountAtTargetDate(null)
-                        .build())
-                .loanX(plans.getLoanX())
-                .loanO(loanO)
-                .build());
+        // ① 저축 고정 — 사용자의 월 저축액을 그대로 두고 도달 시점을 계산
+        LoanPlans savingFixedPlans = loanPlanCalculator.calculateSavingFixed(
+                memberId, projectedDeposit, netWorth, effectiveSaving);
+        GoalRecommendationResponse.RecommendationItem savingFixedCard =
+                GoalRecommendationResponse.RecommendationItem.builder()
+                        .type(AlgorithmType.PREFERENCE_SAVING_FIXED)
+                        .condition(condition)
+                        .loanX(savingFixedPlans.getLoanX())
+                        .loanO(savingFixedPlans.getLoanO())
+                        .build();
+
+        // ② 시점 고정 — 목표 시점을 고정하고 필요한 월 저축액을 역산.
+        // 목표 시점을 입력하지 않았으면 고정할 시점이 없어 조건 없는(null) 카드를 낸다.
+        GoalRecommendationResponse.RecommendationItem dateFixedCard;
+        if (request.getTargetDate() != null) {
+            LoanPlans dateFixedPlans = loanPlanCalculator.calculate(memberId, projectedDeposit, targetDate, effectiveSaving);
+            GoalRecommendationResponse.LoanOPlan dateFixedLoanO = dateFixedPlans.getLoanO();
+            if (dateFixedLoanO != null) {
+                // 시점을 고정한 카드라 대출은 개월을 줄이는 게 아니라 필요 저축액을 낮춘다 → 단축 개월은 0
+                dateFixedLoanO = dateFixedLoanO.toBuilder().shortenedMonths(0L).build();
+            }
+            dateFixedCard = GoalRecommendationResponse.RecommendationItem.builder()
+                    .type(AlgorithmType.PREFERENCE_DATE_FIXED)
+                    .condition(condition)
+                    .loanX(dateFixedPlans.getLoanX())
+                    .loanO(dateFixedLoanO)
+                    .build();
+        } else {
+            dateFixedCard = GoalRecommendationResponse.RecommendationItem.builder()
+                    .type(AlgorithmType.PREFERENCE_DATE_FIXED)
+                    .build();
+        }
+
+        return List.of(savingFixedCard, dateFixedCard);
+    }
+
+    /**
+     * 데이터가 없을 때도 카드를 빼지 않고 두 장 모두 condition=null로 내보낸다.
+     * 프론트가 4슬롯(PREFERENCE 2 · REALISTIC · HOLD_OUT)을 항상 같은 자리에 그리도록 하기 위함이다.
+     */
+    private java.util.List<GoalRecommendationResponse.RecommendationItem> emptyCards() {
+        return java.util.List.of(
+                GoalRecommendationResponse.RecommendationItem.builder()
+                        .type(AlgorithmType.PREFERENCE_SAVING_FIXED).build(),
+                GoalRecommendationResponse.RecommendationItem.builder()
+                        .type(AlgorithmType.PREFERENCE_DATE_FIXED).build());
     }
 
     private RentMedianRequest buildMedianRequest(

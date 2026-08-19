@@ -46,8 +46,12 @@ public class LoanPlanCalculator {
      * <p>DSR 한도가 0이면(소득 미등록·기존 대출 과다) loanO는 null이 된다.
      * 대출 한도가 목표 금액을 초과하는 경우 대출액은 목표 금액으로 캡되며,
      * 자력 부담과 월 저축액은 0이 된다.
+     *
+     * @param effectiveSaving 호출자가 넘기는 월 순저축액(기존 대출 상환액 등을 이미 차감한 값).
+     *                        loanO 달성 가능 여부(capacity) 판정에 쓴다. 서버 캐시가 아니라 이 값을 기준으로
+     *                        삼아, 추천 요청이 넘긴 저축액과 예산 계산이 어긋나지 않게 한다.
      */
-    public LoanPlans calculate(long memberId, long requiredAmount, YearMonth targetDate) {
+    public LoanPlans calculate(long memberId, long requiredAmount, YearMonth targetDate, long effectiveSaving) {
         long months = ChronoUnit.MONTHS.between(YearMonth.now(), targetDate);
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
 
@@ -58,7 +62,6 @@ public class LoanPlanCalculator {
                 .monthlySaving(loanXSaving)
                 .build();
 
-        // existingPayment를 먼저 계산해 calcMaxLoanAmount와 capacity check에서 재사용
         long existingPayment = calcTotalExistingMonthlyPayment(memberId);
         long loanAmount = Math.min(calcMaxLoanAmount(memberId, existingPayment), requiredAmount);
         if (loanAmount <= 0) {
@@ -68,10 +71,8 @@ public class LoanPlanCalculator {
         long selfFunded = requiredAmount - loanAmount;
         long loanOSaving = calcMonthlySavingNeeded(netWorth, selfFunded, months);
 
-        // 실제 저축 가능액 초과 시 달성 불가 → loanO null
-        long rawSaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
-        long capacitySaving = Math.max(0, rawSaving - existingPayment);
-        if (loanOSaving > capacitySaving) {
+        // 실제 저축 가능액(호출자가 넘긴 순저축액) 초과 시 달성 불가 → loanO null
+        if (loanOSaving > effectiveSaving) {
             return LoanPlans.builder().loanX(loanX).loanO(null).build();
         }
 
@@ -83,6 +84,67 @@ public class LoanPlanCalculator {
                 .build();
 
         return LoanPlans.builder().loanX(loanX).loanO(loanO).build();
+    }
+
+    /**
+     * 월 저축액을 고정하고 도달 시점을 계산하는 플랜.
+     *
+     * <p>{@link #calculate}가 "목표 시점 고정 → 필요 저축액 역산"이라면, 이 메서드는 정확히 반대다.
+     * 사용자의 실제 월 저축액을 그대로 두고 목표 금액에 <b>언제</b> 도달하는지를 계산한다.
+     * 따라서 loanX·loanO의 {@code monthlySaving}에는 (역산값이 아니라) 넘겨받은 월 저축액이 그대로 담기고,
+     * {@code targetDate}가 계산 결과다. 저축액으로 상한(1200개월) 내 도달이 불가능하면 targetDate는 null이다.
+     *
+     * @param requiredAmount 도달해야 할 목표 금액(원)
+     * @param netWorth       현재 순자산 구성
+     * @param monthlySaving  고정할 월 저축액(원)
+     */
+    public LoanPlans calculateSavingFixed(long memberId, long requiredAmount,
+                                          AssetNetWorthBreakdown netWorth, long monthlySaving) {
+        YearMonth now = YearMonth.now();
+
+        Long loanXMonths = budgetCalculator.monthsToReach(netWorth, monthlySaving, requiredAmount);
+        GoalRecommendationResponse.LoanXPlan loanX = GoalRecommendationResponse.LoanXPlan.builder()
+                .targetAmount(requiredAmount)
+                .targetDate(loanXMonths != null ? now.plusMonths(loanXMonths) : null)
+                .monthlySaving(monthlySaving)
+                .build();
+
+        long existingPayment = calcTotalExistingMonthlyPayment(memberId);
+        long loanAmount = Math.min(calcMaxLoanAmount(memberId, existingPayment), requiredAmount);
+        if (loanAmount <= 0) {
+            return LoanPlans.builder().loanX(loanX).loanO(null).build();
+        }
+
+        // 대출금은 즉시 가용 자금으로 편입하고, 신규 대출 월 원리금만큼 저축 여력을 줄여 도달 시점을 다시 계산
+        long loanMonthly = monthlyPaymentForLoan(loanAmount);
+        long savingWithLoan = Math.max(0, monthlySaving - loanMonthly);
+        AssetNetWorthBreakdown netWorthWithLoan = AssetNetWorthBreakdown.builder()
+                .interestBearingAssets(netWorth.getInterestBearingAssets())
+                .flatRecognizedAssets(netWorth.getFlatRecognizedAssets() + loanAmount)
+                .build();
+
+        Long loanOMonths = budgetCalculator.monthsToReach(netWorthWithLoan, savingWithLoan, requiredAmount);
+        if (loanOMonths == null) {
+            return LoanPlans.builder().loanX(loanX).loanO(null).build();
+        }
+
+        Long shortened = loanXMonths != null ? Math.max(0, loanXMonths - loanOMonths) : null;
+        GoalRecommendationResponse.LoanOPlan loanO = GoalRecommendationResponse.LoanOPlan.builder()
+                .loanAmount(loanAmount)
+                .targetAmount(requiredAmount - loanAmount)
+                .targetDate(now.plusMonths(loanOMonths))
+                .monthlySaving(monthlySaving)
+                .shortenedMonths(shortened)
+                .build();
+
+        return LoanPlans.builder().loanX(loanX).loanO(loanO).build();
+    }
+
+    /** 신규 대출 원금의 월 원리금(연 3.5%, 30년 원리금균등). */
+    private long monthlyPaymentForLoan(long loanAmount) {
+        double r = ASSUMED_LOAN_ANNUAL_RATE / 12.0;
+        double factor = Math.pow(1 + r, NEW_LOAN_TERM_MONTHS);
+        return Math.round(loanAmount * r * factor / (factor - 1));
     }
 
     /**
