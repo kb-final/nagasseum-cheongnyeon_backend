@@ -3,6 +3,7 @@ package com.team.independence.goal.dto;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import java.time.YearMonth;
+import org.springframework.format.annotation.DateTimeFormat;
 import javax.validation.constraints.AssertTrue;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
@@ -78,7 +79,8 @@ public class GoalRecommendationRequest {
     @PositiveOrZero(message = "최대 월세는 0 이상이어야 합니다.")
     private Long monthlyRentMax;
 
-    /** 선택. 목표 시점. null이면 알고리즘이 판단 */
+    /** 선택. 목표 시점(yyyy-MM). null이면 알고리즘이 판단 */
+    @DateTimeFormat(pattern = "yyyy-MM")
     private YearMonth targetDate;
 
     @AssertTrue(message = "최소 평수는 최대 평수보다 클 수 없습니다.")

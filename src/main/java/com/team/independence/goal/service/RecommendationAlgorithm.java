@@ -45,7 +45,7 @@ import java.util.List;
  *
  *     public List&lt;RecommendationItem&gt; recommend(long memberId, GoalRecommendationRequest req) {
  *         // 1. 자기 방식대로 추천할 주거 조건과 목표 시점을 정한다
- *         // 2. loanPlanCalculator.calculate(memberId, 필요금액, 목표시점)으로 플랜 두 개를 받는다
+ *         // 2. loanPlanCalculator.calculate(memberId, 필요금액, 목표시점, 순저축액)으로 플랜 두 개를 받는다
  *         // 3. type, condition을 채워 조립해 List로 반환한다
  *     }
  * }

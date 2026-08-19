@@ -166,7 +166,7 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         // 목표 시점을 입력하지 않았으면 고정할 시점이 없어 조건 없는(null) 카드를 낸다.
         GoalRecommendationResponse.RecommendationItem dateFixedCard;
         if (request.getTargetDate() != null) {
-            LoanPlans dateFixedPlans = loanPlanCalculator.calculate(memberId, projectedDeposit, targetDate);
+            LoanPlans dateFixedPlans = loanPlanCalculator.calculate(memberId, projectedDeposit, targetDate, effectiveSaving);
             GoalRecommendationResponse.LoanOPlan dateFixedLoanO = dateFixedPlans.getLoanO();
             if (dateFixedLoanO != null) {
                 // 시점을 고정한 카드라 대출은 개월을 줄이는 게 아니라 필요 저축액을 낮춘다 → 단축 개월은 0

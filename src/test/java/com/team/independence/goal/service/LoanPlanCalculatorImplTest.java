@@ -138,7 +138,7 @@ class LoanPlanCalculatorTest {
         when(memberService.getMember(MEMBER_ID)).thenReturn(profile(null));
         when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID)).thenReturn(netWorth(0L, 0L));
 
-        LoanPlans plans = calculator.calculate(MEMBER_ID, 200_000_000L, YearMonth.now().plusMonths(36));
+        LoanPlans plans = calculator.calculate(MEMBER_ID, 200_000_000L, YearMonth.now().plusMonths(36), 5_000_000L);
 
         assertNotNull(plans.getLoanX());
         assertNull(plans.getLoanO(), "대출 한도 0이면 loanO는 null이어야 한다");
@@ -153,7 +153,7 @@ class LoanPlanCalculatorTest {
         when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID)).thenReturn(netWorth(0L, 0L));
 
         long requiredAmount = 50_000_000L; // 5천만 (대출 한도보다 훨씬 작음)
-        LoanPlans plans = calculator.calculate(MEMBER_ID, requiredAmount, YearMonth.now().plusMonths(24));
+        LoanPlans plans = calculator.calculate(MEMBER_ID, requiredAmount, YearMonth.now().plusMonths(24), 5_000_000L);
 
         assertNotNull(plans.getLoanO());
         assertEquals(0L, plans.getLoanO().getMonthlySaving(), "대출으로 전액 충당되면 월 저축 0이어야 한다");
@@ -169,7 +169,7 @@ class LoanPlanCalculatorTest {
         when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID)).thenReturn(netWorth(10_000_000L, 5_000_000L));
 
         // 현재 자산으로는 부족하고 저축이 필요한 규모
-        LoanPlans plans = calculator.calculate(MEMBER_ID, 200_000_000L, YearMonth.now().plusMonths(48));
+        LoanPlans plans = calculator.calculate(MEMBER_ID, 200_000_000L, YearMonth.now().plusMonths(48), 5_000_000L);
 
         assertNotNull(plans.getLoanO());
         assertTrue(plans.getLoanO().getMonthlySaving() < plans.getLoanX().getMonthlySaving(),
@@ -184,7 +184,7 @@ class LoanPlanCalculatorTest {
 
         long requiredAmount = 150_000_000L;
         YearMonth targetDate = YearMonth.now().plusMonths(30);
-        LoanPlans plans = calculator.calculate(MEMBER_ID, requiredAmount, targetDate);
+        LoanPlans plans = calculator.calculate(MEMBER_ID, requiredAmount, targetDate, 5_000_000L);
 
         assertEquals(requiredAmount, plans.getLoanX().getTargetAmount());
         assertEquals(targetDate, plans.getLoanX().getTargetDate());
@@ -197,7 +197,7 @@ class LoanPlanCalculatorTest {
         // 현재 자산 2억 > 목표 1억
         when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID)).thenReturn(netWorth(200_000_000L, 0L));
 
-        LoanPlans plans = calculator.calculate(MEMBER_ID, 100_000_000L, YearMonth.now().plusMonths(24));
+        LoanPlans plans = calculator.calculate(MEMBER_ID, 100_000_000L, YearMonth.now().plusMonths(24), 5_000_000L);
 
         assertEquals(0L, plans.getLoanX().getMonthlySaving(), "자산이 이미 충분하면 저축 0이어야 한다");
     }

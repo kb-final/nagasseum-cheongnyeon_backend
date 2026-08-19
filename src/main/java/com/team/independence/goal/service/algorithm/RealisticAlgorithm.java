@@ -490,7 +490,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
             long depositMin, long depositMax) {
 
         // 화면에 나가는 목표 금액은 환산값이 아니라 실제로 모아야 하는 보증금이다.
-        LoanPlans plans = loanPlanCalculator.calculate(memberId, chosen.deposit(), targetDate);
+        LoanPlans plans = loanPlanCalculator.calculate(memberId, chosen.deposit(), targetDate, search.effectiveSaving);
 
         GoalRecommendationResponse.LoanOPlan loanO = plans.getLoanO();
         if (loanO != null && chosen.reachMonths() != null) {

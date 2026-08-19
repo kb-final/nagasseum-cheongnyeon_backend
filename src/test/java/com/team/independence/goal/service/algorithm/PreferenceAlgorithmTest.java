@@ -75,7 +75,7 @@ class PreferenceAlgorithmTest {
                 .build();
         ctx = new MemberFinancialContext(defaultNetWorth, 10_000_000L, 0L);
 
-        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any()))
+        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
                 .thenReturn(LoanPlans.builder().build());
         when(loanPlanCalculator.calculateSavingFixed(anyLong(), anyLong(), any(), anyLong()))
                 .thenReturn(LoanPlans.builder().build());
@@ -208,7 +208,7 @@ class PreferenceAlgorithmTest {
         assertThat(result).hasSize(2);
         assertThat(result.get(1).getType()).isEqualTo(AlgorithmType.PREFERENCE_DATE_FIXED);
         assertThat(result.get(1).getCondition()).isNotNull();
-        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(2 * 억), any());
+        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(2 * 억), any(), anyLong());
     }
 
     // ===== 헬퍼 =====

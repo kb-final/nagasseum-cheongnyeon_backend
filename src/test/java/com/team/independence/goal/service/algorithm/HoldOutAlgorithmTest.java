@@ -96,7 +96,7 @@ class HoldOutAlgorithmTest {
                 .build();
         ctx = new MemberFinancialContext(defaultNetWorth, 10_000_000L, 0L);
         when(goalMapper.findActiveByMemberId(MEMBER_ID)).thenReturn(null);
-        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any()))
+        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
                 .thenReturn(LoanPlans.builder().build());
         when(rentMedianService.getBulkMedian(anyString(), anyString(), anyString()))
                 .thenAnswer(call -> toBulkMap(call.getArgument(0)));

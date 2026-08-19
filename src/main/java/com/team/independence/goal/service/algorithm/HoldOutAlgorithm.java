@@ -145,7 +145,7 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                 best.futurePrice, best.m, String.format("%.4f", best.score), regionExpanded);
 
         YearMonth targetDate = now.plusMonths(best.totalMonths);
-        LoanPlans plans = loanPlanCalculator.calculate(memberId, best.futurePrice, targetDate);
+        LoanPlans plans = loanPlanCalculator.calculate(memberId, best.futurePrice, targetDate, best.effectiveSaving);
 
         GoalRecommendationResponse.LoanOPlan loanO = plans.getLoanO();
         if (loanO != null) {
