@@ -47,6 +47,7 @@ class GoalRecommendationServiceIntegrationTest {
     @DisplayName("[조건 최소] 대출 없는 회원 — regionCode '11110' 만 지정, 나머지는 알고리즘이 채움")
     void 조건_최소_대출없는회원() {
         GoalRecommendationRequest request = new GoalRecommendationRequest();
+        request.setMonthlySavings(1_000_000L);
         request.setRegionCode("11110");
 
         GoalRecommendationResponse response = recommendationService.recommend(MEMBER_NO_LOAN, request);
@@ -59,6 +60,7 @@ class GoalRecommendationServiceIntegrationTest {
     @DisplayName("[조건 최소] 대출 있는 회원 — 기존 대출 월상환액이 차감된 예산으로 추천")
     void 조건_최소_대출있는회원() {
         GoalRecommendationRequest request = new GoalRecommendationRequest();
+        request.setMonthlySavings(1_000_000L);
         request.setRegionCode("11110");
 
         GoalRecommendationResponse response = recommendationService.recommend(MEMBER_WITH_LOAN, request);
@@ -73,6 +75,7 @@ class GoalRecommendationServiceIntegrationTest {
     @DisplayName("[조건 지정] 아파트·전세·15~25평 — 각 알고리즘이 해당 조건 기준으로 추천")
     void 조건_지정_APT_전세() {
         GoalRecommendationRequest request = new GoalRecommendationRequest();
+        request.setMonthlySavings(1_000_000L);
         request.setRegionCode("11110");
         request.setPropertyType(HousingType.APT);
         request.setTradeType(DealType.JEONSE);
@@ -94,6 +97,7 @@ class GoalRecommendationServiceIntegrationTest {
     @DisplayName("[조건 지정] 오피스텔·월세 — 월세 조건 결과에 monthlyRent 포함 여부 확인")
     void 조건_지정_오피스텔_월세() {
         GoalRecommendationRequest request = new GoalRecommendationRequest();
+        request.setMonthlySavings(1_000_000L);
         request.setRegionCode("11110");
         request.setPropertyType(HousingType.OFFICETEL);
         request.setTradeType(DealType.WOLSE);
@@ -118,6 +122,7 @@ class GoalRecommendationServiceIntegrationTest {
     @DisplayName("[시도 탐색] regionCode '11' — 서울 전체에서 최적 시군구를 알고리즘이 선정")
     void 시도코드_서울_광역탐색() {
         GoalRecommendationRequest request = new GoalRecommendationRequest();
+        request.setMonthlySavings(1_000_000L);
         request.setRegionCode("11");
         request.setPropertyType(HousingType.APT);
         request.setTradeType(DealType.JEONSE);
@@ -141,6 +146,7 @@ class GoalRecommendationServiceIntegrationTest {
         YearMonth targetDate = YearMonth.now().plusMonths(24);
 
         GoalRecommendationRequest request = new GoalRecommendationRequest();
+        request.setMonthlySavings(1_000_000L);
         request.setRegionCode("11110");
         request.setTargetDate(targetDate);
 
@@ -166,6 +172,7 @@ class GoalRecommendationServiceIntegrationTest {
     @DisplayName("[대출 플랜] 소득 500만 회원 — loanO 플랜에 대출액·단축 개월수 포함 여부 확인")
     void 대출플랜_소득있는회원() {
         GoalRecommendationRequest request = new GoalRecommendationRequest();
+        request.setMonthlySavings(1_000_000L);
         request.setRegionCode("11110");
         request.setPropertyType(HousingType.APT);
         request.setTradeType(DealType.JEONSE);

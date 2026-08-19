@@ -58,7 +58,8 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
         }
 
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
-        long monthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
+        // 월 저축액은 서버 캐시(asset_summary)가 아니라 요청 값을 그대로 쓴다 (@NotNull이라 항상 존재)
+        long monthlySaving = request.getMonthlySavings();
         long loanPayment   = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
         MemberFinancialContext ctx = new MemberFinancialContext(netWorth, monthlySaving, loanPayment);
 

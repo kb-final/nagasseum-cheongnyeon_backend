@@ -5,6 +5,7 @@ import com.team.independence.property.domain.HousingType;
 import java.time.YearMonth;
 import javax.validation.constraints.AssertTrue;
 import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Pattern;
 import javax.validation.constraints.Positive;
 import javax.validation.constraints.PositiveOrZero;
@@ -36,6 +37,16 @@ public class GoalRecommendationRequest {
     @NotBlank(message = "지역 코드는 필수입니다.")
     @Pattern(regexp = "\\d{2}|\\d{5}", message = "지역 코드는 시도 2자리 또는 시군구 5자리여야 합니다.")
     private String regionCode;
+
+    /**
+     * 월 저축액(원). 필수.
+     *
+     * <p>예산 계산의 핵심 입력이라 사용자가 직접 넘긴다. 서버가 보관한 asset_summary 캐시가 아니라
+     * 이 값을 그대로 쓴다 — 추천 화면에서 사용자가 저축액을 조정해 시나리오를 보기 때문이다.
+     */
+    @NotNull(message = "월 저축액은 필수입니다.")
+    @PositiveOrZero(message = "월 저축액은 0 이상이어야 합니다.")
+    private Long monthlySavings;
 
     /** 선택. null이면 전 주거유형 탐색 */
     private HousingType propertyType;
