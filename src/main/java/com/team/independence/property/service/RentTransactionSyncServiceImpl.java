@@ -53,7 +53,7 @@ public class RentTransactionSyncServiceImpl implements RentTransactionSyncServic
     private static final DateTimeFormatter DEAL_YM = DateTimeFormatter.ofPattern("yyyyMM");
 
     /** 수집 대상 기간(개월). 이보다 오래된 구간은 순회하지 않을 뿐, 이미 쌓인 데이터는 그대로 둔다. */
-    private static final int TARGET_MONTHS = 6;
+    private static final int TARGET_MONTHS = 36;
 
     /**
      * 이력과 무관하게 항상 재수집하는 최근 기간(개월).
