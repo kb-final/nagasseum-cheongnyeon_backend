@@ -85,7 +85,7 @@ class GoalRecommendationServiceIntegrationTest {
         assertThat(response.getRecommendations()).isNotEmpty();
         // PREFERENCE는 입력 조건을 그대로 유지, REALISTIC·HOLDOUT은 조건을 완화할 수 있다
         response.getRecommendations().stream()
-                .filter(item -> item.getType() == com.team.independence.goal.dto.AlgorithmType.PREFERENCE)
+                .filter(item -> item.getType() == com.team.independence.goal.dto.AlgorithmType.PREFERENCE_SAVING_FIXED)
                 .forEach(item ->
                         assertThat(item.getCondition().getHousingType()).isEqualTo(HousingType.APT));
     }
@@ -148,14 +148,16 @@ class GoalRecommendationServiceIntegrationTest {
 
         print("목표 시점 24개월 / member=" + MEMBER_NO_LOAN, response);
         assertThat(response.getRecommendations()).isNotEmpty();
-        // PREFERENCE는 입력 targetDate를 그대로 사용, REALISTIC·HOLDOUT은 실제 도달 시점을 계산한다
+        // PREFERENCE_DATE_FIXED는 입력 targetDate를 그대로 고정, 나머지는 실제 도달 시점을 계산한다
         response.getRecommendations().stream()
-                .filter(item -> item.getType() == com.team.independence.goal.dto.AlgorithmType.PREFERENCE)
+                .filter(item -> item.getType() == com.team.independence.goal.dto.AlgorithmType.PREFERENCE_DATE_FIXED)
+                .filter(item -> item.getLoanX() != null)
                 .forEach(item ->
                         assertThat(item.getLoanX().getTargetDate()).isEqualTo(targetDate));
-        // 모든 알고리즘의 targetDate가 null이 아닌지만 검사
-        response.getRecommendations().forEach(item ->
-                assertThat(item.getLoanX().getTargetDate()).isNotNull());
+        // loanX가 있는 카드는 targetDate가 채워져 있어야 한다
+        response.getRecommendations().stream()
+                .filter(item -> item.getLoanX() != null)
+                .forEach(item -> assertThat(item.getLoanX().getTargetDate()).isNotNull());
     }
 
     // ===== 케이스 5: loanO 플랜 (소득 등록 회원) =====
@@ -187,8 +189,6 @@ class GoalRecommendationServiceIntegrationTest {
 
         for (RecommendationItem item : items) {
             System.out.println("\n  [" + item.getType() + "]");
-            System.out.println("  title  : " + item.getTitle());
-            System.out.println("  reason : " + item.getReason());
 
             if (item.getCondition() != null) {
                 System.out.printf("  조건   : %s %s / %s / %d~%d평 / 표본 %d건%n",

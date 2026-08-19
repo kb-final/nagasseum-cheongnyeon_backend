@@ -17,7 +17,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.time.YearMonth;
-import java.util.Optional;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -69,28 +69,27 @@ class HoldOutAlgorithmIntegrationTest {
         request.setSizeMax(30);
         request.setTargetDate(YearMonth.now().plusMonths(24)); // n=24개월 기준
 
-        Optional<GoalRecommendationResponse.RecommendationItem> result =
+        List<GoalRecommendationResponse.RecommendationItem> result =
                 holdOutAlgorithm.recommend(TEST_MEMBER_ID, request, buildCtx(TEST_MEMBER_ID));
 
         System.out.println("=== HoldOut 결과 ===");
-        if (result.isPresent()) {
-            GoalRecommendationResponse.RecommendationItem item = result.get();
+        if (!result.isEmpty()) {
+            GoalRecommendationResponse.RecommendationItem item = result.get(0);
             System.out.println("type   : " + item.getType());
-            System.out.println("title  : " + item.getTitle());
-            System.out.println("reason : " + item.getReason());
-            System.out.println("조건   : " + item.getCondition().getRegionName()
+            System.out.println("조건   : " + (item.getCondition() == null ? "null(soft-fail)"
+                    : item.getCondition().getRegionName()
                     + " / " + item.getCondition().getHousingType()
                     + " / " + item.getCondition().getDealType()
                     + " / " + item.getCondition().getAreaMin()
-                    + "~" + item.getCondition().getAreaMax() + "평");
+                    + "~" + item.getCondition().getAreaMax() + "평"));
             System.out.println("loanX  : " + item.getLoanX());
             System.out.println("loanO  : " + item.getLoanO());
         } else {
-            System.out.println("추천 결과 없음 (Optional.empty)");
+            System.out.println("추천 결과 없음 (빈 목록)");
         }
 
-        // 데이터가 충분하면 결과가 있어야 함 (로컬 DB 데이터에 따라 달라짐)
-        result.ifPresent(item -> assertNotNull(item.getCondition()));
+        // 데이터가 충분하면 카드가 있어야 함 (로컬 DB 데이터에 따라 달라짐)
+        if (!result.isEmpty()) assertNotNull(result.get(0));
     }
 
     /**
@@ -102,13 +101,12 @@ class HoldOutAlgorithmIntegrationTest {
         GoalRecommendationRequest request = new GoalRecommendationRequest();
         // 조건 미입력 → active goal의 housing 조건 사용
 
-        Optional<GoalRecommendationResponse.RecommendationItem> result =
+        List<GoalRecommendationResponse.RecommendationItem> result =
                 holdOutAlgorithm.recommend(TEST_MEMBER_ID, request, buildCtx(TEST_MEMBER_ID));
 
         System.out.println("=== HoldOut (goal fallback) 결과 ===");
-        if (result.isPresent()) {
-            GoalRecommendationResponse.RecommendationItem item = result.get();
-            System.out.println("reason : " + item.getReason());
+        if (!result.isEmpty() && result.get(0).getCondition() != null) {
+            GoalRecommendationResponse.RecommendationItem item = result.get(0);
             System.out.println("조건   : " + item.getCondition().getRegionName()
                     + " " + item.getCondition().getAreaMin()
                     + "~" + item.getCondition().getAreaMax() + "평");

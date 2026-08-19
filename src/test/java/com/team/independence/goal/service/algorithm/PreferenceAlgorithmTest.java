@@ -77,6 +77,8 @@ class PreferenceAlgorithmTest {
 
         when(loanPlanCalculator.calculate(anyLong(), anyLong(), any()))
                 .thenReturn(LoanPlans.builder().build());
+        when(loanPlanCalculator.calculateSavingFixed(anyLong(), anyLong(), any(), anyLong()))
+                .thenReturn(LoanPlans.builder().build());
         stubMedian(2 * 억, 0, 120);
     }
 
@@ -98,7 +100,7 @@ class PreferenceAlgorithmTest {
         assertThat(sent.getAreaMin()).isEqualTo(10);
         assertThat(sent.getAreaMax()).isEqualTo(14);
 
-        assertThat(item.getType()).isEqualTo(AlgorithmType.PREFERENCE);
+        assertThat(item.getType()).isEqualTo(AlgorithmType.PREFERENCE_SAVING_FIXED);
         assertThat(item.getCondition().getHousingType()).isEqualTo(HousingType.OFFICETEL);
         assertThat(item.getCondition().getAreaMin()).isEqualTo(10);
     }
@@ -150,7 +152,6 @@ class PreferenceAlgorithmTest {
         RecommendationItem item = recommend(request("11110"));
 
         assertThat(item.getCondition().getSampleCount()).isEqualTo(2);
-        assertThat(item.getReason()).contains("2건");
     }
 
     @Test
@@ -164,7 +165,8 @@ class PreferenceAlgorithmTest {
         RecommendationItem item = recommend(request);
 
         assertThat(item.getCondition().getMonthlyRent()).isEqualTo(40 * 만);
-        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(1000 * 만), any());
+        // 환산값이 아니라 실제 보증금(1,000만)을 플랜 계산기로 넘긴다. targetDate가 없어 저축 고정 경로만 탄다.
+        verify(loanPlanCalculator).calculateSavingFixed(eq(MEMBER_ID), eq(1000 * 만), any(), anyLong());
     }
 
     @Test
@@ -183,11 +185,39 @@ class PreferenceAlgorithmTest {
         assertThat(algorithm.recommend(MEMBER_ID, request("11110"), ctx)).isEmpty();
     }
 
+    @Test
+    @DisplayName("목표 시점이 없으면 저축 고정은 정상, 시점 고정은 조건 없는 카드로 두 장을 낸다")
+    void splitsIntoTwoCardsAndDateFixedIsNullWithoutTargetDate() {
+        List<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request("11110"), ctx);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getType()).isEqualTo(AlgorithmType.PREFERENCE_SAVING_FIXED);
+        assertThat(result.get(0).getCondition()).isNotNull();
+        assertThat(result.get(1).getType()).isEqualTo(AlgorithmType.PREFERENCE_DATE_FIXED);
+        assertThat(result.get(1).getCondition()).isNull();
+    }
+
+    @Test
+    @DisplayName("목표 시점이 있으면 두 카드 모두 조건을 채우고, 시점 고정은 그 시점으로 플랜을 계산한다")
+    void bothCardsHaveConditionWhenTargetDateGiven() {
+        GoalRecommendationRequest request = request("11110");
+        request.setTargetDate(java.time.YearMonth.now().plusMonths(24));
+
+        List<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request, ctx);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(1).getType()).isEqualTo(AlgorithmType.PREFERENCE_DATE_FIXED);
+        assertThat(result.get(1).getCondition()).isNotNull();
+        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(2 * 억), any());
+    }
+
     // ===== 헬퍼 =====
 
+    /** 두 카드 중 첫 번째(SAVING_FIXED). 조건은 두 카드가 공유하므로 조건 검증엔 어느 쪽이든 무방하다. */
     private RecommendationItem recommend(GoalRecommendationRequest request) {
-        return algorithm.recommend(MEMBER_ID, request, ctx)
-                .orElseThrow(() -> new AssertionError("추천 결과가 비어 있습니다"));
+        List<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request, ctx);
+        if (result.isEmpty()) throw new AssertionError("추천 결과가 비어 있습니다");
+        return result.get(0);
     }
 
     private GoalRecommendationRequest request(String regionCode) {
