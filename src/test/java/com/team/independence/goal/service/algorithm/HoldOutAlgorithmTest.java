@@ -7,9 +7,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
-
-import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
+import com.team.independence.goal.service.RecommendationAlgorithm.MemberFinancialContext;
 import com.team.independence.goal.dto.GoalRecommendationResponse.RecommendationItem;
 import com.team.independence.goal.dto.LoanPlans;
 import com.team.independence.goal.mapper.GoalHousingMapper;
@@ -63,13 +62,14 @@ class HoldOutAlgorithmTest {
     @Mock private LoanPlanCalculator loanPlanCalculator;
     @Mock private GoalMapper goalMapper;
     @Mock private GoalHousingMapper goalHousingMapper;
-    @Mock private AssetSummaryService assetSummaryService;
     @Mock private RentMedianService rentMedianService;
     @Mock private MonteCarloService monteCarloService;
 
     private final BudgetCalculator budgetCalculator = new BudgetCalculator();
 
     private HoldOutAlgorithm algorithm;
+    private AssetNetWorthBreakdown defaultNetWorth;
+    private MemberFinancialContext ctx;
 
     /** "regionCode|주거유형|거래유형|최소평수" → {Q3 보증금, Q3 월세} */
     private Map<String, long[]> market;
@@ -78,7 +78,7 @@ class HoldOutAlgorithmTest {
     void setUp() {
         algorithm = new HoldOutAlgorithm(
                 loanPlanCalculator, budgetCalculator, goalMapper, goalHousingMapper,
-                assetSummaryService, rentMedianService, monteCarloService);
+                rentMedianService, monteCarloService);
 
         when(monteCarloService.simulate(any(PriceModelRequest.class), anyLong(), anyLong(), anyInt()))
                 .thenAnswer(call -> {
@@ -90,14 +90,12 @@ class HoldOutAlgorithmTest {
                 });
         market = new HashMap<>();
 
+        defaultNetWorth = AssetNetWorthBreakdown.builder()
+                .interestBearingAssets(0L)
+                .flatRecognizedAssets(0L)
+                .build();
+        ctx = new MemberFinancialContext(defaultNetWorth, 10_000_000L, 0L);
         when(goalMapper.findActiveByMemberId(MEMBER_ID)).thenReturn(null);
-        when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID)).thenReturn(
-                AssetNetWorthBreakdown.builder()
-                        .interestBearingAssets(0L)
-                        .flatRecognizedAssets(0L)
-                        .build());
-        when(assetSummaryService.getMonthlySavingsOrZero(MEMBER_ID)).thenReturn(10_000_000L);
-        when(loanPlanCalculator.calcTotalExistingMonthlyPayment(MEMBER_ID)).thenReturn(0L);
         when(loanPlanCalculator.calculate(anyLong(), anyLong(), any()))
                 .thenReturn(LoanPlans.builder().build());
         when(rentMedianService.getMedian(any())).thenAnswer(call -> toResponse(call.getArgument(0)));
@@ -112,7 +110,7 @@ class HoldOutAlgorithmTest {
         // 요청: 20~25평 → 업그레이드 버킷인 26~40평(areaMin=26 > areaMax=25)만 허용
         put("11110", HousingType.APT, DealType.JEONSE, 26, 40, 2 * 억, 0);
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"), ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCondition().getAreaMin()).isEqualTo(26);
@@ -123,10 +121,10 @@ class HoldOutAlgorithmTest {
     void deductsExistingLoanPaymentFromSaving() {
         // 월저축 1천만, 대출 월상환 900만 → baseSaving 100만
         // 2억을 100만/월로 모으면 ~169개월 → PATIENCE_BONUS(48) 초과 → soft-fail
-        when(loanPlanCalculator.calcTotalExistingMonthlyPayment(MEMBER_ID)).thenReturn(9_000_000L);
+        MemberFinancialContext ctx = ctxWithLoan(9_000_000L);
         put("11110", HousingType.APT, DealType.JEONSE, 26, 40, 2 * 억, 0);
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"), ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCondition()).isNull();
@@ -138,7 +136,7 @@ class HoldOutAlgorithmTest {
         // 월저축 1천만, 대출 월상환 500만 → baseSaving 500만
         // 월세 Q3 = 450만 → effectiveSaving 50만
         // 1억 보증금을 50만/월로 모으면 ~180개월 → PATIENCE_BONUS(48) 초과 → 추천 없음
-        when(loanPlanCalculator.calcTotalExistingMonthlyPayment(MEMBER_ID)).thenReturn(5_000_000L);
+        MemberFinancialContext ctx = ctxWithLoan(5_000_000L);
         put("11110", HousingType.APT, DealType.WOLSE, 26, 40, 1 * 억, 450 * 만);
 
         GoalRecommendationRequest request = new GoalRecommendationRequest();
@@ -149,7 +147,7 @@ class HoldOutAlgorithmTest {
         request.setSizeMax(25);
         request.setTargetDate(NOW);
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request);
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request, ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCondition()).isNull();
@@ -159,10 +157,10 @@ class HoldOutAlgorithmTest {
     @DisplayName("대출 월상환액이 월저축액보다 커도 저축액이 음수가 되지 않는다")
     void clipsNegativeSavingToZero() {
         // 대출 1500만 > 저축 1000만 → baseSaving = 0 → 현재 자산(0원)으로 2억 도달 불가 → soft-fail
-        when(loanPlanCalculator.calcTotalExistingMonthlyPayment(MEMBER_ID)).thenReturn(15_000_000L);
+        MemberFinancialContext ctx = ctxWithLoan(15_000_000L);
         put("11110", HousingType.APT, DealType.JEONSE, 26, 40, 2 * 억, 0);
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"), ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCondition()).isNull();
@@ -171,7 +169,7 @@ class HoldOutAlgorithmTest {
     @Test
     @DisplayName("시장 데이터가 없으면 soft-fail 카드를 반환한다")
     void returnsEmptyWhenNoMarketData() {
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"), ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCondition()).isNull();
@@ -186,7 +184,7 @@ class HoldOutAlgorithmTest {
         put("11110", HousingType.APT, DealType.JEONSE, 15, 19, 2 * 억, 0);
         put("11110", HousingType.APT, DealType.JEONSE, 20, 25, 2 * 억, 0);
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"), ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCondition()).isNull();
@@ -198,7 +196,7 @@ class HoldOutAlgorithmTest {
         // 요청 sizeMax=25 → 26~40(areaMin=26 > 25)만 허용
         put("11110", HousingType.APT, DealType.JEONSE, 26, 40, 2 * 억, 0);
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"), ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCondition().getAreaMin()).isEqualTo(26);
@@ -217,7 +215,7 @@ class HoldOutAlgorithmTest {
         request.setTradeType(DealType.JEONSE);
         request.setTargetDate(NOW);
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request);
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request, ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCondition().getAreaMin()).isEqualTo(15);
@@ -231,7 +229,7 @@ class HoldOutAlgorithmTest {
         // 11110(종로구)에는 데이터 없고 11(서울)에만 26~40평 데이터 있음
         put("11", HousingType.APT, DealType.JEONSE, 26, 40, 2 * 억, 0);
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"), ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCondition().getRegionCode()).isEqualTo("11");
@@ -244,7 +242,7 @@ class HoldOutAlgorithmTest {
         put("11110", HousingType.APT, DealType.JEONSE, 26, 40, 2 * 억, 0);
         put("11",    HousingType.APT, DealType.JEONSE, 26, 40, 1 * 억, 0); // 더 저렴하지만 탐색 안 됨
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"), ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCondition().getRegionCode()).isEqualTo("11110");
@@ -264,7 +262,7 @@ class HoldOutAlgorithmTest {
         request.setSizeMax(25);
         request.setTargetDate(NOW);
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request);
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request, ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getCondition()).isNull();
@@ -284,7 +282,7 @@ class HoldOutAlgorithmTest {
         request.setSizeMin(20);
         request.setSizeMax(25);
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request);
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request, ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getReason()).contains("저축하면").contains("26~40평");
@@ -295,13 +293,17 @@ class HoldOutAlgorithmTest {
     void reasonMentionsOriginalRegionWhenExpanded() {
         put("11", HousingType.APT, DealType.JEONSE, 26, 40, 2 * 억, 0);
 
-        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"));
+        Optional<RecommendationItem> result = algorithm.recommend(MEMBER_ID, aptJeonseRequest("11110"), ctx);
 
         assertThat(result).isPresent();
         assertThat(result.get().getReason()).contains("요청하신 지역");
     }
 
     // ===== 헬퍼 =====
+
+    private MemberFinancialContext ctxWithLoan(long loanPayment) {
+        return new MemberFinancialContext(defaultNetWorth, 10_000_000L, loanPayment);
+    }
 
     private GoalRecommendationRequest aptJeonseRequest(String regionCode) {
         GoalRecommendationRequest request = new GoalRecommendationRequest();

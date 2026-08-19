@@ -1,8 +1,12 @@
 package com.team.independence.goal.service.algorithm;
 
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
+import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.config.RootConfig;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
+import com.team.independence.goal.service.RecommendationAlgorithm.MemberFinancialContext;
+import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import org.junit.jupiter.api.Disabled;
@@ -39,6 +43,17 @@ class HoldOutAlgorithmIntegrationTest {
 
     @Autowired
     private HoldOutAlgorithm holdOutAlgorithm;
+    @Autowired
+    private AssetSummaryService assetSummaryService;
+    @Autowired
+    private LoanPlanCalculator loanPlanCalculator;
+
+    private MemberFinancialContext buildCtx(long memberId) {
+        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
+        long monthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
+        long loanPayment = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
+        return new MemberFinancialContext(netWorth, monthlySaving, loanPayment);
+    }
 
     /**
      * request에 조건을 직접 넣어서 실행.
@@ -55,7 +70,7 @@ class HoldOutAlgorithmIntegrationTest {
         request.setTargetDate(YearMonth.now().plusMonths(24)); // n=24개월 기준
 
         Optional<GoalRecommendationResponse.RecommendationItem> result =
-                holdOutAlgorithm.recommend(TEST_MEMBER_ID, request);
+                holdOutAlgorithm.recommend(TEST_MEMBER_ID, request, buildCtx(TEST_MEMBER_ID));
 
         System.out.println("=== HoldOut 결과 ===");
         if (result.isPresent()) {
@@ -88,7 +103,7 @@ class HoldOutAlgorithmIntegrationTest {
         // 조건 미입력 → active goal의 housing 조건 사용
 
         Optional<GoalRecommendationResponse.RecommendationItem> result =
-                holdOutAlgorithm.recommend(TEST_MEMBER_ID, request);
+                holdOutAlgorithm.recommend(TEST_MEMBER_ID, request, buildCtx(TEST_MEMBER_ID));
 
         System.out.println("=== HoldOut (goal fallback) 결과 ===");
         if (result.isPresent()) {

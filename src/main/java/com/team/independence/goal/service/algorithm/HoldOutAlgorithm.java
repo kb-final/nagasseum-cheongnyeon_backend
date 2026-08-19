@@ -1,7 +1,6 @@
 package com.team.independence.goal.service.algorithm;
 
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
-import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.goal.domain.Goal;
 import com.team.independence.goal.domain.GoalHousing;
 import com.team.independence.goal.dto.AlgorithmType;
@@ -26,10 +25,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -66,6 +67,10 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     private static final long WIDE_DEPOSIT_MAX  = 1_000_000_000_000L;
     private static final int  MAX_MC_ITERATIONS = 3;
 
+    /** RentMedianServiceImpl과 동일한 집계 구간 */
+    private static final int MONTHS = 6;
+    private static final DateTimeFormatter YM = DateTimeFormatter.ofPattern("yyyyMM");
+
     /**
      * 추가 인내 허용 개월 수.
      * targetDate 이후(또는 targetDate 미지정 시 지금부터) 최대 48개월(4년)까지 탐색한다.
@@ -73,17 +78,16 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     private static final long PATIENCE_BONUS   = 48;
     private static final long DEFAULT_RENT_MAX = 2_000_000L;
 
-    private final LoanPlanCalculator  loanPlanCalculator;
-    private final BudgetCalculator    budgetCalculator;
-    private final GoalMapper          goalMapper;
-    private final GoalHousingMapper   goalHousingMapper;
-    private final AssetSummaryService assetSummaryService;
-    private final RentMedianService   rentMedianService;
-    private final MonteCarloService   monteCarloService;
+    private final LoanPlanCalculator loanPlanCalculator;
+    private final BudgetCalculator   budgetCalculator;
+    private final GoalMapper         goalMapper;
+    private final GoalHousingMapper  goalHousingMapper;
+    private final RentMedianService  rentMedianService;
+    private final MonteCarloService  monteCarloService;
 
     @Override
     public Optional<GoalRecommendationResponse.RecommendationItem> recommend(
-            long memberId, GoalRecommendationRequest request
+            long memberId, GoalRecommendationRequest request, MemberFinancialContext ctx
     ) {
         Goal activeGoal = goalMapper.findActiveByMemberId(memberId);
         GoalHousing housing = (activeGoal != null)
@@ -94,27 +98,32 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         if (base == null) return Optional.empty();
 
         YearMonth now = YearMonth.now();
-        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
-        long rawMonthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
-        long loanPayment = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
-        long baseSaving = Math.max(0, rawMonthlySaving - loanPayment);
+        AssetNetWorthBreakdown netWorth = ctx.netWorth();
+        long baseSaving = ctx.effectiveSaving();
 
         long n = base.targetDate != null
                 ? Math.max(0, ChronoUnit.MONTHS.between(now, base.targetDate))
                 : 0L;
         long window = n + PATIENCE_BONUS;
 
-        // 1차: 요청 지역에서 평수 업그레이드 후보 탐색
-        List<FetchedCandidate> pool = buildPool(generateCandidates(base), base, netWorth, baseSaving, window);
+        String endYm   = now.format(YM);
+        String startYm = now.minusMonths(MONTHS - 1).format(YM);
+
+        // 1차: 요청 지역에서 평수 업그레이드 후보 탐색 (bulk 1회 쿼리)
+        Map<String, RentMedianResponse> bulkMedians =
+                rentMedianService.getBulkMedian(base.regionCode, startYm, endYm);
+        List<FetchedCandidate> pool = buildPool(generateCandidates(base), base, netWorth, baseSaving, window, bulkMedians);
         boolean regionExpanded = false;
 
-        // 2차: 시군구(5자리)로 요청했지만 pool이 비었으면 상위 시도(2자리)로 확장
+        // 2차: 시군구(5자리)로 요청했지만 pool이 비었으면 상위 시도(2자리)로 확장 (bulk 1회 추가)
         if (pool.isEmpty() && base.regionCode.length() > 2) {
             String sidoCode = base.regionCode.substring(0, 2);
+            Map<String, RentMedianResponse> sidoBulkMedians =
+                    rentMedianService.getBulkMedian(sidoCode, startYm, endYm);
             BaseCondition sidoBase = new BaseCondition(
                     sidoCode, base.housingType, base.dealType,
                     base.areaMin, base.areaMax, base.rentMin, base.rentMax, base.targetDate);
-            pool = buildPool(generateCandidates(sidoBase), base, netWorth, baseSaving, window);
+            pool = buildPool(generateCandidates(sidoBase), base, netWorth, baseSaving, window, sidoBulkMedians);
             regionExpanded = !pool.isEmpty();
         }
 
@@ -219,14 +228,17 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
      * 평수 기준은 지역이 바뀌어도 변하지 않는다.
      */
     private List<FetchedCandidate> buildPool(List<HousingCondition> candidates, BaseCondition base,
-                                              AssetNetWorthBreakdown netWorth, long baseSaving, long horizon) {
+                                              AssetNetWorthBreakdown netWorth, long baseSaving, long horizon,
+                                              Map<String, RentMedianResponse> bulkMedians) {
         List<FetchedCandidate> pool = new ArrayList<>();
         for (HousingCondition candidate : candidates) {
             // 평수 업그레이드 필터: 요청 최대 평수(areaMax) 이하 버킷은 업그레이드가 아니므로 제외
             if (base.areaMin != null && base.areaMax != null && candidate.areaMin <= base.areaMax) continue;
 
-            RentMedianResponse median = fetchAndValidateMedian(candidate);
-            if (median == null) continue;
+            String key = candidate.housingType + "|" + candidate.dealType + "|" + candidate.areaMin;
+            RentMedianResponse median = bulkMedians.get(key);
+            if (median == null || median.getSampleCount() < MIN_SAMPLE_COUNT) continue;
+            if (median.getDeposit().getQ3() == null) continue;
 
             long effectiveSaving = baseSaving;
             if (candidate.dealType == DealType.WOLSE) {
@@ -276,19 +288,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
         return new ScoredCandidate(candidate, median, metrics.futurePrice, metrics.effectiveSaving,
                 metrics.totalMonths, metrics.m, score);
-    }
-
-    private RentMedianResponse fetchAndValidateMedian(HousingCondition candidate) {
-        RentMedianResponse median;
-        try {
-            median = rentMedianService.getMedian(candidate.toMedianRequest());
-        } catch (RuntimeException e) {
-            log.warn("[HoldOut] 시세 조회 실패 {} : {}", candidate.label(), e.getMessage());
-            return null;
-        }
-        if (median.getSampleCount() < MIN_SAMPLE_COUNT) return null;
-        if (median.getDeposit().getQ3() == null) return null;
-        return median;
     }
 
     private BudgetMetrics calcBudgetMetrics(HousingCondition candidate, RentMedianResponse median,

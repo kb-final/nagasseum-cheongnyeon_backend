@@ -1,7 +1,6 @@
 package com.team.independence.goal.service.algorithm;
 
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
-import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.goal.dto.AlgorithmType;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
@@ -76,7 +75,6 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
     /** 보증금 필터 미지정 시 사용할 상한(원). 사실상 무제한. */
     private static final long DEPOSIT_MAX_DEFAULT = 100_000_000_000L;
 
-    private final AssetSummaryService assetSummaryService;
     private final RentMedianService rentMedianService;
     private final LoanPlanCalculator loanPlanCalculator;
     private final BudgetCalculator budgetCalculator;
@@ -84,18 +82,15 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
 
     @Override
     public Optional<GoalRecommendationResponse.RecommendationItem> recommend(
-            long memberId, GoalRecommendationRequest request) {
+            long memberId, GoalRecommendationRequest request, MemberFinancialContext ctx) {
 
         YearMonth targetDate = request.getTargetDate() != null
                 ? request.getTargetDate()
                 : YearMonth.now().plusMonths(DEFAULT_TARGET_MONTHS);
         long targetMonths = RecommendationAlgorithm.monthsUntil(targetDate);
 
-        // DSR 차감: 기존 대출 월상환액을 제외한 실질 저축 여력
-        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
-        long rawMonthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
-        long loanPayment      = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
-        long effectiveSaving  = Math.max(0, rawMonthlySaving - loanPayment);
+        AssetNetWorthBreakdown netWorth = ctx.netWorth();
+        long effectiveSaving  = ctx.effectiveSaving();
 
         HousingType housingType = request.getPropertyType() != null
                 ? request.getPropertyType() : DEFAULT_HOUSING_TYPE;

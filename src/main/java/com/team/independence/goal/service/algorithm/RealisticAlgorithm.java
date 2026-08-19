@@ -1,7 +1,6 @@
 package com.team.independence.goal.service.algorithm;
 
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
-import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.goal.dto.AlgorithmType;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
@@ -19,6 +18,7 @@ import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.mapper.RegionMapper;
 import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -125,6 +125,10 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     /** 보증금 필터 미지정 시 사용할 상한(원). 사실상 무제한. */
     private static final long DEPOSIT_MAX_DEFAULT = 100_000_000_000L;
 
+    /** RentMedianServiceImpl과 동일한 집계 구간 */
+    private static final int MONTHS = 6;
+    private static final DateTimeFormatter YM = DateTimeFormatter.ofPattern("yyyyMM");
+
     /**
      * 월세를 목돈으로 환산할 때 쓰는 연 이자율.
      *
@@ -133,7 +137,6 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      */
     private static final double ANNUAL_INTEREST_RATE = 0.05;
 
-    private final AssetSummaryService assetSummaryService;
     private final RentMedianService rentMedianService;
     private final RegionMapper regionMapper;
     private final LoanPlanCalculator loanPlanCalculator;
@@ -142,15 +145,13 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
 
     @Override
     public Optional<GoalRecommendationResponse.RecommendationItem> recommend(
-            long memberId, GoalRecommendationRequest request) {
+            long memberId, GoalRecommendationRequest request, MemberFinancialContext ctx) {
 
         YearMonth targetDate = resolveTargetDate(request);
         long desiredMonths = RecommendationAlgorithm.monthsUntil(targetDate);
 
-        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
-        long rawMonthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
-        long loanPayment      = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
-        long effectiveSaving  = Math.max(0, rawMonthlySaving - loanPayment);
+        AssetNetWorthBreakdown netWorth = ctx.netWorth();
+        long effectiveSaving  = ctx.effectiveSaving();
 
         Search search = new Search(memberId, netWorth, effectiveSaving, desiredMonths);
 
@@ -162,11 +163,17 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
             return Optional.empty();
         }
 
+        // 시군구 확정 후 (주거유형, 거래유형, 평수) 40개 조합을 bulk 1회 쿼리로 선조회
+        YearMonth now = YearMonth.now();
+        String endYm   = now.format(YM);
+        String startYm = now.minusMonths(MONTHS - 1).format(YM);
+        Map<String, RentMedianResponse> bulkMedians = rentMedianService.getBulkMedian(regionCode, startYm, endYm);
+
         // 2단계: 사용자가 준 조건을 지킨 채, 주지 않은 항목만 움직여 본다
         long depositMin = request.getDepositMin() != null ? request.getDepositMin() : 0L;
         long depositMax = request.getDepositMax() != null ? request.getDepositMax() : DEPOSIT_MAX_DEFAULT;
 
-        List<Candidate> asRequested = evaluateConditions(regionCode, request, search, true);
+        List<Candidate> asRequested = evaluateConditions(regionCode, request, search, true, bulkMedians);
         Optional<Candidate> keepingInput = bestWithinTarget(asRequested);
         if (keepingInput.isPresent()) {
             return Optional.of(assemble(memberId, keepingInput.get(), targetDate, desiredMonths, false, search, depositMin, depositMax));
@@ -175,7 +182,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         // 3단계: 입력한 조건으로는 목표 시점을 못 지킨다. 그때만 조건을 풀고 다시 찾는다.
         // 준 조건이 하나도 없으면 1차가 이미 전 범위 탐색이라 다시 조회하지 않는다.
         List<Candidate> relaxed = hasInputCondition(request)
-                ? evaluateConditions(regionCode, request, search, false)
+                ? evaluateConditions(regionCode, request, search, false, bulkMedians)
                 : asRequested;
         if (relaxed.isEmpty()) {
             log.warn("실거래 표본이 있는 조합이 없습니다. memberId={}, regionCode={}", memberId, regionCode);
@@ -291,13 +298,14 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      *                  false면 사용자가 준 항목까지 전부 펼친다.
      */
     private List<Candidate> evaluateConditions(
-            String regionCode, GoalRecommendationRequest request, Search search, boolean keepInput) {
+            String regionCode, GoalRecommendationRequest request, Search search, boolean keepInput,
+            Map<String, RentMedianResponse> bulkMedians) {
 
         List<Candidate> candidates = new ArrayList<>();
         for (int[] size : sizeCandidates(request, keepInput)) {
             for (HousingType housingType : housingTypeCandidates(request, keepInput)) {
                 for (DealType dealType : dealTypeCandidates(request, keepInput)) {
-                    evaluate(regionCode, housingType, dealType, size[0], size[1], request, search)
+                    evaluate(regionCode, housingType, dealType, size[0], size[1], request, search, bulkMedians)
                             .ifPresent(candidates::add);
                 }
             }
@@ -357,6 +365,14 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         return new int[]{request.getSizeMin(), request.getSizeMax()};
     }
 
+    /** SIZE_BUCKETS에 정의된 표준 범위인지 확인. 비표준 범위는 bulk 맵에 없으므로 개별 쿼리가 필요하다. */
+    private boolean isBucketRange(int areaMin, int areaMax) {
+        for (int[] bucket : SIZE_BUCKETS) {
+            if (bucket[0] == areaMin && bucket[1] == areaMax) return true;
+        }
+        return false;
+    }
+
     // ===== 후보 평가 =====
 
     /**
@@ -368,31 +384,39 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      */
     private Optional<Candidate> evaluate(
             String regionCode, HousingType housingType, DealType dealType,
-            int areaMin, int areaMax, GoalRecommendationRequest request, Search search) {
+            int areaMin, int areaMax, GoalRecommendationRequest request, Search search,
+            Map<String, RentMedianResponse> bulkMedians) {
 
         String key = regionCode + "|" + housingType + "|" + dealType + "|" + areaMin + "|" + areaMax;
         Optional<Candidate> cached = search.evaluated.get(key);
         if (cached != null) {
             return cached;
         }
-        Optional<Candidate> result = lookUp(regionCode, housingType, dealType, areaMin, areaMax, request, search);
+        Optional<Candidate> result = lookUp(regionCode, housingType, dealType, areaMin, areaMax, request, search, bulkMedians);
         search.evaluated.put(key, result);
         return result;
     }
 
     private Optional<Candidate> lookUp(
             String regionCode, HousingType housingType, DealType dealType,
-            int areaMin, int areaMax, GoalRecommendationRequest request, Search search) {
+            int areaMin, int areaMax, GoalRecommendationRequest request, Search search,
+            Map<String, RentMedianResponse> bulkMedians) {
 
-        RentMedianResponse median;
-        try {
-            median = rentMedianService.getMedian(
-                    buildMedianRequest(regionCode, housingType, dealType, areaMin, areaMax, request));
-        } catch (RuntimeException e) {
-            // 지역 코드 오류 등으로 한 조합이 실패해도 나머지 탐색은 계속한다.
-            log.debug("실거래 조회 실패로 조합을 건너뜁니다. regionCode={}, housingType={}, dealType={}",
-                    regionCode, housingType, dealType, e);
-            return Optional.empty();
+        // SIZE_BUCKETS 범위이면 bulk 맵에서 바로 꺼낸다.
+        // 사용자 지정 범위이거나 bulk 결과가 없으면 개별 쿼리로 폴백한다.
+        RentMedianResponse median = isBucketRange(areaMin, areaMax)
+                ? bulkMedians.get(housingType + "|" + dealType + "|" + areaMin)
+                : null;
+
+        if (median == null) {
+            try {
+                median = rentMedianService.getMedian(
+                        buildMedianRequest(regionCode, housingType, dealType, areaMin, areaMax, request));
+            } catch (RuntimeException e) {
+                log.debug("실거래 조회 실패로 조합을 건너뜁니다. regionCode={}, housingType={}, dealType={}",
+                        regionCode, housingType, dealType, e);
+                return Optional.empty();
+            }
         }
 
         if (median.getSampleCount() < MIN_SAMPLE_COUNT || median.getDeposit().getMedian() == null) {

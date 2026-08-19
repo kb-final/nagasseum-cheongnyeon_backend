@@ -9,8 +9,9 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.team.independence.asset.service.AssetSummaryService;
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
 import com.team.independence.goal.dto.AlgorithmType;
+import com.team.independence.goal.service.RecommendationAlgorithm.MemberFinancialContext;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse.RecommendationItem;
 import com.team.independence.goal.dto.LoanPlans;
@@ -49,8 +50,6 @@ class PreferenceAlgorithmTest {
     private static final long 만 = 10_000L;
 
     @Mock
-    private AssetSummaryService assetSummaryService;
-    @Mock
     private RentMedianService rentMedianService;
     @Mock
     private LoanPlanCalculator loanPlanCalculator;
@@ -60,14 +59,21 @@ class PreferenceAlgorithmTest {
     private MonteCarloService monteCarloService;
 
     private PreferenceAlgorithm algorithm;
+    private AssetNetWorthBreakdown defaultNetWorth;
+    private MemberFinancialContext ctx;
 
     /** 실제로 나간 실거래 조회 조건 */
     private List<RentMedianRequest> asked;
 
     @BeforeEach
     void setUp() {
-        algorithm = new PreferenceAlgorithm(assetSummaryService, rentMedianService, loanPlanCalculator, budgetCalculator, monteCarloService);
+        algorithm = new PreferenceAlgorithm(rentMedianService, loanPlanCalculator, budgetCalculator, monteCarloService);
         asked = new ArrayList<>();
+        defaultNetWorth = AssetNetWorthBreakdown.builder()
+                .interestBearingAssets(0L)
+                .flatRecognizedAssets(0L)
+                .build();
+        ctx = new MemberFinancialContext(defaultNetWorth, 10_000_000L, 0L);
 
         when(loanPlanCalculator.calculate(anyLong(), anyLong(), any()))
                 .thenReturn(LoanPlans.builder().build());
@@ -166,7 +172,7 @@ class PreferenceAlgorithmTest {
     void returnsEmptyWhenNoTransaction() {
         stubMedian(0, 0, 0);
 
-        assertThat(algorithm.recommend(MEMBER_ID, request("11110"))).isEmpty();
+        assertThat(algorithm.recommend(MEMBER_ID, request("11110"), ctx)).isEmpty();
     }
 
     @Test
@@ -174,13 +180,13 @@ class PreferenceAlgorithmTest {
     void returnsEmptyWhenLookUpFails() {
         doThrow(new IllegalStateException("조회 실패")).when(rentMedianService).getMedian(any());
 
-        assertThat(algorithm.recommend(MEMBER_ID, request("11110"))).isEmpty();
+        assertThat(algorithm.recommend(MEMBER_ID, request("11110"), ctx)).isEmpty();
     }
 
     // ===== 헬퍼 =====
 
     private RecommendationItem recommend(GoalRecommendationRequest request) {
-        return algorithm.recommend(MEMBER_ID, request)
+        return algorithm.recommend(MEMBER_ID, request, ctx)
                 .orElseThrow(() -> new AssertionError("추천 결과가 비어 있습니다"));
     }
 
