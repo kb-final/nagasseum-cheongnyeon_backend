@@ -160,7 +160,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         if (regionCode == null) {
             log.warn("추천 가능한 시군구를 찾지 못했습니다. memberId={}, regionCode={}",
                     memberId, request.getRegionCode());
-            return List.of();
+            return List.of(emptyCard());
         }
 
         // 시군구 확정 후 (주거유형, 거래유형, 평수) 40개 조합을 bulk 1회 쿼리로 선조회
@@ -186,11 +186,21 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                 : asRequested;
         if (relaxed.isEmpty()) {
             log.warn("실거래 표본이 있는 조합이 없습니다. memberId={}, regionCode={}", memberId, regionCode);
-            return List.of();
+            return List.of(emptyCard());
         }
 
         Candidate chosen = bestWithinTarget(relaxed).orElseGet(() -> cheapest(relaxed));
         return List.of(assemble(memberId, chosen, targetDate, search, depositMin, depositMax));
+    }
+
+    /**
+     * 후보를 찾지 못했을 때 내보내는 condition=null 카드.
+     * 카드를 빼지 않고 자리를 유지해, 프론트가 4슬롯을 항상 같은 위치에 그리도록 한다.
+     */
+    private GoalRecommendationResponse.RecommendationItem emptyCard() {
+        return GoalRecommendationResponse.RecommendationItem.builder()
+                .type(AlgorithmType.REALISTIC)
+                .build();
     }
 
     /** 사용자가 지역 외에 조정 가능한 조건을 하나라도 줬는가 */

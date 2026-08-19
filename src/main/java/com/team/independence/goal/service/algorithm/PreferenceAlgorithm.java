@@ -106,14 +106,16 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         } catch (RuntimeException e) {
             log.warn("실거래 조회에 실패해 선호 조건을 추천하지 못했습니다. memberId={}, regionCode={}",
                     memberId, request.getRegionCode(), e);
-            return List.of();
+            return emptyCards();
         }
 
         // 표본이 적은 것은 그대로 두지만, 한 건도 없으면 보여줄 금액 자체가 없다.
+        // 카드를 빼지 않고 condition=null로 내보내, 프론트가 4슬롯(두 PREFERENCE·REALISTIC·HOLD_OUT)을
+        // 항상 같은 자리에 그리도록 한다.
         if (median.getSampleCount() == 0 || median.getDeposit().getMedian() == null) {
             log.info("선호 조건에 해당하는 실거래가 없습니다. memberId={}, regionCode={}",
                     memberId, request.getRegionCode());
-            return List.of();
+            return emptyCards();
         }
 
         long deposit = median.getDeposit().getMedian();
@@ -185,6 +187,18 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         }
 
         return List.of(savingFixedCard, dateFixedCard);
+    }
+
+    /**
+     * 데이터가 없을 때도 카드를 빼지 않고 두 장 모두 condition=null로 내보낸다.
+     * 프론트가 4슬롯(PREFERENCE 2 · REALISTIC · HOLD_OUT)을 항상 같은 자리에 그리도록 하기 위함이다.
+     */
+    private java.util.List<GoalRecommendationResponse.RecommendationItem> emptyCards() {
+        return java.util.List.of(
+                GoalRecommendationResponse.RecommendationItem.builder()
+                        .type(AlgorithmType.PREFERENCE_SAVING_FIXED).build(),
+                GoalRecommendationResponse.RecommendationItem.builder()
+                        .type(AlgorithmType.PREFERENCE_DATE_FIXED).build());
     }
 
     private RentMedianRequest buildMedianRequest(

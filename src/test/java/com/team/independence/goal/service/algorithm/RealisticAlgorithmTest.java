@@ -337,12 +337,14 @@ class RealisticAlgorithmTest {
     }
 
     @Test
-    @DisplayName("실거래 표본이 아무 조합에도 없으면 추천하지 않는다")
-    void returnsEmptyWhenNoMarketData() {
+    @DisplayName("실거래 표본이 아무 조합에도 없으면 카드를 빼지 않고 condition=null 한 장을 낸다")
+    void returnsNullCardWhenNoMarketData() {
         List<RecommendationItem> result = algorithm.recommend(
                 MEMBER_ID, request("11110", HousingType.APT, DealType.JEONSE), ctx);
 
-        assertThat(result).isEmpty();
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getType()).isEqualTo(AlgorithmType.REALISTIC);
+        assertThat(result.get(0).getCondition()).isNull();
     }
 
     // ===== 헬퍼 =====

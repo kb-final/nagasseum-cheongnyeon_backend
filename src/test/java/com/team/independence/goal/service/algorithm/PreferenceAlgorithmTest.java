@@ -170,19 +170,27 @@ class PreferenceAlgorithmTest {
     }
 
     @Test
-    @DisplayName("실거래가 한 건도 없으면 추천하지 않는다")
-    void returnsEmptyWhenNoTransaction() {
+    @DisplayName("실거래가 한 건도 없으면 카드를 빼지 않고 condition=null 두 장을 낸다")
+    void returnsNullCardsWhenNoTransaction() {
         stubMedian(0, 0, 0);
 
-        assertThat(algorithm.recommend(MEMBER_ID, request("11110"), ctx)).isEmpty();
+        List<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request("11110"), ctx);
+
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(RecommendationItem::getType)
+                .containsExactly(AlgorithmType.PREFERENCE_SAVING_FIXED, AlgorithmType.PREFERENCE_DATE_FIXED);
+        assertThat(result).allSatisfy(item -> assertThat(item.getCondition()).isNull());
     }
 
     @Test
-    @DisplayName("실거래 조회가 실패해도 예외를 밖으로 던지지 않는다")
-    void returnsEmptyWhenLookUpFails() {
+    @DisplayName("실거래 조회가 실패해도 예외를 던지지 않고 condition=null 두 장을 낸다")
+    void returnsNullCardsWhenLookUpFails() {
         doThrow(new IllegalStateException("조회 실패")).when(rentMedianService).getMedian(any());
 
-        assertThat(algorithm.recommend(MEMBER_ID, request("11110"), ctx)).isEmpty();
+        List<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request("11110"), ctx);
+
+        assertThat(result).hasSize(2);
+        assertThat(result).allSatisfy(item -> assertThat(item.getCondition()).isNull());
     }
 
     @Test
