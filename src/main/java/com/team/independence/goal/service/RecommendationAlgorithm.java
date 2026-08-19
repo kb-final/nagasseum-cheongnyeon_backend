@@ -1,5 +1,6 @@
 package com.team.independence.goal.service;
 
+import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.property.domain.DealType;
@@ -51,6 +52,23 @@ import java.util.Optional;
 public interface RecommendationAlgorithm {
 
     /**
+     * 상위에서 한 번만 조회한 회원 재무 정보.
+     *
+     * <p>세 알고리즘이 공통으로 사용하는 자산·저축·대출 데이터를 상위 서비스에서 미리 계산해
+     * 전달한다. 알고리즘마다 동일한 DB 조회를 반복하는 것을 방지한다.
+     */
+    record MemberFinancialContext(
+            AssetNetWorthBreakdown netWorth,
+            long rawMonthlySaving,
+            long loanPayment) {
+
+        /** 기존 대출 월상환액 차감 후 실질 저축 여력 */
+        public long effectiveSaving() {
+            return Math.max(0, rawMonthlySaving - loanPayment);
+        }
+    }
+
+    /**
      * 평수 구간(평). 넓은 쪽이 앞이다.
      *
      * <p>사용자가 평수를 지정하지 않았을 때 후보군으로 쓰는 공유 버킷.
@@ -69,7 +87,7 @@ public interface RecommendationAlgorithm {
      * @return 추천 대안. 제시할 만한 대안이 없으면 {@link Optional#empty()}
      */
     Optional<GoalRecommendationResponse.RecommendationItem> recommend(
-            long memberId, GoalRecommendationRequest request);
+            long memberId, GoalRecommendationRequest request, MemberFinancialContext ctx);
 
     static String label(HousingType housingType) {
         switch (housingType) {

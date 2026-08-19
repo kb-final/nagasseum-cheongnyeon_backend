@@ -7,13 +7,18 @@ import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
+import com.team.independence.goal.service.RecommendationAlgorithm.MemberFinancialContext;
+import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.property.mapper.RegionMapper;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,9 +38,12 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
 
     private final AssetConnectionService assetConnectionService;
     private final AssetSummaryService assetSummaryService;
+    private final LoanPlanCalculator loanPlanCalculator;
     private final RegionMapper regionMapper;
     private final ObjectProvider<RecommendationAlgorithm> algorithmProvider;
     private final GoalRecommendationStore recommendationStore;
+    @Qualifier("algorithmExecutor")
+    private final Executor algorithmExecutor;
 
     @Override
     @Transactional(readOnly = true)
@@ -52,12 +60,23 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
 
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
         long monthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
+        long loanPayment   = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
+        MemberFinancialContext ctx = new MemberFinancialContext(netWorth, monthlySaving, loanPayment);
+
         long currentAvailableAmount = netWorth.getInterestBearingAssets()
                 + netWorth.getFlatRecognizedAssets();
 
-        // 대안을 내지 못한 알고리즘은 제외하므로 결과 수가 알고리즘 수보다 적을 수 있다
-        List<GoalRecommendationResponse.RecommendationItem> recommendations = algorithms.stream()
-                .map(algorithm -> runSafely(algorithm, memberId, request))
+        List<CompletableFuture<Optional<GoalRecommendationResponse.RecommendationItem>>> futures =
+                algorithms.stream()
+                        .map(algorithm -> CompletableFuture.supplyAsync(
+                                () -> runSafely(algorithm, memberId, request, ctx),
+                                algorithmExecutor))
+                        .collect(Collectors.toList());
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        List<GoalRecommendationResponse.RecommendationItem> recommendations = futures.stream()
+                .map(CompletableFuture::join)
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .collect(Collectors.toList());
@@ -122,13 +141,15 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
      * 다만 모든 알고리즘이 실패하면 결과가 비어 {@code GOAL_RECOMMENDATION_NO_CANDIDATE}로 이어진다.
      */
     private Optional<GoalRecommendationResponse.RecommendationItem> runSafely(
-            RecommendationAlgorithm algorithm, long memberId, GoalRecommendationRequest request) {
+            RecommendationAlgorithm algorithm, long memberId,
+            GoalRecommendationRequest request, MemberFinancialContext ctx) {
         try {
-            return algorithm.recommend(memberId, request);
+            return algorithm.recommend(memberId, request, ctx);
         } catch (Exception e) {
             log.error("추천 알고리즘 실행 실패. algorithm={}, memberId={}",
                     algorithm.getClass().getSimpleName(), memberId, e);
             return Optional.empty();
         }
     }
+
 }

@@ -10,8 +10,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
-import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.goal.dto.AlgorithmType;
+import com.team.independence.goal.service.RecommendationAlgorithm.MemberFinancialContext;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse.RecommendationItem;
 import com.team.independence.goal.dto.LoanPlans;
@@ -61,8 +61,6 @@ class RealisticAlgorithmTest {
     private static final long 만 = 10_000L;
 
     @Mock
-    private AssetSummaryService assetSummaryService;
-    @Mock
     private RentMedianService rentMedianService;
     @Mock
     private RegionMapper regionMapper;
@@ -74,6 +72,8 @@ class RealisticAlgorithmTest {
     private MonteCarloService monteCarloService;
 
     private RealisticAlgorithm algorithm;
+    private AssetNetWorthBreakdown defaultNetWorth;
+    private MemberFinancialContext ctx;
 
     /** "지역|주거유형|거래유형|최소평수" → {보증금, 월세, 표본수} */
     private Map<String, long[]> market;
@@ -84,20 +84,16 @@ class RealisticAlgorithmTest {
     @BeforeEach
     void setUp() {
         algorithm = new RealisticAlgorithm(
-                assetSummaryService, rentMedianService, regionMapper, loanPlanCalculator,
+                rentMedianService, regionMapper, loanPlanCalculator,
                 budgetCalculator, monteCarloService);
         market = new HashMap<>();
         lookedUp = new ArrayList<>();
 
-        when(assetSummaryService.getNetWorthBreakdown(MEMBER_ID)).thenReturn(
-                AssetNetWorthBreakdown.builder()
-                        .interestBearingAssets(0L)
-                        .flatRecognizedAssets(0L)
-                        .build());
-        when(assetSummaryService.getMonthlySavingsOrZero(MEMBER_ID)).thenReturn(MONTHLY_SAVING);
-
-        // 기존 대출 없음 → effectiveSaving = rawMonthlySaving
-        when(loanPlanCalculator.calcTotalExistingMonthlyPayment(MEMBER_ID)).thenReturn(0L);
+        defaultNetWorth = AssetNetWorthBreakdown.builder()
+                .interestBearingAssets(0L)
+                .flatRecognizedAssets(0L)
+                .build();
+        ctx = new MemberFinancialContext(defaultNetWorth, MONTHLY_SAVING, 0L);
 
         // MC: 가격 변화 없음으로 스텁. 선택 로직이 가려지지 않게 priceP50 = initialPrice 반환.
         when(monteCarloService.simulate(any(PriceModelRequest.class), anyLong(), anyLong(), anyInt()))
@@ -159,9 +155,10 @@ class RealisticAlgorithmTest {
         put("11110", HousingType.APT, DealType.JEONSE, 4, 5000 * 만, 0);
 
         // 월 저축 2천만 → 예산 4.8억. 이제 3억짜리도 들어온다.
-        when(assetSummaryService.getMonthlySavingsOrZero(MEMBER_ID)).thenReturn(20_000_000L);
-
-        RecommendationItem item = recommend(request("11110", HousingType.APT, DealType.JEONSE));
+        RecommendationItem item = algorithm.recommend(MEMBER_ID,
+                request("11110", HousingType.APT, DealType.JEONSE),
+                new MemberFinancialContext(defaultNetWorth, 20_000_000L, 0L))
+                .orElseThrow(() -> new AssertionError("추천 결과가 비어 있습니다"));
 
         assertThat(item.getCondition().getAreaMin()).isEqualTo(20);
     }
@@ -262,10 +259,12 @@ class RealisticAlgorithmTest {
     @Test
     @DisplayName("월 저축액이 등록되지 않았으면 도달 불가로 흘러간다")
     void treatsMissingMonthlySavingAsZero() {
-        when(assetSummaryService.getMonthlySavingsOrZero(MEMBER_ID)).thenReturn(0L);
         put("11110", HousingType.APT, DealType.JEONSE, 15, 2 * 억, 0);
 
-        RecommendationItem item = recommend(request("11110", HousingType.APT, DealType.JEONSE));
+        RecommendationItem item = algorithm.recommend(MEMBER_ID,
+                request("11110", HousingType.APT, DealType.JEONSE),
+                new MemberFinancialContext(defaultNetWorth, 0L, 0L))
+                .orElseThrow(() -> new AssertionError("추천 결과가 비어 있습니다"));
 
         assertThat(item.getReason()).contains("도달하기 어렵습니다");
     }
@@ -344,7 +343,7 @@ class RealisticAlgorithmTest {
     @DisplayName("실거래 표본이 아무 조합에도 없으면 추천하지 않는다")
     void returnsEmptyWhenNoMarketData() {
         Optional<RecommendationItem> result = algorithm.recommend(
-                MEMBER_ID, request("11110", HousingType.APT, DealType.JEONSE));
+                MEMBER_ID, request("11110", HousingType.APT, DealType.JEONSE), ctx);
 
         assertThat(result).isEmpty();
     }
@@ -352,7 +351,7 @@ class RealisticAlgorithmTest {
     // ===== 헬퍼 =====
 
     private RecommendationItem recommend(GoalRecommendationRequest request) {
-        return algorithm.recommend(MEMBER_ID, request)
+        return algorithm.recommend(MEMBER_ID, request, ctx)
                 .orElseThrow(() -> new AssertionError("추천 결과가 비어 있습니다"));
     }
 
