@@ -163,4 +163,15 @@ public class RootConfig {
         return executor;
     }
 
+    @Bean("algorithmExecutor")
+    public Executor algorithmExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(3);
+        executor.setMaxPoolSize(6);
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("algo-rec-");
+        executor.initialize();
+        return executor;
+    }
+
 }
