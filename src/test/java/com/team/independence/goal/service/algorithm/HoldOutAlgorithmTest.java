@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
@@ -20,7 +21,6 @@ import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.property.dto.PriceModelRequest;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
-import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.dto.RentMedianResponse.Quartile;
 import com.team.independence.property.service.RentMedianService;
@@ -98,7 +98,8 @@ class HoldOutAlgorithmTest {
         when(goalMapper.findActiveByMemberId(MEMBER_ID)).thenReturn(null);
         when(loanPlanCalculator.calculate(anyLong(), anyLong(), any()))
                 .thenReturn(LoanPlans.builder().build());
-        when(rentMedianService.getMedian(any())).thenAnswer(call -> toResponse(call.getArgument(0)));
+        when(rentMedianService.getBulkMedian(anyString(), anyString(), anyString()))
+                .thenAnswer(call -> toBulkMap(call.getArgument(0)));
     }
 
     // ===== DSR 차감 관련 =====
@@ -326,31 +327,32 @@ class HoldOutAlgorithmTest {
     }
 
     /**
-     * market에 등록된 조합은 표본 15건으로 응답한다.
-     * HoldOut은 Q3(75분위)를 사용하므로 Q3를 등록한 값으로 설정한다.
-     * 미등록 조합은 표본 0건(MIN_SAMPLE_COUNT 미달)으로 응답해 자연스럽게 필터된다.
+     * market에서 regionCode에 해당하는 항목만 골라 getBulkMedian 반환 형식의 맵으로 변환한다.
+     * 키: "{HousingType}|{DealType}|{areaMin평}" — HoldOutAlgorithm.buildPool과 동일한 형식.
      */
-    private RentMedianResponse toResponse(RentMedianRequest request) {
-        long[] found = market.get(key(request.getRegionCode(), request.getHousingType(),
-                request.getDealType(), request.getAreaMin()));
-
-        RentMedianResponse.RentMedianResponseBuilder builder = RentMedianResponse.builder()
-                .regionCode(request.getRegionCode())
-                .regionName("테스트구")
-                .housingType(request.getHousingType())
-                .dealType(request.getDealType());
-
-        if (found == null) {
-            return builder.sampleCount(0).deposit(Quartile.empty()).monthlyRent(Quartile.empty()).build();
+    private Map<String, RentMedianResponse> toBulkMap(String regionCode) {
+        Map<String, RentMedianResponse> bulk = new HashMap<>();
+        for (Map.Entry<String, long[]> entry : market.entrySet()) {
+            String[] parts = entry.getKey().split("\\|");
+            if (!parts[0].equals(regionCode)) continue;
+            HousingType ht = HousingType.valueOf(parts[1]);
+            DealType dt = DealType.valueOf(parts[2]);
+            int areaMin = Integer.parseInt(parts[3]);
+            long[] vals = entry.getValue();
+            long q3Deposit = vals[0];
+            long q3MonthlyRent = vals[1];
+            bulk.put(ht + "|" + dt + "|" + areaMin, RentMedianResponse.builder()
+                    .regionCode(regionCode)
+                    .regionName("테스트구")
+                    .housingType(ht)
+                    .dealType(dt)
+                    .sampleCount(15)
+                    .deposit(Quartile.of(q3Deposit * 8 / 10, q3Deposit * 9 / 10, q3Deposit))
+                    .monthlyRent(q3MonthlyRent > 0
+                            ? Quartile.of(q3MonthlyRent * 8 / 10, q3MonthlyRent * 9 / 10, q3MonthlyRent)
+                            : Quartile.empty())
+                    .build());
         }
-        long q3Deposit = found[0];
-        long q3MonthlyRent = found[1];
-        return builder
-                .sampleCount(15)
-                .deposit(Quartile.of(q3Deposit * 8 / 10, q3Deposit * 9 / 10, q3Deposit))
-                .monthlyRent(q3MonthlyRent > 0
-                        ? Quartile.of(q3MonthlyRent * 8 / 10, q3MonthlyRent * 9 / 10, q3MonthlyRent)
-                        : Quartile.empty())
-                .build();
+        return bulk;
     }
 }
