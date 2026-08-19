@@ -106,6 +106,7 @@ CREATE TABLE rent_transaction (
     -- (지역, 연월, 유형) 단위 재적재 시 DELETE 대상을 구간으로 좁힌다.
     -- 최좌측 프리픽스가 region_code라 fk_rent_region의 인덱스 요건도 함께 충족.
     KEY idx_rent_reload (region_code, deal_ym, housing_type),
+    KEY idx_rent_query  (region_code, housing_type, deal_type, deal_ym),
     CONSTRAINT fk_rent_region FOREIGN KEY (region_code) REFERENCES region (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='실거래 전월세(4종 통합)';
 

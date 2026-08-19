@@ -35,12 +35,15 @@ public interface RentTransactionMapper {
                                          @Param("endYm") String endYm);
 
     /**
-     * HoldOut 알고리즘 전용. 지역·기간 조건만 받아 (주거유형, 거래유형, 평수 버킷)별
-     * 분위값을 한 번의 쿼리로 반환한다. 최대 40행(4유형 × 2거래 × 5버킷).
+     * 지역·기간·주거유형·거래유형을 받아 평수버킷별 분위값을 반환한다. 최대 5행(5버킷).
+     * getBulkMedian에서 8개 조합(4유형 × 2거래)을 순회하며 호출한다.
+     * housing_type, deal_type를 WHERE에 고정해 idx_rent_query 인덱스를 탄다.
      */
-    List<BulkMedianResult> findBulkMedian(@Param("regionCode") String regionCode,
-                                           @Param("startYm") String startYm,
-                                           @Param("endYm") String endYm);
+    List<BulkMedianResult> findBulkMedianByType(@Param("regionCode") String regionCode,
+                                                @Param("housingType") HousingType housingType,
+                                                @Param("dealType") DealType dealType,
+                                                @Param("startYm") String startYm,
+                                                @Param("endYm") String endYm);
 
     /** 가격 모델(μ, σ) 산출용 월별 (거래연월, 보증금, 면적) 목록. 보증금 0 제외 */
     List<MonthlyPricePoint> findAmountsForPriceModel(@Param("regionCode") String regionCode,

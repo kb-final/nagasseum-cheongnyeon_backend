@@ -2,6 +2,8 @@ package com.team.independence.property.service;
 
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
+import com.team.independence.property.domain.DealType;
+import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.BulkMedianResult;
 import com.team.independence.property.dto.MedianAggResult;
 import com.team.independence.property.dto.RentMedianRequest;
@@ -80,24 +82,31 @@ public class RentMedianServiceImpl implements RentMedianService {
             throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
         }
 
-        List<BulkMedianResult> rows = rentTransactionMapper.findBulkMedian(regionCode, startYm, endYm);
+        // (주거유형, 거래유형) 조합별로 개별 쿼리를 실행해 idx_rent_query 인덱스를 탄다.
+        // 단일 bulk 쿼리 대비 처리 행 수가 1/8로 줄어 윈도우 함수 비용이 크게 감소한다.
         Map<String, RentMedianResponse> result = new HashMap<>();
-        for (BulkMedianResult r : rows) {
-            String key = r.getHousingType() + "|" + r.getDealType() + "|" + r.getAreaMin();
-            RentMedianResponse response = RentMedianResponse.builder()
-                    .regionCode(regionCode)
-                    .regionName(regionName)
-                    .housingType(r.getHousingType())
-                    .dealType(r.getDealType())
-                    .baseStartYm(startYm)
-                    .baseEndYm(endYm)
-                    .sampleCount(r.getSampleCount())
-                    .deposit(Quartile.of(r.getDepositQ1(), r.getDepositQ2(), r.getDepositQ3()))
-                    .monthlyRent(r.getRentQ2() != null
-                            ? Quartile.of(r.getRentQ1(), r.getRentQ2(), r.getRentQ3())
-                            : Quartile.empty())
-                    .build();
-            result.put(key, response);
+        for (HousingType housingType : HousingType.values()) {
+            for (DealType dealType : DealType.values()) {
+                List<BulkMedianResult> rows = rentTransactionMapper.findBulkMedianByType(
+                        regionCode, housingType, dealType, startYm, endYm);
+                for (BulkMedianResult r : rows) {
+                    String key = housingType + "|" + dealType + "|" + r.getAreaMin();
+                    RentMedianResponse response = RentMedianResponse.builder()
+                            .regionCode(regionCode)
+                            .regionName(regionName)
+                            .housingType(housingType)
+                            .dealType(dealType)
+                            .baseStartYm(startYm)
+                            .baseEndYm(endYm)
+                            .sampleCount(r.getSampleCount())
+                            .deposit(Quartile.of(r.getDepositQ1(), r.getDepositQ2(), r.getDepositQ3()))
+                            .monthlyRent(r.getRentQ2() != null
+                                    ? Quartile.of(r.getRentQ1(), r.getRentQ2(), r.getRentQ3())
+                                    : Quartile.empty())
+                            .build();
+                    result.put(key, response);
+                }
+            }
         }
         return result;
     }

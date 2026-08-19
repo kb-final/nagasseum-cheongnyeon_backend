@@ -94,15 +94,16 @@
         ) t
     </select>
 
-    <!-- HoldOut 전용 bulk 쿼리. 지역·기간만 받아 (주거유형, 거래유형, 평수버킷)별 분위값을 한 번에 반환.
+    <!-- bulk 쿼리. 지역·기간·주거유형·거래유형을 받아 평수버킷별 분위값을 반환.
+         housing_type, deal_type를 WHERE에 추가해 idx_rent_query 인덱스를 타도록 한다.
          평수 버킷 경계(평 → ㎡ floor 환산): 4p=13, 9p=29 / 10p=33, 14p=46 / 15p=49, 19p=62
                                               20p=66, 25p=82 / 26p=85, 40p=132
          버킷 사이 공백(area 30-32, 47-48, 63-65, 83-84)은 WHERE 절에서 제외한다. -->
-    <select id="findBulkMedian" resultType="com.team.independence.property.dto.BulkMedianResult">
+    <select id="findBulkMedianByType" resultType="com.team.independence.property.dto.BulkMedianResult">
         SELECT
-            housing_type,
-            deal_type,
-            bucket_min AS area_min,
+            #{housingType}  AS housing_type,
+            #{dealType}     AS deal_type,
+            bucket_min      AS area_min,
             CASE bucket_min
                 WHEN 4  THEN 9  WHEN 10 THEN 14 WHEN 15 THEN 19
                 WHEN 20 THEN 25 WHEN 26 THEN 40
@@ -116,7 +117,7 @@
             MAX(total) AS sample_count
         FROM (
             SELECT
-                housing_type, deal_type, deposit, monthly_rent,
+                deposit, monthly_rent,
                 CASE
                     WHEN area BETWEEN 13 AND 29  THEN 4
                     WHEN area BETWEEN 33 AND 46  THEN 10
@@ -125,7 +126,7 @@
                     WHEN area BETWEEN 85 AND 132 THEN 26
                 END AS bucket_min,
                 ROW_NUMBER() OVER (
-                    PARTITION BY housing_type, deal_type,
+                    PARTITION BY
                         CASE WHEN area BETWEEN 13 AND 29  THEN 4
                              WHEN area BETWEEN 33 AND 46  THEN 10
                              WHEN area BETWEEN 49 AND 62  THEN 15
@@ -135,7 +136,7 @@
                     ORDER BY deposit
                 ) AS dep_rn,
                 ROW_NUMBER() OVER (
-                    PARTITION BY housing_type, deal_type,
+                    PARTITION BY
                         CASE WHEN area BETWEEN 13 AND 29  THEN 4
                              WHEN area BETWEEN 33 AND 46  THEN 10
                              WHEN area BETWEEN 49 AND 62  THEN 15
@@ -145,7 +146,7 @@
                     ORDER BY monthly_rent
                 ) AS rent_rn,
                 COUNT(*) OVER (
-                    PARTITION BY housing_type, deal_type,
+                    PARTITION BY
                         CASE WHEN area BETWEEN 13 AND 29  THEN 4
                              WHEN area BETWEEN 33 AND 46  THEN 10
                              WHEN area BETWEEN 49 AND 62  THEN 15
@@ -162,6 +163,8 @@
              WHERE region_code = #{regionCode}
                 </otherwise>
             </choose>
+               AND housing_type = #{housingType}
+               AND deal_type    = #{dealType}
                AND deposit &gt; 0
                AND deal_ym BETWEEN #{startYm} AND #{endYm}
                AND (   area BETWEEN 13 AND 29
@@ -170,7 +173,7 @@
                     OR area BETWEEN 66 AND 82
                     OR area BETWEEN 85 AND 132)
         ) t
-        GROUP BY housing_type, deal_type, bucket_min
+        GROUP BY bucket_min
     </select>
 
 </mapper>
