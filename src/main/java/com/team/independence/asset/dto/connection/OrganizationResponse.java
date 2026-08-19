@@ -1,5 +1,6 @@
 package com.team.independence.asset.dto.connection;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.team.independence.asset.domain.codef.Institution;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,6 +14,7 @@ public class OrganizationResponse {
     private String organizationName;
     private String businessType;
     private List<String> supportedLoginTypes;
+    @JsonProperty("isConnected")
     private boolean isConnected;
 
     public static OrganizationResponse from(Institution institution) {

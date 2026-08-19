@@ -28,6 +28,7 @@
           FROM institution i
           LEFT JOIN connected_institution ci
             ON ci.institution_code = i.code
+           AND ci.status = 'ACTIVE'
            AND ci.connected_account_id = (
                  SELECT id FROM connected_account WHERE member_id = #{memberId}
                )
