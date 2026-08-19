@@ -5,11 +5,10 @@ import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.config.RootConfig;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
-import com.team.independence.property.dto.RentMedianAmount;
+import com.team.independence.property.dto.MedianAggResult;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.mapper.RentTransactionMapper;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -68,30 +67,32 @@ class RentMedianIntegrationTest {
      */
     @Test
     void 전세_금액_조회() {
-        List<RentMedianAmount> amounts = rentTransactionMapper.findAmountsForMedian(
+        MedianAggResult agg = rentTransactionMapper.findAggregatedMedian(
                 request(DealType.JEONSE, null, null),
                 AREA_MIN_SQM, AREA_MAX_SQM, DEAL_YM, DEAL_YM);
 
-        System.out.println("전세 조회 건수: " + amounts.size());
-        assertFalse(amounts.isEmpty(), "전세 실거래가 조회되지 않았습니다.");
+        System.out.println("전세 조회 건수: " + agg.getSampleCount());
+        assertNotNull(agg, "집계 결과가 null입니다.");
+        assertTrue(agg.getSampleCount() != null && agg.getSampleCount() > 0, "전세 실거래가 조회되지 않았습니다.");
         assertAll(
-                () -> assertTrue(amounts.stream().allMatch(a -> a.getDeposit() > 0),
+                () -> assertTrue(agg.getDepositQ2() != null && agg.getDepositQ2() > 0,
                         "deposit > 0 필터가 동작하지 않았습니다."),
-                () -> assertTrue(amounts.stream().allMatch(a -> a.getMonthlyRent() == 0),
-                        "전세인데 월세가 0이 아닌 행이 있습니다."));
+                () -> assertTrue(agg.getRentQ2() == null || agg.getRentQ2() == 0,
+                        "전세인데 월세 중앙값이 0이 아닙니다."));
     }
 
-    /** 월세 조건 <if> 분기와 monthly_rent → monthlyRent 매핑을 함께 확인한다. */
+    /** 월세 조건 <if> 분기와 monthly_rent → rentQ2 매핑을 함께 확인한다. */
     @Test
     void 월세_금액_조회() {
-        List<RentMedianAmount> amounts = rentTransactionMapper.findAmountsForMedian(
+        MedianAggResult agg = rentTransactionMapper.findAggregatedMedian(
                 request(DealType.WOLSE, MONTHLY_RENT_MIN, MONTHLY_RENT_MAX),
                 AREA_MIN_SQM, AREA_MAX_SQM, DEAL_YM, DEAL_YM);
 
-        System.out.println("월세 조회 건수: " + amounts.size());
-        assertFalse(amounts.isEmpty(), "월세 실거래가 조회되지 않았습니다.");
-        assertTrue(amounts.stream().allMatch(a -> a.getMonthlyRent() > 0),
-                "월세 거래인데 monthly_rent가 0인 행이 있습니다. 매핑이나 필터를 확인하세요.");
+        System.out.println("월세 조회 건수: " + agg.getSampleCount());
+        assertNotNull(agg, "집계 결과가 null입니다.");
+        assertTrue(agg.getSampleCount() != null && agg.getSampleCount() > 0, "월세 실거래가 조회되지 않았습니다.");
+        assertTrue(agg.getRentQ2() != null && agg.getRentQ2() > 0,
+                "월세 중앙값이 0 이하입니다. 매핑이나 필터를 확인하세요.");
     }
 
     /** 없는 지역 코드는 조회 전에 PROPERTY_001로 끊긴다. */
