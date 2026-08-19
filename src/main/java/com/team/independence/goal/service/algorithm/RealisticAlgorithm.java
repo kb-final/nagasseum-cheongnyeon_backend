@@ -144,7 +144,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     private final MonteCarloService monteCarloService;
 
     @Override
-    public Optional<GoalRecommendationResponse.RecommendationItem> recommend(
+    public List<GoalRecommendationResponse.RecommendationItem> recommend(
             long memberId, GoalRecommendationRequest request, MemberFinancialContext ctx) {
 
         YearMonth targetDate = resolveTargetDate(request);
@@ -160,7 +160,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         if (regionCode == null) {
             log.warn("추천 가능한 시군구를 찾지 못했습니다. memberId={}, regionCode={}",
                     memberId, request.getRegionCode());
-            return Optional.empty();
+            return List.of();
         }
 
         // 시군구 확정 후 (주거유형, 거래유형, 평수) 40개 조합을 bulk 1회 쿼리로 선조회
@@ -176,7 +176,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         List<Candidate> asRequested = evaluateConditions(regionCode, request, search, true, bulkMedians);
         Optional<Candidate> keepingInput = bestWithinTarget(asRequested);
         if (keepingInput.isPresent()) {
-            return Optional.of(assemble(memberId, keepingInput.get(), targetDate, desiredMonths, false, search, depositMin, depositMax));
+            return List.of(assemble(memberId, keepingInput.get(), targetDate, search, depositMin, depositMax));
         }
 
         // 3단계: 입력한 조건으로는 목표 시점을 못 지킨다. 그때만 조건을 풀고 다시 찾는다.
@@ -186,11 +186,11 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                 : asRequested;
         if (relaxed.isEmpty()) {
             log.warn("실거래 표본이 있는 조합이 없습니다. memberId={}, regionCode={}", memberId, regionCode);
-            return Optional.empty();
+            return List.of();
         }
 
         Candidate chosen = bestWithinTarget(relaxed).orElseGet(() -> cheapest(relaxed));
-        return Optional.of(assemble(memberId, chosen, targetDate, desiredMonths, true, search, depositMin, depositMax));
+        return List.of(assemble(memberId, chosen, targetDate, search, depositMin, depositMax));
     }
 
     /** 사용자가 지역 외에 조정 가능한 조건을 하나라도 줬는가 */
@@ -486,8 +486,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     // ===== 응답 조립 =====
 
     private GoalRecommendationResponse.RecommendationItem assemble(
-            long memberId, Candidate chosen, YearMonth targetDate,
-            long desiredMonths, boolean adjusted, Search search,
+            long memberId, Candidate chosen, YearMonth targetDate, Search search,
             long depositMin, long depositMax) {
 
         // 화면에 나가는 목표 금액은 환산값이 아니라 실제로 모아야 하는 보증금이다.
@@ -500,9 +499,6 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                     chosen.deposit(), chosen.reachMonths());
             loanO = loanO.toBuilder().shortenedMonths(shortened).build();
         }
-
-        long reachableAmountAtTargetDate =
-                budgetCalculator.calculate(search.netWorth, search.effectiveSaving, desiredMonths);
 
         GoalRecommendationResponse.Condition condition = GoalRecommendationResponse.Condition.builder()
                 .regionCode(chosen.regionCode())
@@ -520,51 +516,10 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
 
         return GoalRecommendationResponse.RecommendationItem.builder()
                 .type(AlgorithmType.REALISTIC)
-                .title(buildTitle(chosen, desiredMonths))
-                .reason(buildReason(chosen, desiredMonths, adjusted))
                 .condition(condition)
-                .calculationBasis(GoalRecommendationResponse.CalculationBasis.builder()
-                        .reachableAmountAtTargetDate(reachableAmountAtTargetDate)
-                        .build())
                 .loanX(plans.getLoanX())
                 .loanO(loanO)
                 .build();
-    }
-
-    private String buildTitle(Candidate chosen, long desiredMonths) {
-        if (chosen.withinTarget()) {
-            return String.format("%d개월 안에 갈 수 있는 %s %s",
-                    desiredMonths, chosen.regionName(), RecommendationAlgorithm.label(chosen.housingType()));
-        }
-        return String.format("%s에서 가장 가까운 %s", chosen.regionName(), RecommendationAlgorithm.label(chosen.housingType()));
-    }
-
-    /**
-     * 무엇을 왜 그렇게 정했는지 서술한다.
-     *
-     * <p>목표 시점 안에 되는 경우와 못 되는 경우는 카드가 하는 말 자체가 다르므로 문구를 갈라 쓴다.
-     * 후자는 조건을 조정해도 시점을 못 지킨다는 뜻이라, 가능하다고 말하면 거짓이 된다.
-     */
-    private String buildReason(Candidate chosen, long desiredMonths, boolean adjusted) {
-        String condition = String.format("%s %s %d~%d평 %s",
-                chosen.regionName(), RecommendationAlgorithm.label(chosen.housingType()),
-                chosen.areaMin(), chosen.areaMax(), RecommendationAlgorithm.label(chosen.dealType()));
-
-        if (!chosen.withinTarget()) {
-            if (chosen.reachMonths() == null) {
-                return String.format(
-                        "지금 저축 속도로는 %s 조건에 도달하기 어렵습니다. 저축액을 늘리면 목표가 잡힙니다.", condition);
-            }
-            return String.format(
-                    "%d개월 안에 가능한 조건은 찾지 못했습니다. %s가 가장 가까우며 %d개월이 필요합니다.",
-                    desiredMonths, condition, chosen.reachMonths());
-        }
-        if (adjusted) {
-            return String.format(
-                    "입력하신 조건으로는 %d개월을 지키기 어렵습니다. %s로 바꾸면 그 안에 도달할 수 있습니다.",
-                    desiredMonths, condition);
-        }
-        return String.format("%s로 %d개월 안에 도달할 수 있습니다.", condition, desiredMonths);
     }
 
     // ===== 입력 정규화 =====

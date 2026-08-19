@@ -31,7 +31,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * "더 기다리면 더 넓은 평수로 이사할 수 있어요" 카드를 만드는 HoldOut 추천 알고리즘.
@@ -86,7 +85,7 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     private final MonteCarloService  monteCarloService;
 
     @Override
-    public Optional<GoalRecommendationResponse.RecommendationItem> recommend(
+    public List<GoalRecommendationResponse.RecommendationItem> recommend(
             long memberId, GoalRecommendationRequest request, MemberFinancialContext ctx
     ) {
         Goal activeGoal = goalMapper.findActiveByMemberId(memberId);
@@ -95,7 +94,7 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                 : null;
 
         BaseCondition base = resolveCondition(request, housing, activeGoal);
-        if (base == null) return Optional.empty();
+        if (base == null) return List.of();
 
         YearMonth now = YearMonth.now();
         AssetNetWorthBreakdown netWorth = ctx.netWorth();
@@ -136,10 +135,8 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
         if (best == null) {
             log.info("[HoldOut] 적합한 후보 없음 — soft-fail 반환 memberId={} regionCode={}", memberId, base.regionCode);
-            return Optional.of(GoalRecommendationResponse.RecommendationItem.builder()
+            return List.of(GoalRecommendationResponse.RecommendationItem.builder()
                     .type(AlgorithmType.HOLD_OUT)
-                    .title(buildInfeasibleTitle(base))
-                    .reason(buildInfeasibleReason(base, n))
                     .build());
         }
 
@@ -157,10 +154,8 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
             loanO = loanO.toBuilder().shortenedMonths(shortened).build();
         }
 
-        return Optional.of(GoalRecommendationResponse.RecommendationItem.builder()
+        return List.of(GoalRecommendationResponse.RecommendationItem.builder()
                 .type(AlgorithmType.HOLD_OUT)
-                .title(buildTitle(base, best, n, regionExpanded))
-                .reason(buildReason(base, best, n, regionExpanded))
                 .condition(GoalRecommendationResponse.Condition.builder()
                         .regionCode(best.median.getRegionCode())
                         .regionName(best.median.getRegionName())
@@ -176,9 +171,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                                 ? best.median.getMonthlyRent().getQ3() : 0L)
                         .sampleCount(best.median.getSampleCount())
                         .marketMedianAmount(best.futurePrice)
-                        .build())
-                .calculationBasis(GoalRecommendationResponse.CalculationBasis.builder()
-                        .reachableAmountAtTargetDate(null)
                         .build())
                 .loanX(plans.getLoanX())
                 .loanO(loanO)
@@ -339,137 +331,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     private double calcConditionImprovementScore(double baseMidArea, double candidateMidArea) {
         double delta = candidateMidArea - baseMidArea;
         return Math.min(1.0, Math.max(0.0, 0.5 + delta / 20.0));
-    }
-
-    // ─── 메시지 빌더 ─────────────────────────────────────────────────────────────
-
-    /** feasible=false 카드 제목 — 후보를 전혀 찾지 못한 경우 */
-    private String buildInfeasibleTitle(BaseCondition base) {
-        return base.areaMin != null && base.areaMax != null
-                ? "더 기다려도 더 넓은 평수로 이사하기 어려워요"
-                : "현재 저축 계획으로는 원하는 조건 달성이 어려워요";
-    }
-
-    /** feasible=false 카드 이유 — 총 탐색 기간(n + PATIENCE_BONUS)을 기준으로 설명 */
-    private String buildInfeasibleReason(BaseCondition base, long n) {
-        String waitStr = formatMonths(n + PATIENCE_BONUS);
-        if (base.areaMin != null && base.areaMax != null) {
-            return String.format(
-                    "%s을 기다려도 현재 저축 계획으로는 %d~%d평보다 넓은 집을 마련하기 어려워요. 저축액을 늘리거나 조건을 조정해 보세요.",
-                    waitStr, base.areaMin, base.areaMax);
-        }
-        String housingLabel = base.housingType != null ? RecommendationAlgorithm.label(base.housingType) : "주택";
-        String dealLabel    = base.dealType    != null ? RecommendationAlgorithm.label(base.dealType)    : "";
-        String typePart     = dealLabel.isEmpty() ? housingLabel : housingLabel + " " + dealLabel;
-        return String.format(
-                "%s을 기다려도 현재 저축 계획으로는 요청하신 지역의 %s을 마련하기 어려워요. 저축액을 늘리거나 조건을 조정해 보세요.",
-                waitStr, typePart);
-    }
-
-    /**
-     * 상황별 카드 제목.
-     *
-     * <table>
-     *   <tr><th>상황</th><th>제목</th></tr>
-     *   <tr><td>m=0 · 평수 지정</td><td>현재 계획으로도 더 넓은 평수를 노려볼 수 있어요</td></tr>
-     *   <tr><td>m=0 · 평수 미지정</td><td>현재 저축 계획으로도 더 좋은 조건의 집이 가능해요</td></tr>
-     *   <tr><td>지역 확장 · m>0</td><td>N 더 기다리면 원하는 조건으로 이사할 수 있어요</td></tr>
-     *   <tr><td>같은 지역 · 평수 지정 · m>0</td><td>N 더 기다리면 더 넓은 집으로 이사할 수 있어요</td></tr>
-     *   <tr><td>같은 지역 · 평수 미지정 · m>0</td><td>N 더 기다리면 더 좋은 조건의 집을 마련할 수 있어요</td></tr>
-     * </table>
-     */
-    private String buildTitle(BaseCondition base, ScoredCandidate best, long n, boolean regionExpanded) {
-        boolean sizeSpecified = base.areaMin != null && base.areaMax != null;
-        long m = best.m;
-
-        if (m == 0) {
-            return sizeSpecified
-                    ? "현재 계획으로도 더 넓은 평수를 노려볼 수 있어요"
-                    : "현재 저축 계획으로도 더 좋은 조건의 집이 가능해요";
-        }
-        if (regionExpanded) {
-            return formatMonths(m) + " 더 기다리면 원하는 조건으로 이사할 수 있어요";
-        }
-        return sizeSpecified
-                ? formatMonths(m) + " 더 기다리면 더 넓은 집으로 이사할 수 있어요"
-                : formatMonths(m) + " 더 기다리면 더 좋은 조건의 집을 마련할 수 있어요";
-    }
-
-    /**
-     * 상황별 카드 이유 문구.
-     *
-     * <table>
-     *   <tr><th>상황</th><th>핵심 메시지</th></tr>
-     *   <tr><td>m=0 · 평수 지정</td><td>"현재 목표 저축이면 A평 → B평 업그레이드 가능"</td></tr>
-     *   <tr><td>m=0 · 평수 미지정</td><td>"현재 예산으로 지역 유형 B평 가능"</td></tr>
-     *   <tr><td>지역 확장 · m>0 · 평수 지정</td><td>"요청 지역 예산 초과 → N 저축하면 시도 내 B평 가능"</td></tr>
-     *   <tr><td>지역 확장 · m>0 · 평수 미지정</td><td>"요청 지역 예산 초과 → N 저축하면 시도 내 유형 B평 가능"</td></tr>
-     *   <tr><td>같은 지역 · 평수 지정 · 목표 있음</td><td>"목표 시점보다 N 더 기다리면 A평 → B평"</td></tr>
-     *   <tr><td>같은 지역 · 평수 지정 · 목표 없음</td><td>"N 저축하면 A평 → B평"</td></tr>
-     *   <tr><td>같은 지역 · 평수 미지정</td><td>"N 저축하면 지역 유형 B평 마련 가능"</td></tr>
-     * </table>
-     */
-    private String buildReason(BaseCondition base, ScoredCandidate best, long n, boolean regionExpanded) {
-        boolean sizeSpecified = base.areaMin != null && base.areaMax != null;
-        boolean hasTarget = n > 0;
-        long m = best.m;
-        String regionName = best.median.getRegionName();
-        String housingLabel = RecommendationAlgorithm.label(best.candidate.housingType);
-        String dealLabel    = RecommendationAlgorithm.label(best.candidate.dealType);
-        int rMin = best.candidate.areaMin;
-        int rMax = best.candidate.areaMax;
-
-        // m=0: 현재 계획으로도 이미 업그레이드 가능
-        if (m == 0) {
-            if (sizeSpecified) {
-                return String.format(
-                        "현재 목표대로 저축하면 %s %d~%d평에서 %d~%d평으로 넓혀서 이사할 수도 있어요.",
-                        housingLabel, base.areaMin, base.areaMax, rMin, rMax);
-            }
-            return String.format(
-                    "현재 저축 계획으로 %s %s %d~%d평이 %s에서 가능해요.",
-                    housingLabel, dealLabel, rMin, rMax, regionName);
-        }
-
-        String waitStr = formatMonths(m);
-
-        // 지역 확장(요청 시군구 → 상위 시도)으로 찾은 경우
-        if (regionExpanded) {
-            if (sizeSpecified) {
-                return String.format(
-                        "요청하신 지역은 현재 예산을 초과하지만, %s 더 저축하면 %s에서 %s %s %d~%d평으로 이사할 수 있어요.",
-                        waitStr, regionName, housingLabel, dealLabel, rMin, rMax);
-            }
-            return String.format(
-                    "요청하신 지역은 현재 예산을 초과하지만, %s 더 저축하면 %s에서 %s %s %d~%d평이 가능해요.",
-                    waitStr, regionName, housingLabel, dealLabel, rMin, rMax);
-        }
-
-        // 같은 지역, 평수 지정
-        if (sizeSpecified) {
-            String waitPrefix = hasTarget
-                    ? "목표 시점보다 " + waitStr + " 더 기다리면"
-                    : waitStr + " 저축하면";
-            return String.format(
-                    "%s %s에서 %d~%d평에서 %d~%d평으로 넓혀서 이사할 수 있어요.",
-                    waitPrefix, regionName, base.areaMin, base.areaMax, rMin, rMax);
-        }
-
-        // 같은 지역, 평수 미지정
-        String waitPrefix = hasTarget
-                ? "목표 시점보다 " + waitStr + " 더 기다리면"
-                : waitStr + " 저축하면";
-        return String.format(
-                "%s %s %s %s %d~%d평을 마련할 수 있어요.",
-                waitPrefix, regionName, housingLabel, dealLabel, rMin, rMax);
-    }
-
-    private String formatMonths(long months) {
-        long years = months / 12;
-        long rem   = months % 12;
-        if (years == 0) return months + "개월";
-        if (rem   == 0) return years  + "년";
-        return years + "년 " + rem + "개월";
     }
 
     // ─── resolveCondition ────────────────────────────────────────────────────────

@@ -11,7 +11,6 @@ import com.team.independence.goal.service.RecommendationAlgorithm.MemberFinancia
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.property.mapper.RegionMapper;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
@@ -63,10 +62,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
         long loanPayment   = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
         MemberFinancialContext ctx = new MemberFinancialContext(netWorth, monthlySaving, loanPayment);
 
-        long currentAvailableAmount = netWorth.getInterestBearingAssets()
-                + netWorth.getFlatRecognizedAssets();
-
-        List<CompletableFuture<Optional<GoalRecommendationResponse.RecommendationItem>>> futures =
+        List<CompletableFuture<List<GoalRecommendationResponse.RecommendationItem>>> futures =
                 algorithms.stream()
                         .map(algorithm -> CompletableFuture.supplyAsync(
                                 () -> runSafely(algorithm, memberId, request, ctx),
@@ -77,8 +73,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
 
         List<GoalRecommendationResponse.RecommendationItem> recommendations = futures.stream()
                 .map(CompletableFuture::join)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
+                .flatMap(List::stream)
                 .collect(Collectors.toList());
 
         if (recommendations.isEmpty()) {
@@ -87,9 +82,6 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
 
         GoalRecommendationResponse response = GoalRecommendationResponse.builder()
                 .originalPreference(buildOriginalPreference(request, monthlySaving))
-                .financialContext(GoalRecommendationResponse.FinancialContext.builder()
-                        .currentAvailableAmount(currentAvailableAmount)
-                        .build())
                 .recommendations(recommendations)
                 .build();
 
@@ -140,7 +132,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
      * <p>알고리즘들은 서로 독립적이라 하나의 오류가 전체 응답을 막을 이유가 없다.
      * 다만 모든 알고리즘이 실패하면 결과가 비어 {@code GOAL_RECOMMENDATION_NO_CANDIDATE}로 이어진다.
      */
-    private Optional<GoalRecommendationResponse.RecommendationItem> runSafely(
+    private List<GoalRecommendationResponse.RecommendationItem> runSafely(
             RecommendationAlgorithm algorithm, long memberId,
             GoalRecommendationRequest request, MemberFinancialContext ctx) {
         try {
@@ -148,7 +140,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
         } catch (Exception e) {
             log.error("추천 알고리즘 실행 실패. algorithm={}, memberId={}",
                     algorithm.getClass().getSimpleName(), memberId, e);
-            return Optional.empty();
+            return List.of();
         }
     }
 

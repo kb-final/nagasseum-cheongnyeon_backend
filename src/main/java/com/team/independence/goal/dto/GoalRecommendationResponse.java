@@ -16,9 +16,6 @@ public class GoalRecommendationResponse {
     /** 사용자가 요청한 원래 희망 조건 — 세 추천 카드와 비교 기준으로 사용 */
     private OriginalPreference originalPreference;
 
-    /** 세 추천에 공통으로 사용된 재무 계산 기준 */
-    private FinancialContext financialContext;
-
     private List<RecommendationItem> recommendations;
 
     @Getter
@@ -50,25 +47,14 @@ public class GoalRecommendationResponse {
     @Getter
     @Builder
     @Jacksonized
-    public static class FinancialContext {
-        /** 현재 주거 목표 계산에 활용 가능한 자산(원) */
-        private long currentAvailableAmount;
-    }
-
-    @Getter
-    @Builder
-    @Jacksonized
     public static class RecommendationItem {
         /** 이 대안을 만든 추천 알고리즘 */
         private AlgorithmType type;
-        private String title;
-        private String reason;
         /**
          * 추천 주거 조건. 후보를 찾지 못한 경우 null.
          * 프론트엔드는 이 필드가 null인지 확인해 카드를 비활성 스타일로 표시한다.
          */
         private Condition condition;
-        private CalculationBasis calculationBasis;
         /** 대출 없는 플랜 */
         private LoanXPlan loanX;
         /** 대출 있는 플랜 */
@@ -107,19 +93,6 @@ public class GoalRecommendationResponse {
 
         /** 이 추천 조건의 실거래 중앙값(원). 플랜 계산의 기준이 된 시세. */
         private long marketMedianAmount;
-    }
-
-    @Getter
-    @Builder
-    @Jacksonized
-    public static class CalculationBasis {
-        /**
-         * 사용자가 설정한 목표 시점까지 준비 가능한 총 금액(원).
-         *
-         * <p>REALISTIC 타입만 값을 가진다. "이 금액에 맞는 조건을 찾았다"는 설명에 사용.
-         * PREFERENCE · HOLD_OUT은 이 방식으로 조건을 찾지 않으므로 null.
-         */
-        private Long reachableAmountAtTargetDate;
     }
 
     @Getter
