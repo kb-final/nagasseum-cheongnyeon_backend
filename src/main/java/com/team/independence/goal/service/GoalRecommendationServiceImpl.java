@@ -9,7 +9,10 @@ import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.goal.service.RecommendationAlgorithm.MemberFinancialContext;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
+import com.team.independence.property.dto.RentMedianRequest;
+import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.mapper.RegionMapper;
+import com.team.independence.property.service.RentMedianService;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -39,6 +42,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
     private final AssetSummaryService assetSummaryService;
     private final LoanPlanCalculator loanPlanCalculator;
     private final RegionMapper regionMapper;
+    private final RentMedianService rentMedianService;
     private final ObjectProvider<RecommendationAlgorithm> algorithmProvider;
     private final GoalRecommendationStore recommendationStore;
     @Qualifier("algorithmExecutor")
@@ -118,6 +122,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
                         .depositMax(request.getDepositMax())
                         .monthlyRentMin(request.getMonthlyRentMin())
                         .monthlyRentMax(request.getMonthlyRentMax())
+                        .marketMedianAmount(resolveBaseMedianAmount(request))
                         .build();
 
         return GoalRecommendationResponse.OriginalPreference.builder()
@@ -125,6 +130,34 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
                 .targetDate(request.getTargetDate())
                 .monthlySaving(monthlySaving)
                 .build();
+    }
+
+    /**
+     * 원래 희망 조건의 실거래 중앙값을 조회한다.
+     * 주거유형·거래유형·최소 평수가 하나라도 없으면 조회 불가이므로 null 반환.
+     */
+    private Long resolveBaseMedianAmount(GoalRecommendationRequest request) {
+        if (request.getPropertyType() == null
+                || request.getTradeType() == null
+                || request.getSizeMin() == null) {
+            return null;
+        }
+        try {
+            RentMedianRequest medianReq = new RentMedianRequest();
+            medianReq.setRegionCode(request.getRegionCode());
+            medianReq.setHousingType(request.getPropertyType());
+            medianReq.setDealType(request.getTradeType());
+            medianReq.setAreaMin(request.getSizeMin());
+            medianReq.setAreaMax(request.getSizeMax());
+            medianReq.setDepositMin(0L);
+            medianReq.setDepositMax(Long.MAX_VALUE);
+
+            RentMedianResponse median = rentMedianService.getMedian(medianReq);
+            return (median.getDeposit() != null) ? median.getDeposit().getQ3() : null;
+        } catch (Exception e) {
+            log.warn("[OriginalPreference] 기준 시세 조회 실패 — null 처리. regionCode={}", request.getRegionCode(), e);
+            return null;
+        }
     }
 
     /**

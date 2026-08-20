@@ -42,6 +42,8 @@ public class GoalRecommendationResponse {
         private Long depositMax;
         private Long monthlyRentMin;
         private Long monthlyRentMax;
+        /** 원래 조건의 실거래 중앙값. 조건이 불완전하거나 시세 조회 실패 시 null. */
+        private Long marketMedianAmount;
     }
 
     @Getter
