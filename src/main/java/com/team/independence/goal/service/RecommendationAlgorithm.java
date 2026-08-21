@@ -124,4 +124,23 @@ public interface RecommendationAlgorithm {
         req.setAreaMax(areaMax);
         return req;
     }
+
+    /**
+     * {@code LoanPlanCalculator}가 계산하는 monthlySaving은 <b>보증금을 모으는 동안</b>의 저축액이라
+     * 월세는 반영돼 있지 않다. 보증금을 다 모아 입주한 뒤부터는 매달 월세가 추가로 나가므로, 카드에
+     * 표시되는 월 부담에는 월세를 더해 보여준다. 전세(월세 0)거나 plan이 null이면 그대로 반환한다.
+     *
+     * <p>세 알고리즘이 똑같은 방식으로 이 값을 조립해야 카드끼리 비교가 가능하므로 공유 헬퍼로 둔다.
+     */
+    static GoalRecommendationResponse.LoanXPlan withMonthlyRentAdded(
+            GoalRecommendationResponse.LoanXPlan plan, long monthlyRent) {
+        if (plan == null || monthlyRent <= 0) return plan;
+        return plan.toBuilder().monthlySaving(plan.getMonthlySaving() + monthlyRent).build();
+    }
+
+    static GoalRecommendationResponse.LoanOPlan withMonthlyRentAdded(
+            GoalRecommendationResponse.LoanOPlan plan, long monthlyRent) {
+        if (plan == null || monthlyRent <= 0) return plan;
+        return plan.toBuilder().monthlySaving(plan.getMonthlySaving() + monthlyRent).build();
+    }
 }

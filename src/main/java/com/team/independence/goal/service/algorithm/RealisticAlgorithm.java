@@ -10,6 +10,7 @@ import com.team.independence.goal.service.MonteCarloService;
 import com.team.independence.goal.service.RecommendationAlgorithm;
 import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
+import com.team.independence.goal.service.calculator.LoanSchedule;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.PriceModelRequest;
@@ -152,9 +153,9 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         long desiredMonths = RecommendationAlgorithm.monthsUntil(targetDate);
 
         AssetNetWorthBreakdown netWorth = ctx.netWorth();
-        long effectiveSaving  = ctx.currentEffectiveSaving();
 
-        Search search = new Search(memberId, netWorth, effectiveSaving, desiredMonths);
+        Search search = new Search(memberId, netWorth, ctx.rawMonthlySaving(), ctx.loanSchedules(),
+                ctx.currentEffectiveSaving(), desiredMonths);
 
         // 1단계: 시군구 확정
         String regionCode = selectRegion(request, search);
@@ -273,7 +274,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                 cheapestCode = code;
                 cheapestAmount = amount;
             }
-            Long reachMonths = budgetCalculator.monthsToReach(search.netWorth, search.effectiveSaving, amount);
+            Long reachMonths = budgetCalculator.monthsToReach(
+                    search.netWorth, search.rawMonthlySaving, search.loanSchedules, amount);
             boolean withinTarget = reachMonths != null
                     && (double) reachMonths / search.desiredMonths <= MAX_REACH_RATIO;
             if (withinTarget && amount > bestAmount) {
@@ -429,7 +431,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         long projectedDeposit = deposit;
         try {
             PriceModelRequest priceReq = RecommendationAlgorithm.buildPriceModelRequest(regionCode, housingType, dealType, areaMin, areaMax);
-            long budgetAtT = budgetCalculator.calculate(search.netWorth, search.effectiveSaving, search.desiredMonths);
+            long budgetAtT = budgetCalculator.calculate(
+                    search.netWorth, search.rawMonthlySaving, search.loanSchedules, search.desiredMonths);
             MonteCarloEngine.Result mc = monteCarloService.simulate(
                     priceReq, deposit, budgetAtT, (int) search.desiredMonths);
             projectedDeposit = mc.priceP50();
@@ -440,7 +443,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
 
         long comparableAmount = toComparableAmount(projectedDeposit, monthlyRent);
         Long reachMonths = budgetCalculator.monthsToReach(
-                search.netWorth, search.effectiveSaving, comparableAmount);
+                search.netWorth, search.rawMonthlySaving, search.loanSchedules, comparableAmount);
 
         return Optional.of(new Candidate(
                 regionCode, median.getRegionName(), housingType, dealType,
@@ -486,10 +489,16 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
             long depositMin, long depositMax) {
 
         // 화면에 나가는 목표 금액은 환산값이 아니라 실제로 모아야 하는 보증금이다.
-        LoanPlans plans = loanPlanCalculator.calculate(memberId, chosen.deposit(), targetDate, search.effectiveSaving);
+        // loanO 달성 가능 여부 판정은 "지금 시점" 스냅샷이면 충분하므로 currentEffectiveSaving을 쓴다.
+        LoanPlans plans = loanPlanCalculator.calculate(
+                memberId, chosen.deposit(), targetDate, search.currentEffectiveSaving);
 
         // 날짜 고정 카드라 대출은 시점을 앞당기는 게 아니라 필요 저축액을 낮춘다 → 단축 개월은 0
-        GoalRecommendationResponse.LoanOPlan loanO = plans.getLoanO();
+        // monthlySaving은 보증금을 모으는 동안의 저축액이라 월세가 빠져 있다. 월세 후보면 더해서 보여준다.
+        GoalRecommendationResponse.LoanXPlan loanX =
+                RecommendationAlgorithm.withMonthlyRentAdded(plans.getLoanX(), chosen.monthlyRent());
+        GoalRecommendationResponse.LoanOPlan loanO =
+                RecommendationAlgorithm.withMonthlyRentAdded(plans.getLoanO(), chosen.monthlyRent());
         if (loanO != null) {
             loanO = loanO.toBuilder().shortenedMonths(0L).build();
         }
@@ -511,7 +520,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         return GoalRecommendationResponse.RecommendationItem.builder()
                 .type(AlgorithmType.REALISTIC)
                 .condition(condition)
-                .loanX(plans.getLoanX())
+                .loanX(loanX)
                 .loanO(loanO)
                 .build();
     }
@@ -533,16 +542,23 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     private static class Search {
         private final long memberId;
         private final AssetNetWorthBreakdown netWorth;
-        /** 기존 대출 월상환액 차감 후 순저축액 */
-        private final long effectiveSaving;
+        /** 사용자 입력 월 저축액(원). 예산 계산에는 이 값과 loanSchedules를 함께 넘긴다. */
+        private final long rawMonthlySaving;
+        /** 기존 대출 스케줄 — 구간별로 대출이 끝나는 시점을 반영해 예산을 계산할 때 쓴다. */
+        private final List<LoanSchedule> loanSchedules;
+        /** "지금 시점" 스냅샷 순저축액. loanO 달성 가능 여부(capacity) 판정 등 현재 스냅샷이 필요한 곳에서만 쓴다. */
+        private final long currentEffectiveSaving;
         private final long desiredMonths;
         /** 조합 키 → 평가 결과. 표본이 없어 후보가 되지 못한 조합도 담아 재조회를 막는다. */
         private final Map<String, Optional<Candidate>> evaluated = new HashMap<>();
 
-        private Search(long memberId, AssetNetWorthBreakdown netWorth, long effectiveSaving, long desiredMonths) {
+        private Search(long memberId, AssetNetWorthBreakdown netWorth, long rawMonthlySaving,
+                       List<LoanSchedule> loanSchedules, long currentEffectiveSaving, long desiredMonths) {
             this.memberId = memberId;
             this.netWorth = netWorth;
-            this.effectiveSaving = effectiveSaving;
+            this.rawMonthlySaving = rawMonthlySaving;
+            this.loanSchedules = loanSchedules;
+            this.currentEffectiveSaving = currentEffectiveSaving;
             this.desiredMonths = desiredMonths;
         }
     }
