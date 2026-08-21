@@ -249,8 +249,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         // 시군구 순위 비교는 raw median으로 충분하다. MC 투영을 하면 같은 시도 내 구들이 비슷한
         // 비율로 오르기 때문에 순위가 거의 바뀌지 않으면서, 구마다 priceModel 36개월 쿼리와
         // MC 시뮬레이션이 추가되어 응답 시간이 크게 늘어난다.
-        Map<String, SigunguMedianResult> medians = rentMedianService.getMediansBySidoPrefix(
-                requested, housingType, dealType, size[0], size[1],
+        Map<String, SigunguMedianResult> medians = rentMedianService.getMediansByRegionCodes(
+                sigunguCodes, housingType, dealType, size[0], size[1],
                 depositMin, depositMax,
                 request.getMonthlyRentMin(), request.getMonthlyRentMax());
 
