@@ -63,8 +63,8 @@ public class CompareServiceImpl implements CompareService {
     private static final int MIN_AGE_RANGE = 1;
     private static final int MAX_AGE_RANGE = 5;
 
-    /** 달성률 구간 개수. 0~10 … 70~80 여덟 칸에 마지막 80~100 한 칸 */
-    private static final int BUCKET_SIZE = 9;
+    /** 달성률 구간 개수. 0~10 … 80~90 아홉 칸에 마지막 90~100 한 칸 */
+    private static final int BUCKET_SIZE = 10;
 
     /** 집계 기준월 형식 YYYYMM */
     private static final DateTimeFormatter YM = DateTimeFormatter.ofPattern("yyyyMM");
@@ -328,7 +328,7 @@ public class CompareServiceImpl implements CompareService {
         for (int i = 0; i < BUCKET_SIZE; i++) {
             buckets.add(GoalCompareResponse.Bucket.builder()
                     .rangeMin(i * 10)
-                    .rangeMax(i == BUCKET_SIZE - 1 ? 100 : (i + 1) * 10)
+                    .rangeMax((i + 1) * 10)
                     .count(bucketCounts[i])
                     .ratio(percentage(bucketCounts[i], cohortSize))
                     .isMine(myIndex >= 0 && i == myIndex)
@@ -471,7 +471,7 @@ public class CompareServiceImpl implements CompareService {
         for (int i = 0; i < BUCKET_SIZE; i++) {
             buckets.add(AchievementBucket.builder()
                     .rangeMin(i * 10)
-                    .rangeMax(i == BUCKET_SIZE - 1 ? 100 : (i + 1) * 10)
+                    .rangeMax((i + 1) * 10)
                     .count(counts[i])
                     .ratio(percentage(counts[i], cohortSize))
                     .isMine(myIndex >= 0 && i == myIndex)

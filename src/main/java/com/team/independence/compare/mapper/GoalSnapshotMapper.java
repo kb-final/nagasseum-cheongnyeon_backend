@@ -69,7 +69,7 @@ public interface GoalSnapshotMapper {
     List<RegionCount> countTopRegions(CohortCondition condition);
 
     /**
-     * 달성률 10% 구간별 인원 수. 마지막 구간(80~100%)만 폭이 20이다.
+     * 달성률 10% 구간별 인원 수. 마지막 구간은 90~100%이다.
      *
      * <p>인원이 0인 구간은 결과에 없다. 빈 구간 채우기는 서비스 계층에서 한다.
      */

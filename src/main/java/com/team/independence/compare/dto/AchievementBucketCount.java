@@ -13,7 +13,7 @@ import lombok.Setter;
 @Setter
 public class AchievementBucketCount {
 
-    /** 0=0~10%, 1=10~20% ... 8=80~100% */
+    /** 0=0~10%, 1=10~20% ... 9=90~100% */
     private int bucketIndex;
 
     private int count;

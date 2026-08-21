@@ -185,18 +185,18 @@ class CompareServiceIntegrationTest {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("달성률 구간은 항상 9칸이고 내 구간에만 표시가 붙는다")
-    void 달성률_구간이_9칸이다() {
+    @DisplayName("달성률 구간은 항상 10칸이고 내 구간에만 표시가 붙는다")
+    void 달성률_구간이_10칸이다() {
         CompareResponse response = callOrSkip();
         assumeTrue(response.getAchievementDistribution() != null, "코호트 인원 미달이라 건너뜁니다");
 
         List<AchievementBucket> buckets = response.getAchievementDistribution().getBuckets();
-        assertEquals(9, buckets.size());
+        assertEquals(10, buckets.size());
 
-        // 마지막 칸만 폭이 두 배(80~100)다.
+        // 모든 칸이 10% 폭이고 마지막은 90~100이다.
         assertEquals(0, buckets.get(0).getRangeMin().intValue());
-        assertEquals(80, buckets.get(8).getRangeMin().intValue());
-        assertEquals(100, buckets.get(8).getRangeMax().intValue());
+        assertEquals(90, buckets.get(9).getRangeMin().intValue());
+        assertEquals(100, buckets.get(9).getRangeMax().intValue());
 
         assertEquals(1, buckets.stream().filter(AchievementBucket::getIsMine).count(),
                 "내 구간 표시는 정확히 하나여야 한다");
