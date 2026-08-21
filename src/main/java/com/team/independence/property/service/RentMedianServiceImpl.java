@@ -114,8 +114,8 @@ public class RentMedianServiceImpl implements RentMedianService {
 
     @Override
     @Transactional(readOnly = true)
-    public Map<String, SigunguMedianResult> getMediansBySidoPrefix(
-            String sidoPrefix, HousingType housingType, DealType dealType,
+    public Map<String, SigunguMedianResult> getMediansByRegionCodes(
+            List<String> sigunguCodes, HousingType housingType, DealType dealType,
             int areaMin, int areaMax,
             long depositMin, long depositMax,
             Long monthlyRentMin, Long monthlyRentMax) {
@@ -123,8 +123,8 @@ public class RentMedianServiceImpl implements RentMedianService {
         YearMonth end = YearMonth.now();
         YearMonth start = end.minusMonths(MONTHS - 1);
 
-        List<SigunguMedianResult> rows = rentTransactionMapper.findMediansBySidoPrefix(
-                sidoPrefix, housingType, dealType,
+        List<SigunguMedianResult> rows = rentTransactionMapper.findMediansByRegionCodes(
+                sigunguCodes, housingType, dealType,
                 toSqm(areaMin), toSqm(areaMax),
                 start.format(YM), end.format(YM),
                 depositMin, depositMax,

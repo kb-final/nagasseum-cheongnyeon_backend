@@ -126,29 +126,24 @@ class RealisticAlgorithmTest {
 
         // selectRegion()이 시도(2자리) 입력 시 호출하는 배치 조회 스텁.
         // market 맵에서 sidoPrefix로 시작하는 시군구·조합을 걸러 SigunguMedianResult로 변환한다.
-        when(rentMedianService.getMediansBySidoPrefix(
+        when(rentMedianService.getMediansByRegionCodes(
                 any(), any(), any(), anyInt(), anyInt(), anyLong(), anyLong(), any(), any()))
                 .thenAnswer(call -> {
-                    String sidoPrefix = call.getArgument(0);
-                    HousingType ht  = call.getArgument(1);
-                    DealType    dt  = call.getArgument(2);
-                    int         am  = call.<Integer>getArgument(3);
+                    List<String> codes = call.getArgument(0);
+                    HousingType  ht   = call.getArgument(1);
+                    DealType     dt   = call.getArgument(2);
+                    int          am   = call.<Integer>getArgument(3);
 
                     Map<String, SigunguMedianResult> result = new HashMap<>();
-                    for (Map.Entry<String, long[]> entry : market.entrySet()) {
-                        String[] parts = entry.getKey().split("\\|");
-                        if (!parts[0].startsWith(sidoPrefix)) continue;
-                        if (!parts[1].equals(ht.name()))       continue;
-                        if (!parts[2].equals(dt.name()))       continue;
-                        if (Integer.parseInt(parts[3]) != am)  continue;
-
-                        long[] data = entry.getValue();
+                    for (String code : codes) {
+                        long[] data = market.get(key(code, ht, dt, am));
+                        if (data == null) continue;
                         SigunguMedianResult r = new SigunguMedianResult();
-                        r.setRegionCode(parts[0]);
+                        r.setRegionCode(code);
                         r.setDepositMedian(data[0]);
                         r.setRentMedian(data[1] > 0 ? data[1] : null);
                         r.setSampleCount((int) data[2]);
-                        result.put(parts[0], r);
+                        result.put(code, r);
                     }
                     return result;
                 });

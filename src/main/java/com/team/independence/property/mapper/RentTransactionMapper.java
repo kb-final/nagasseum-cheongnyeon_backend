@@ -47,11 +47,12 @@ public interface RentTransactionMapper {
                                                 @Param("endYm") String endYm);
 
     /**
-     * 시도 내 모든 시군구의 보증금 및 월세 중앙값을 단일 쿼리로 반환한다.
+     * 시군구 코드 목록에 대해 보증금·월세 중앙값을 단일 쿼리로 반환한다.
+     * LIKE '11%' 전체 스캔 대신 IN(코드 목록)을 사용해 인덱스를 코드별로 탄다.
      * RealisticAlgorithm.selectRegion()에서 N개 시군구 개별 조회를 대체한다.
      */
-    List<SigunguMedianResult> findMediansBySidoPrefix(
-            @Param("sidoPrefix") String sidoPrefix,
+    List<SigunguMedianResult> findMediansByRegionCodes(
+            @Param("sigunguCodes") List<String> sigunguCodes,
             @Param("housingType") HousingType housingType,
             @Param("dealType") DealType dealType,
             @Param("areaMinSqm") long areaMinSqm,

@@ -94,11 +94,11 @@
         ) t
     </select>
 
-    <!-- 시도 내 시군구별 보증금·월세 중앙값을 단일 쿼리로 반환한다.
-         RealisticAlgorithm.selectRegion()에서 N번 개별 조회(findAggregatedMedian)를 대체한다.
-         PARTITION BY region_code로 시군구를 한 번에 집계해 쿼리 수를 1로 줄인다.
-         housing_type, deal_type를 WHERE에 고정해 idx_rent_query 인덱스를 탄다. -->
-    <select id="findMediansBySidoPrefix" resultType="com.team.independence.property.dto.SigunguMedianResult">
+    <!-- 시군구 코드 목록의 보증금·월세 중앙값을 단일 쿼리로 반환한다.
+         LIKE '시도%' 전체 스캔 대신 IN(코드 목록)을 사용해 idx_rent_query 인덱스를
+         region_code별로 개별 탄다(25개 sub-range scan → 1회 왕복).
+         RealisticAlgorithm.selectRegion()에서 N번 개별 조회를 대체한다. -->
+    <select id="findMediansByRegionCodes" resultType="com.team.independence.property.dto.SigunguMedianResult">
         SELECT region_code,
                MAX(CASE WHEN dep_rn  = CEIL(0.50 * total) THEN deposit      END) AS deposit_median,
                MAX(CASE WHEN rent_rn = CEIL(0.50 * total) THEN monthly_rent END) AS rent_median,
@@ -109,7 +109,10 @@
                       ROW_NUMBER() OVER (PARTITION BY region_code ORDER BY monthly_rent) AS rent_rn,
                       COUNT(*)     OVER (PARTITION BY region_code)                       AS total
                  FROM rent_transaction
-                WHERE region_code LIKE CONCAT(#{sidoPrefix}, '%')
+                WHERE region_code IN
+                      <foreach collection="sigunguCodes" item="code" open="(" separator="," close=")">
+                          #{code}
+                      </foreach>
                   AND housing_type = #{housingType}
                   AND deal_type    = #{dealType}
                   AND deal_ym      BETWEEN #{startYm} AND #{endYm}
