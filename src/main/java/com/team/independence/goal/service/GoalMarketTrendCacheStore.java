@@ -12,17 +12,22 @@ import org.springframework.stereotype.Component;
 
 /**
  * 홈 화면 「매물 시세 변화」 카드 데이터를 Redis에 캐싱한다.
- * Key: goal:market-trend:{goalId}  Value: GoalMarketTrendResponse의 JSON  TTL: 35일
+ * Key: goal:market-trend:v2:{goalId}  Value: GoalMarketTrendResponse의 JSON  TTL: 35일
  *
  * <p>매월 1일 배치({@link GoalMarketTrendBatchService})가 값을 덮어써 갱신하는 게 기본 흐름이고,
  * TTL은 배치가 실패했을 때 데이터가 무한정 오래된 값으로 남지 않게 하는 안전장치다.
+ *
+ * <p>v2: changeAmount(currentMiddleAmount 기준) → predictionChangeAmount(latestPredictedMarketAmount 기준)로
+ * 필드 의미가 바뀌면서 key prefix를 올렸다. 배포 전 v1 키로 저장된 캐시는 다른 의미의 changeAmount를 담고 있어
+ * 그대로 두면 배포 후에도 옛 값이 신규 필드 없이 섞여 나갈 수 있으므로, TTL 만료를 기다리지 않고 prefix를
+ * 바꿔 즉시 전부 캐시 미스로 처리한다(수동 flush 필요 없음, v1 키는 기존 TTL대로 자연 소멸).
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class GoalMarketTrendCacheStore {
 
-    private static final String KEY_PREFIX = "goal:market-trend:";
+    private static final String KEY_PREFIX = "goal:market-trend:v2:";
     private static final Duration TTL = Duration.ofDays(35); // 35일 후 자동 삭제
 
     // Redis에 문자열 형식의 Key, Value를 저장/조회할 때 사용

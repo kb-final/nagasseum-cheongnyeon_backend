@@ -23,12 +23,16 @@ import com.team.independence.goal.service.calculator.LoanSchedule;
 import java.util.List;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
+import com.team.independence.property.dto.PriceModelRequest;
+import com.team.independence.property.dto.PriceModelResponse;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
+import com.team.independence.property.service.PriceModelService;
 import com.team.independence.property.service.RegionQueryService;
 import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,6 +73,7 @@ public class GoalServiceImpl implements GoalService {
     private final MonteCarloSimulationStore monteCarloSimulationStore;
     private final BudgetCalculator budgetCalculator;
     private final LoanPlanCalculator loanPlanCalculator;
+    private final PriceModelService priceModelService;
 
     @Override
     public GoalDiagnosisResponse diagnose(Long memberId, GoalDiagnosisRequest request) {
@@ -433,6 +438,7 @@ public class GoalServiceImpl implements GoalService {
         }
 
         long currentMiddleAmount = currentStats.getDeposit().getMedian(); // 현재 실거래 중앙값 추출
+        YearMonth updatedYm = YearMonth.parse(currentStats.getBaseEndYm(), YM_FORMATTER); // currentMiddleAmount의 기준 연월
         long initialMiddleAmount = goal.getTargetRentMiddleAmount(); // 목표 생성 당시 중앙값 조회
 
         // 회원의 현재 자산 조회
@@ -447,20 +453,76 @@ public class GoalServiceImpl implements GoalService {
                 ? null
                 : YearMonth.now().plusMonths(monthsToReachCurrentMiddle);
 
+        // 동일 목표 시점의 몬테카를로 P50 예측을 최신 실거래 데이터로 다시 계산
+        // predictionTargetYm은 예측 결과가 아니라 예측 대상 시점(goal.target_date)이므로 예측 실패 여부와 무관하게 유지한다.
+        YearMonth predictionTargetYm = YearMonth.from(goal.getTargetDate());
+        Long latestPredictedMarketAmount = predictLatestMarketAmount(
+                goalHousing, currentMiddleAmount, updatedYm, predictionTargetYm);
+        Long predictionChangeAmount = latestPredictedMarketAmount == null
+                ? null
+                : latestPredictedMarketAmount - initialMiddleAmount;
+
         return GoalMarketTrendResponse.builder()
                 .regionName(regionName)
                 .housingType(goalHousing.getHousingType())
                 .dealType(goalHousing.getDealType())
                 .areaMin(goalHousing.getAreaMin())
                 .areaMax(goalHousing.getAreaMax())
-                .updatedYm(YearMonth.parse(currentStats.getBaseEndYm(), YM_FORMATTER))
-                .changeAmount(currentMiddleAmount - initialMiddleAmount)
+                .updatedYm(updatedYm)
+                .predictionTargetYm(predictionTargetYm)
+                .latestPredictedMarketAmount(latestPredictedMarketAmount)
+                .predictionChangeAmount(predictionChangeAmount)
                 .targetAmount(goal.getTargetAmount())
                 .initialMiddleAmount(initialMiddleAmount)
                 .currentMiddleAmount(currentMiddleAmount)
                 .maintainEta(maintainEta)
                 .reflectEta(reflectEta)
                 .build();
+    }
+
+    private PriceModelRequest buildPriceModelRequest(GoalHousing housing) {
+        PriceModelRequest req = new PriceModelRequest();
+        req.setRegionCode(housing.getRegionCode());
+        req.setHousingType(housing.getHousingType());
+        req.setDealType(housing.getDealType());
+        req.setAreaMin(housing.getAreaMin());
+        req.setAreaMax(housing.getAreaMax());
+        return req;
+    }
+
+    /**
+     * 목표 시점까지 몬테카를로 시뮬레이션을 최신 실거래 데이터 기준으로 다시 돌려 P50 가격을 예측한다.
+     * P(0)은 currentMiddleAmount(updatedYm 기준 실거래 중앙값)를 쓰고, 시뮬레이션 기간도 "today"가 아니라
+     * updatedYm → predictionTargetYm 구간으로 잡는다: currentMiddleAmount 자체가 updatedYm 시점의 값이므로
+     * 기준 가격의 시점과 성장 구간의 시작 시점을 일치시켜야 한다(today로 잡으면 최대 한 달 어긋난다).
+     *
+     * budgetAtT는 MonteCarloEngine 내부에서 successProbability 계산에만 쓰이고 priceP50에는 영향을 주지
+     * 않으므로(MonteCarloEngine.simulate 참고), 여기서는 시장 가격만 순수하게 예측하기 위해 더미값(0)을 넘긴다.
+     * 사용자 자산·저축액과 무관해야 하는 "시장 자체의 예상 시세"이기 때문이다.
+     *
+     * 목표 시점이 이미 지났거나(months<=0), PriceModel 산출에 필요한 실거래 표본이 부족하면
+     * (PROPERTY_INSUFFICIENT_DATA) null을 반환해 시세 변화 카드의 나머지 필드는 정상적으로 내려가게 한다.
+     */
+    private Long predictLatestMarketAmount(GoalHousing goalHousing, long currentMiddleAmount,
+            YearMonth updatedYm, YearMonth predictionTargetYm) {
+        long months = updatedYm.until(predictionTargetYm, ChronoUnit.MONTHS);
+        if (months <= 0) {
+            return null;
+        }
+        try {
+            PriceModelRequest priceModelRequest = buildPriceModelRequest(goalHousing);
+            PriceModelResponse priceModel = priceModelService.estimate(priceModelRequest);
+            MonteCarloEngine.Result result = MonteCarloEngine.simulate(
+                    priceModel.getAnnualDrift(), priceModel.getAnnualVol(),
+                    currentMiddleAmount, 0L,
+                    (int) months, MonteCarloEngine.DEFAULT_SIMULATIONS, MonteCarloEngine.DEFAULT_SEED);
+            return result.priceP50();
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.PROPERTY_INSUFFICIENT_DATA) {
+                return null;
+            }
+            throw e; // 예상 못한 다른 오류는 그대로 전파
+        }
     }
 
     /**

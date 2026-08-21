@@ -22,19 +22,27 @@ public class GoalMarketTrendResponse {
     private Integer areaMin;
     private Integer areaMax;
 
-    /** 실거래 집계 기준 최신 연월 */
+    /** currentMiddleAmount 산출 기준 최신 실거래 연월 */
     private YearMonth updatedYm;
 
-    /** currentMiddleAmount - initialMiddleAmount (부호 포함) */
-    private Long changeAmount;
+    /** updatedYm 기준 최신 실거래 데이터로 predictionTargetYm 시점을 다시 예측한 몬테카를로 P50 시세.
+     *  predictionTargetYm이 이미 지났거나(months&lt;=0) 가격 모델을 만들 실거래 표본이 부족하면 null. */
+    private Long latestPredictedMarketAmount;
+
+    /** initialMiddleAmount·latestPredictedMarketAmount가 공통으로 예측하는 목표 연월(= goal.target_date).
+     *  예측 결과가 아니라 예측 대상 시점이므로 latestPredictedMarketAmount가 null이어도 항상 채워진다. */
+    private YearMonth predictionTargetYm;
+
+    /** latestPredictedMarketAmount - initialMiddleAmount (부호 포함). latestPredictedMarketAmount가 null이면 null */
+    private Long predictionChangeAmount;
 
     /** 내 목표 금액 (설정 시점에 고정, 불변) */
     private Long targetAmount;
 
-    /** 목표 설정 당시 실거래 중앙값 */
+    /** 목표 진단 당시 계산한, predictionTargetYm(목표 시점)에 대한 몬테카를로 P50 예측 시세 (설정 시점에 고정) */
     private Long initialMiddleAmount;
 
-    /** 현재 실거래 중앙값 */
+    /** updatedYm 기준 현재 실거래 중앙값 */
     private Long currentMiddleAmount;
 
     /** 목표를 유지할 때의 도달 예상 시점. 재계산하지 않고 goal.target_date를 그대로 반환한다(홈 화면에 노출되는 목표 시점과 동일 값 유지). */
