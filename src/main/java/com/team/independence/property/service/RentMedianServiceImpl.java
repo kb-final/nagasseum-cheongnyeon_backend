@@ -9,6 +9,7 @@ import com.team.independence.property.dto.MedianAggResult;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.dto.RentMedianResponse.Quartile;
+import com.team.independence.property.dto.SigunguMedianResult;
 import com.team.independence.property.mapper.RegionMapper;
 import com.team.independence.property.mapper.RentTransactionMapper;
 import java.time.YearMonth;
@@ -107,6 +108,31 @@ public class RentMedianServiceImpl implements RentMedianService {
                     result.put(key, response);
                 }
             }
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, SigunguMedianResult> getMediansBySidoPrefix(
+            String sidoPrefix, HousingType housingType, DealType dealType,
+            int areaMin, int areaMax,
+            long depositMin, long depositMax,
+            Long monthlyRentMin, Long monthlyRentMax) {
+
+        YearMonth end = YearMonth.now();
+        YearMonth start = end.minusMonths(MONTHS - 1);
+
+        List<SigunguMedianResult> rows = rentTransactionMapper.findMediansBySidoPrefix(
+                sidoPrefix, housingType, dealType,
+                toSqm(areaMin), toSqm(areaMax),
+                start.format(YM), end.format(YM),
+                depositMin, depositMax,
+                monthlyRentMin, monthlyRentMax);
+
+        Map<String, SigunguMedianResult> result = new HashMap<>();
+        for (SigunguMedianResult row : rows) {
+            result.put(row.getRegionCode(), row);
         }
         return result;
     }
