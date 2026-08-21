@@ -8,11 +8,15 @@ import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.goal.service.RecommendationAlgorithm.MemberFinancialContext;
+import com.team.independence.goal.service.algorithm.HoldOutAlgorithm;
+import com.team.independence.goal.service.algorithm.RealisticAlgorithm;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
+import com.team.independence.goal.service.calculator.LoanSchedule;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.mapper.RegionMapper;
 import com.team.independence.property.service.RentMedianService;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -25,13 +29,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 등록된 추천 알고리즘을 모두 실행해 결과를 모은다.
+ * 등록된 추천 알고리즘을 2-Phase로 실행해 결과를 모은다.
  *
- * <p>추천 로직은 전혀 갖고 있지 않다. 알고리즘 추가·제거 시 이 클래스는 수정하지 않는다.
+ * <h3>실행 순서</h3>
+ * <ul>
+ *   <li><b>Phase 1 (병렬)</b>: RealisticAlgorithm + 기타 알고리즘(PreferenceAlgorithm 등)</li>
+ *   <li><b>Phase 2 (Realistic 완료 후)</b>: HoldOutAlgorithm — Realistic 결과를 기준점으로 사용</li>
+ * </ul>
  *
- * <p>알고리즘 목록을 {@link ObjectProvider}로 받는 이유는, 아직 구현체가 하나도 없는 상태에서도
- * 애플리케이션이 기동되도록 하기 위해서다. {@code List<RecommendationAlgorithm>}를 생성자로 직접
- * 주입하면 후보 빈이 없을 때 기동이 실패해, 알고리즘 담당자들이 서로의 구현을 기다려야 한다.
+ * <p>HoldOut은 Realistic 결과를 기준점으로 삼아 동작하므로 Realistic 완료를 기다렸다가 실행한다.
+ * 다른 알고리즘은 HoldOut 완료와 무관하게 Phase 1에서 병렬로 처리한다.
+ *
+ * <p>알고리즘 하나가 실패해도 나머지 추천은 내려준다.
+ * 모든 알고리즘이 실패하면 {@code GOAL_RECOMMENDATION_NO_CANDIDATE}를 던진다.
  */
 @Slf4j
 @Service
@@ -43,6 +53,9 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
     private final LoanPlanCalculator loanPlanCalculator;
     private final RegionMapper regionMapper;
     private final RentMedianService rentMedianService;
+    private final RealisticAlgorithm realisticAlgorithm;
+    private final HoldOutAlgorithm holdOutAlgorithm;
+    /** Preference 등 Phase 1 나머지 알고리즘 — HoldOut·Realistic은 위에서 직접 주입한다. */
     private final ObjectProvider<RecommendationAlgorithm> algorithmProvider;
     private final GoalRecommendationStore recommendationStore;
     @Qualifier("algorithmExecutor")
@@ -51,35 +64,45 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
     @Override
     @Transactional(readOnly = true)
     public GoalRecommendationResponse recommend(long memberId, GoalRecommendationRequest request) {
-        // 자산이 연동돼 있어야 예산 계산이 가능하다
         assetConnectionService.validateConnectedAccountExists(memberId);
 
-        List<RecommendationAlgorithm> algorithms = algorithmProvider.orderedStream()
-                .collect(Collectors.toList());
-
-        if (algorithms.isEmpty()) {
-            log.warn("등록된 추천 알고리즘이 없습니다. RecommendationAlgorithm 구현체를 추가해야 합니다.");
-        }
-
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
-        // 월 저축액은 서버 캐시(asset_summary)가 아니라 요청 값을 그대로 쓴다 (@NotNull이라 항상 존재)
         long monthlySaving = request.getMonthlySavings();
-        long loanPayment   = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
-        MemberFinancialContext ctx = new MemberFinancialContext(netWorth, monthlySaving, loanPayment);
+        List<LoanSchedule> loanSchedules = loanPlanCalculator.getLoanSchedules(memberId);
+        MemberFinancialContext ctx = new MemberFinancialContext(netWorth, monthlySaving, loanSchedules);
 
-        List<CompletableFuture<List<GoalRecommendationResponse.RecommendationItem>>> futures =
-                algorithms.stream()
-                        .map(algorithm -> CompletableFuture.supplyAsync(
-                                () -> runSafely(algorithm, memberId, request, ctx),
-                                algorithmExecutor))
+        // Phase 1: Realistic + 기타(Preference 등) 병렬 실행
+        CompletableFuture<List<GoalRecommendationResponse.RecommendationItem>> realisticFuture =
+                CompletableFuture.supplyAsync(
+                        () -> runSafely(realisticAlgorithm, memberId, request, ctx), algorithmExecutor);
+
+        List<CompletableFuture<List<GoalRecommendationResponse.RecommendationItem>>> otherFutures =
+                algorithmProvider.orderedStream()
+                        .filter(a -> !(a instanceof RealisticAlgorithm) && !(a instanceof HoldOutAlgorithm))
+                        .map(a -> CompletableFuture.supplyAsync(
+                                () -> runSafely(a, memberId, request, ctx), algorithmExecutor))
                         .collect(Collectors.toList());
 
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        // Phase 2: Realistic 완료 후 HoldOut 실행
+        CompletableFuture<List<GoalRecommendationResponse.RecommendationItem>> holdOutFuture =
+                realisticFuture.thenApplyAsync(realisticItems -> {
+                    GoalRecommendationResponse.RecommendationItem realisticItem =
+                            realisticItems.isEmpty() ? null : realisticItems.get(0);
+                    return runHoldOutSafely(memberId, request, ctx, realisticItem);
+                }, algorithmExecutor);
 
-        List<GoalRecommendationResponse.RecommendationItem> recommendations = futures.stream()
-                .map(CompletableFuture::join)
-                .flatMap(List::stream)
-                .collect(Collectors.toList());
+        // 모두 완료 대기
+        List<CompletableFuture<?>> allFutures = new ArrayList<>();
+        allFutures.add(realisticFuture);
+        allFutures.add(holdOutFuture);
+        allFutures.addAll(otherFutures);
+        CompletableFuture.allOf(allFutures.toArray(new CompletableFuture[0])).join();
+
+        // 결과 수집 (순서 고정: Realistic → HoldOut → 기타)
+        List<GoalRecommendationResponse.RecommendationItem> recommendations = new ArrayList<>();
+        recommendations.addAll(realisticFuture.join());
+        recommendations.addAll(holdOutFuture.join());
+        otherFutures.forEach(f -> recommendations.addAll(f.join()));
 
         if (recommendations.isEmpty()) {
             throw new BusinessException(ErrorCode.GOAL_RECOMMENDATION_NO_CANDIDATE);
@@ -90,7 +113,6 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
                 .recommendations(recommendations)
                 .build();
 
-        // 결과 화면 재진입 시 재계산 없이 그대로 돌려주기 위해 저장한다
         recommendationStore.save(memberId, response);
         return response;
     }
@@ -162,9 +184,6 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
 
     /**
      * 알고리즘 하나가 실패해도 나머지 추천은 내려주기 위해 예외를 삼킨다.
-     *
-     * <p>알고리즘들은 서로 독립적이라 하나의 오류가 전체 응답을 막을 이유가 없다.
-     * 다만 모든 알고리즘이 실패하면 결과가 비어 {@code GOAL_RECOMMENDATION_NO_CANDIDATE}로 이어진다.
      */
     private List<GoalRecommendationResponse.RecommendationItem> runSafely(
             RecommendationAlgorithm algorithm, long memberId,
@@ -178,4 +197,14 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
         }
     }
 
+    private List<GoalRecommendationResponse.RecommendationItem> runHoldOutSafely(
+            long memberId, GoalRecommendationRequest request, MemberFinancialContext ctx,
+            GoalRecommendationResponse.RecommendationItem realisticItem) {
+        try {
+            return holdOutAlgorithm.recommend(memberId, request, ctx, realisticItem);
+        } catch (Exception e) {
+            log.error("HoldOut 알고리즘 실행 실패. memberId={}", memberId, e);
+            return List.of();
+        }
+    }
 }
