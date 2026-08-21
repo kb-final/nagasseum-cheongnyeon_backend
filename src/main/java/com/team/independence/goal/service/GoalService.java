@@ -74,6 +74,11 @@ public interface GoalService {
     GoalMarketTrendResponse refreshMarketTrend(Long goalId);
 
     /**
+     * 회원의 활성(ACTIVE) 목표를 조회한다. 활성 목표가 없으면 null을 반환한다(예외 아님).
+     */
+    GoalResponse getActiveGoal(Long memberId);
+
+    /**
      * 홈 화면 「목표 달성 요약」 카드 데이터. 목표 조건, 목표 금액/시점, 현재 진행 상황(현재 자금/잔여 금액/
      * 달성률/예상 잔여 개월)을 한 번에 조회한다. 회원의 활성 목표가 없으면 GOAL_NOT_FOUND.
      */

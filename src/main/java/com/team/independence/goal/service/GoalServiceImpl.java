@@ -497,6 +497,16 @@ public class GoalServiceImpl implements GoalService {
         return calculateEffectiveMonthToReach(memberId, netWorth, fixedSaving, targetAmount);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public GoalResponse getActiveGoal(Long memberId) {
+        Goal goal = goalMapper.findActiveByMemberId(memberId);
+        if (goal == null) {
+            return null;
+        }
+        return toGoalResponse(goal, goalHousingMapper.findByGoalId(goal.getId()));
+    }
+
     // 홈 화면 「목표 달성 요약」 카드 데이터 조회
     @Override
     @Transactional(readOnly = true)
