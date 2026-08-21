@@ -21,9 +21,11 @@ import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.goal.service.calculator.LoanSchedule;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
-import com.team.independence.property.dto.PriceModelRequest;
+import com.team.independence.property.dto.PriceModelKey;
+import com.team.independence.property.dto.PriceModelResponse;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.dto.RentMedianResponse.Quartile;
+import com.team.independence.property.service.PriceModelService;
 import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
 import java.util.HashMap;
@@ -67,6 +69,7 @@ class HoldOutAlgorithmTest {
     @Mock private LoanPlanCalculator loanPlanCalculator;
     @Mock private RentMedianService rentMedianService;
     @Mock private MonteCarloService monteCarloService;
+    @Mock private PriceModelService priceModelService;
 
     private final BudgetCalculator budgetCalculator = new BudgetCalculator();
 
@@ -80,15 +83,31 @@ class HoldOutAlgorithmTest {
     @BeforeEach
     void setUp() {
         algorithm = new HoldOutAlgorithm(
-                loanPlanCalculator, budgetCalculator, rentMedianService, monteCarloService);
+                loanPlanCalculator, budgetCalculator, rentMedianService, monteCarloService, priceModelService);
 
         // MC는 P50 = 입력 가격 그대로 반환 (가격 변동 없음으로 고정)
-        when(monteCarloService.simulate(any(PriceModelRequest.class), anyLong(), anyLong(), anyInt()))
+        when(monteCarloService.simulate(any(PriceModelResponse.class), anyLong(), anyLong(), anyInt()))
                 .thenAnswer(call -> {
                     long price = call.getArgument(1);
                     long budget = call.getArgument(2);
                     double prob = budget >= price ? 0.8 : 0.2;
                     return new MonteCarloEngine.Result(price * 9 / 10, price, price * 11 / 10, prob);
+                });
+
+        // 배치 PriceModel: 모든 조합에 대해 임의의 PriceModelResponse를 반환 (MC 스텁이 이 값을 실제로 쓰지 않음)
+        when(priceModelService.estimateBatch(anyString(), any()))
+                .thenAnswer(call -> {
+                    Iterable<PriceModelKey> keys = call.getArgument(1);
+                    Map<PriceModelKey, PriceModelResponse> result = new HashMap<>();
+                    for (PriceModelKey k : keys) {
+                        result.put(k, PriceModelResponse.builder()
+                                .regionCode(call.getArgument(0))
+                                .housingType(k.housingType())
+                                .dealType(k.dealType())
+                                .annualDrift(0.0).cagr(0.0).annualVol(0.0)
+                                .months(12).build());
+                    }
+                    return result;
                 });
 
         market = new HashMap<>();
