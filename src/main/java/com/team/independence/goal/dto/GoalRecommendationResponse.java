@@ -98,7 +98,7 @@ public class GoalRecommendationResponse {
     }
 
     @Getter
-    @Builder
+    @Builder(toBuilder = true)
     @Jacksonized
     public static class LoanXPlan {
         private long targetAmount;

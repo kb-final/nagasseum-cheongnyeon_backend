@@ -33,22 +33,27 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 /**
- * HoldOut 추천 알고리즘 단위 테스트.
+ * HoldOut 추천 알고리즘 단위 테스트 (40개 조합 next-rung 방식).
  *
  * <p>BudgetCalculator는 실 구현체를 사용하고, 나머지 외부 의존은 목으로 대체한다.
+ * MonteCarlo 목은 P50 = 입력 가격 그대로 반환해(가격 변동 0) 후보 비교를 median 보증금으로 단순화한다.
  *
  * <h3>검증 초점</h3>
  * <ul>
- *   <li>Realistic 결과(baseline)를 기준으로 정확히 하나의 변수만 바꾼 업그레이드 후보를 탐색하는가</li>
- *   <li>realisticItem이 null이거나 condition이 null이면 soft-fail을 반환하는가</li>
- *   <li>추가 대기 개월(extraMonths)이 MAX_EXTRA_MONTHS를 초과하는 후보는 제외되는가</li>
- *   <li>기존 대출이 BudgetCalculator에 올바르게 반영되는가</li>
+ *   <li>realisticItem/condition이 없으면 soft-fail을 반환하는가</li>
+ *   <li>주거유형 × 거래유형 × 평수 버킷 40개 조합 중 baseline보다 비싼 것 중 가장 싼 것을 고르는가
+ *       (변수 하나만 바꾼 후보가 아니라 조합 전체에서)</li>
+ *   <li>baseline이 이미 최고가 조합이면(위 칸 없음) soft-fail을 반환하는가 — baseline 복제하지 않음</li>
+ *   <li>도달 개월 상한이 없어, 아무리 오래 걸려도 후보를 그대로 채택하는가</li>
+ *   <li>기존 대출(LoanSchedule)이 도달 계획에 반영되는가</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
@@ -128,7 +133,7 @@ class HoldOutAlgorithmTest {
     @Test
     @DisplayName("시장 데이터가 없으면 soft-fail 카드를 반환한다")
     void noMarketData_returnsSoftFail() {
-        // market에 아무것도 없음
+        // market에 아무것도 없음 → 40개 조합 전부 median 조회 실패
         List<RecommendationItem> result = algorithm.recommend(
                 MEMBER_ID, defaultRequest(), ctx,
                 jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
@@ -138,26 +143,145 @@ class HoldOutAlgorithmTest {
     }
 
     @Test
-    @DisplayName("모든 업그레이드 변수가 이미 최고 수준이면 후보가 없어 soft-fail을 반환한다")
-    void allMaxed_noUpgradeAvailable() {
-        // APT(최고 타입) + JEONSE(최고 거래유형) + 26~40평(최고 버킷) → 업그레이드 변수 없음
-        put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 80_000_000L, 0);
+    @DisplayName("baseline이 이미 40개 조합 중 최고가면(위 칸 없음) soft-fail을 반환하고 baseline을 복제하지 않는다")
+    void baselineIsTopRung_returnsSoftFailWithoutCloning() {
+        // baseline 자체가 시장에서 가장 비싼 조합 (다른 조합은 전부 baseline보다 싸다)
+        put(REGION, HousingType.APT, DealType.JEONSE, 15, 19, 30_000_000L, 0);
+        put(REGION, HousingType.APT, DealType.JEONSE, 20, 25, 50_000_000L, 0); // baseline과 동일 조합
 
         List<RecommendationItem> result = algorithm.recommend(
                 MEMBER_ID, defaultRequest(), ctx,
-                jeonseBaseline(HousingType.APT, 26, 40, 50_000_000L));
+                jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
 
         assertThat(result).hasSize(1);
+        assertThat(result.get(0).getType()).isEqualTo(AlgorithmType.HOLD_OUT);
         assertThat(result.get(0).getCondition()).isNull();
     }
 
+    // ─── next-rung 선택 (40개 조합 전체) ──────────────────────────────────────
+
     @Test
-    @DisplayName("업그레이드 추가 대기가 MAX_EXTRA_MONTHS(36개월) 초과하면 soft-fail을 반환한다")
-    void upgradeExceedsMaxExtraMonths_returnsSoftFail() {
-        // ctx: 저축 1천만, 대출 월 950만 → 유효 저축 50만/월
-        // baseline: 1천만 → reach 20개월 (1천만/50만)
-        // upgrade: 2.9억 median → (2.9억*0.9/0.05M) = 522개월 → extra = 502 > 36 → 거부
-        MemberFinancialContext tightCtx = ctxWithLoan(9_500_000L);
+    @DisplayName("baseline보다 비싼 조합 중 가장 싼 것을 다음 등급으로 고른다")
+    void picksCheapestCombinationAboveBaseline() {
+        // baseline: APT/JEONSE/20~25평, 5천만
+        // 후보 A: APT/JEONSE/26~40평, median 7200만(=8천만*0.9)
+        // 후보 B: ROW_HOUSE/JEONSE/26~40평, median 5400만(=6천만*0.9) — 더 싸지만 baseline보다는 비쌈
+        put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 80_000_000L, 0);
+        put(REGION, HousingType.ROW_HOUSE, DealType.JEONSE, 26, 40, 60_000_000L, 0);
+
+        List<RecommendationItem> result = algorithm.recommend(
+                MEMBER_ID, defaultRequest(), ctx,
+                jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
+
+        assertThat(result).hasSize(1);
+        var condition = result.get(0).getCondition();
+        assertThat(condition).isNotNull();
+        // 두 후보 모두 baseline(5천만)보다 비싸다. 그중 더 싼 ROW_HOUSE(5400만)가 다음 등급으로 선택된다.
+        assertThat(condition.getHousingType()).isEqualTo(HousingType.ROW_HOUSE);
+        assertThat(condition.getAreaMin()).isEqualTo(26);
+        assertThat(condition.getMarketMedianAmount()).isEqualTo(54_000_000L);
+    }
+
+    @Test
+    @DisplayName("baseline과 같은 조합은 자기 자신보다 비쌀 수 없어 후보에서 자연히 제외된다")
+    void baselineCombinationItselfIsExcluded() {
+        // baseline과 같은 조합(APT/JEONSE/20~25평)의 시세도 market에 넣어두지만,
+        // comparableAmount가 baseline과 같아 '더 비싼 것'에서 제외되고 26~40만 후보가 된다.
+        put(REGION, HousingType.APT, DealType.JEONSE, 20, 25, 50_000_000L, 0); // == baseline
+        put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 70_000_000L, 0);
+
+        List<RecommendationItem> result = algorithm.recommend(
+                MEMBER_ID, defaultRequest(), ctx,
+                jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getCondition().getAreaMin()).isEqualTo(26);
+    }
+
+    @Test
+    @DisplayName("거래유형이 달라도(월세 환산 포함) 가격순으로 비교해 다음 등급을 고른다")
+    void comparesAcrossDealTypesByComparableAmount() {
+        // baseline: APT/JEONSE/20~25평, 5천만
+        // 월세 후보: APT/WOLSE/20~25평, 보증금 2천만 + 월세 30만 → 환산 2천만+30만*12/0.05=9200만
+        // 전세 후보: APT/JEONSE/26~40평, median 9900만(baseline보다 비싸지만 월세 환산보다도 비쌈)
+        put(REGION, HousingType.APT, DealType.WOLSE, 20, 25, 20_000_000L, 300_000L);
+        put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 110_000_000L, 0); // median = 9900만
+
+        List<RecommendationItem> result = algorithm.recommend(
+                MEMBER_ID, defaultRequest(), ctx,
+                jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
+
+        assertThat(result).hasSize(1);
+        var condition = result.get(0).getCondition();
+        // 월세 환산액(9200만) < 전세 median(9900만) → 월세 후보가 다음 등급
+        // getMedian()은 Quartile.of(*0.8, *0.9, *1.0)의 가운데 값이라 300,000 * 0.9 = 270,000이 된다.
+        assertThat(condition.getDealType()).isEqualTo(DealType.WOLSE);
+        assertThat(condition.getMonthlyRent()).isEqualTo(270_000L);
+    }
+
+    @Test
+    @DisplayName("다음 등급이 월세면 loanX·loanO의 monthlySaving에 월세를 더해 보여준다")
+    void addsMonthlyRentToLoanXAndLoanOWhenNextRungIsWolse() {
+        // baseline: APT/JEONSE/20~25평, 5천만
+        // 다음 등급: APT/WOLSE/26~40평, 보증금 5천만 + 월세 30만 → comparable = 5천만+30만*12/0.05=1억1800만 > baseline
+        put(REGION, HousingType.APT, DealType.WOLSE, 26, 40, 50_000_000L, 300_000L);
+
+        when(loanPlanCalculator.calculateSavingFixed(
+                anyLong(), anyLong(), any(AssetNetWorthBreakdown.class), anyLong(), any()))
+                .thenReturn(LoanPlans.builder()
+                        .loanX(GoalRecommendationResponse.LoanXPlan.builder()
+                                .targetAmount(45_000_000L).targetDate(NOW.plusMonths(10)).monthlySaving(1_000_000L)
+                                .build())
+                        .loanO(GoalRecommendationResponse.LoanOPlan.builder()
+                                .loanAmount(10_000_000L).targetAmount(35_000_000L).targetDate(NOW.plusMonths(7))
+                                .monthlySaving(1_000_000L).shortenedMonths(3L)
+                                .build())
+                        .build());
+
+        List<RecommendationItem> result = algorithm.recommend(
+                MEMBER_ID, defaultRequest(), ctx,
+                jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
+
+        assertThat(result).hasSize(1);
+        var item = result.get(0);
+        assertThat(item.getCondition().getDealType()).isEqualTo(DealType.WOLSE);
+        // getMedian() = 30만 * 0.9 = 27만
+        assertThat(item.getCondition().getMonthlyRent()).isEqualTo(270_000L);
+        // 목의 monthlySaving(100만) + 월세(27만) = 127만
+        assertThat(item.getLoanX().getMonthlySaving()).isEqualTo(1_270_000L);
+        assertThat(item.getLoanO().getMonthlySaving()).isEqualTo(1_270_000L);
+        // 월세와 무관한 필드는 그대로 유지된다
+        assertThat(item.getLoanO().getShortenedMonths()).isEqualTo(3L);
+    }
+
+    @Test
+    @DisplayName("다음 등급이 전세면 monthlySaving을 그대로 둔다")
+    void keepsMonthlySavingUnchangedWhenNextRungIsJeonse() {
+        put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 80_000_000L, 0);
+
+        when(loanPlanCalculator.calculateSavingFixed(
+                anyLong(), anyLong(), any(AssetNetWorthBreakdown.class), anyLong(), any()))
+                .thenReturn(LoanPlans.builder()
+                        .loanX(GoalRecommendationResponse.LoanXPlan.builder()
+                                .targetAmount(72_000_000L).targetDate(NOW.plusMonths(20)).monthlySaving(1_000_000L)
+                                .build())
+                        .build());
+
+        List<RecommendationItem> result = algorithm.recommend(
+                MEMBER_ID, defaultRequest(), ctx,
+                jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getLoanX().getMonthlySaving()).isEqualTo(1_000_000L);
+    }
+
+    // ─── 도달 개월 상한 없음 ─────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("도달까지 아무리 오래 걸려도 개월 상한 없이 다음 등급을 채택한다")
+    void noUpperBoundOnExtraMonths() {
+        // 저축 여력이 매우 작아 도달까지 수백 개월이 걸려도 후보를 그대로 채택해야 한다.
+        MemberFinancialContext tightCtx = ctxWithLoan(9_990_000L); // 유효 저축 1만원
         put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 290_000_000L, 0);
 
         List<RecommendationItem> result = algorithm.recommend(
@@ -165,182 +289,40 @@ class HoldOutAlgorithmTest {
                 jeonseBaseline(HousingType.APT, 20, 25, 10_000_000L));
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNull();
-    }
-
-    // ─── 평수 업그레이드 ──────────────────────────────────────────────────────
-
-    @Test
-    @DisplayName("baseline이 20~25평이면 바로 다음 버킷(26~40평)을 업그레이드 후보로 탐색한다")
-    void sizeUpgrade_findsNextBucket() {
-        // baseline 20~25평, deposit 5천만 → reach 5개월
-        // upgrade 26~40평, deposit 8천만 → median 7200만 → reach 8개월 → extra 3 → 유효
-        put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 80_000_000L, 0);
-
-        List<RecommendationItem> result = algorithm.recommend(
-                MEMBER_ID, defaultRequest(), ctx,
-                jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
-
-        assertThat(result).hasSize(1);
         assertThat(result.get(0).getCondition()).isNotNull();
-        assertThat(result.get(0).getCondition().getHousingType()).isEqualTo(HousingType.APT);
-        assertThat(result.get(0).getCondition().getDealType()).isEqualTo(DealType.JEONSE);
         assertThat(result.get(0).getCondition().getAreaMin()).isEqualTo(26);
-        assertThat(result.get(0).getCondition().getAreaMax()).isEqualTo(40);
-    }
-
-    @Test
-    @DisplayName("baseline이 15~19평이면 바로 다음 버킷(20~25평)을 업그레이드 후보로 탐색한다")
-    void sizeUpgrade_15to19_findsNextBucket() {
-        // 15~19평 → 다음 버킷은 20~25평 (areaMin=20 > 19)
-        put(REGION, HousingType.APT, DealType.JEONSE, 20, 25, 60_000_000L, 0);
-
-        List<RecommendationItem> result = algorithm.recommend(
-                MEMBER_ID, defaultRequest(), ctx,
-                jeonseBaseline(HousingType.APT, 15, 19, 40_000_000L));
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNotNull();
-        assertThat(result.get(0).getCondition().getAreaMin()).isEqualTo(20);
-        assertThat(result.get(0).getCondition().getAreaMax()).isEqualTo(25);
-    }
-
-    @Test
-    @DisplayName("26~40평(최고 평수 버킷) baseline에서는 평수 업그레이드 후보가 생성되지 않는다")
-    void sizeUpgrade_maxBucket_noSizeUpgradeCandidate() {
-        // 평수 업그레이드 없음 → 다른 변수(주거유형) 업그레이드로 대체
-        put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 60_000_000L, 0); // 평수 업그레이드 후보 없음
-        // 주거유형 업그레이드도 APT가 최고 → 거래유형 업그레이드도 JEONSE → soft-fail
-
-        List<RecommendationItem> result = algorithm.recommend(
-                MEMBER_ID, defaultRequest(), ctx,
-                jeonseBaseline(HousingType.APT, 26, 40, 50_000_000L));
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNull();
-    }
-
-    // ─── 주거유형 업그레이드 ──────────────────────────────────────────────────
-
-    @Test
-    @DisplayName("baseline이 ROW_HOUSE이면 APT를 주거유형 업그레이드 후보로 탐색한다")
-    void housingTypeUpgrade_rowHouseToApt() {
-        // baseline: ROW_HOUSE, JEONSE, 20~25평, deposit 5천만
-        // upgrade: APT, JEONSE, 20~25평(areaMin=20)
-        put(REGION, HousingType.APT, DealType.JEONSE, 20, 25, 80_000_000L, 0);
-
-        List<RecommendationItem> result = algorithm.recommend(
-                MEMBER_ID, defaultRequest(), ctx,
-                jeonseBaseline(HousingType.ROW_HOUSE, 20, 25, 50_000_000L));
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNotNull();
-        assertThat(result.get(0).getCondition().getHousingType()).isEqualTo(HousingType.APT);
-        assertThat(result.get(0).getCondition().getDealType()).isEqualTo(DealType.JEONSE);
-        assertThat(result.get(0).getCondition().getAreaMin()).isEqualTo(20);
-    }
-
-    @Test
-    @DisplayName("baseline이 DETACHED이면 ROW_HOUSE를 주거유형 업그레이드 후보로 탐색한다")
-    void housingTypeUpgrade_detachedToRowHouse() {
-        put(REGION, HousingType.ROW_HOUSE, DealType.JEONSE, 20, 25, 70_000_000L, 0);
-
-        List<RecommendationItem> result = algorithm.recommend(
-                MEMBER_ID, defaultRequest(), ctx,
-                jeonseBaseline(HousingType.DETACHED, 20, 25, 50_000_000L));
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNotNull();
-        assertThat(result.get(0).getCondition().getHousingType()).isEqualTo(HousingType.ROW_HOUSE);
-    }
-
-    @Test
-    @DisplayName("baseline이 APT(최고 주거유형)이면 주거유형 업그레이드 후보가 생성되지 않는다")
-    void housingTypeUpgrade_apt_noUpgradeCandidate() {
-        // APT → 상위 타입 없음 → 평수·거래유형만 업그레이드 후보
-        // 평수도 26~40(최고), 거래유형도 JEONSE → soft-fail
-        List<RecommendationItem> result = algorithm.recommend(
-                MEMBER_ID, defaultRequest(), ctx,
-                jeonseBaseline(HousingType.APT, 26, 40, 50_000_000L));
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNull();
-    }
-
-    // ─── 거래유형 업그레이드 ──────────────────────────────────────────────────
-
-    @Test
-    @DisplayName("baseline이 월세이면 전세를 거래유형 업그레이드 후보로 탐색한다")
-    void dealTypeUpgrade_wolseToJeonse() {
-        // baseline: APT, WOLSE, 20~25평, deposit=2000만, monthlyRent=30만
-        // comparable = 2000만 + 30만*12/0.05 = 9200만 → reach ~10개월
-        // upgrade: APT, JEONSE, 20~25平(areaMin=20), deposit=1억
-        // deposit.median = 1억*0.9=9000万 → reach 9개월 → extra = -1 → 유효
-        put(REGION, HousingType.APT, DealType.JEONSE, 20, 25, 100_000_000L, 0);
-
-        List<RecommendationItem> result = algorithm.recommend(
-                MEMBER_ID, defaultRequest(), ctx,
-                wolseBaseline(HousingType.APT, 20, 25, 20_000_000L, 300_000L));
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNotNull();
-        assertThat(result.get(0).getCondition().getDealType()).isEqualTo(DealType.JEONSE);
-        assertThat(result.get(0).getCondition().getMonthlyRent()).isEqualTo(0L);
-    }
-
-    @Test
-    @DisplayName("baseline이 전세이면 거래유형 업그레이드 후보가 생성되지 않는다")
-    void dealTypeUpgrade_jeonse_noUpgradeCandidate() {
-        // JEONSE는 이미 최고 거래유형 → 업그레이드 없음
-        // APT(최고) + JEONSE(최고) + 26~40평(최고) → soft-fail
-        List<RecommendationItem> result = algorithm.recommend(
-                MEMBER_ID, defaultRequest(), ctx,
-                jeonseBaseline(HousingType.APT, 26, 40, 50_000_000L));
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNull();
     }
 
     // ─── 대출 반영 ────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("기존 대출 월상환액이 BudgetCalculator에 반영되어 달성 개월이 늘어난다")
-    void withExistingLoan_loanDeductedFromBudget() {
-        // 저축 1천만, 대출 500만 → 유효 저축 500만/월
-        // baseline 5천만 → reach 10개월 (5천만/500만)
-        // upgrade 8천만 → median 7200만 → reach 15개월 → extra 5 ≤ 36 → 유효
+    @DisplayName("기존 대출(LoanSchedule)이 도달 계획 계산에 그대로 전달된다")
+    void existingLoanPassedToLoanPlanCalculator() {
         MemberFinancialContext loanCtx = ctxWithLoan(5_000_000L);
         put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 80_000_000L, 0);
 
-        List<RecommendationItem> result = algorithm.recommend(
+        algorithm.recommend(
                 MEMBER_ID, defaultRequest(), loanCtx,
                 jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNotNull();
-        assertThat(result.get(0).getCondition().getAreaMin()).isEqualTo(26);
+        Mockito.verify(loanPlanCalculator).calculateSavingFixed(
+                Mockito.eq(MEMBER_ID), anyLong(), any(AssetNetWorthBreakdown.class),
+                Mockito.eq(10_000_000L), Mockito.eq(loanCtx.loanSchedules()));
     }
 
-    // ─── 복수 후보 중 최고점 선택 ─────────────────────────────────────────────
-
     @Test
-    @DisplayName("평수·주거유형 업그레이드 후보가 모두 있으면 점수가 높은 것을 선택한다")
-    void multipleUpgradeCandidates_bestScoreWins() {
-        // baseline: ROW_HOUSE, JEONSE, 20~25평, deposit 5천만
-        // 평수 업그레이드: APT, JEONSE, 26~40평 → deposit 8千万 → extra 3개월
-        // 주거유형 업그레이드: APT, JEONSE, 20~25평 → deposit 6千万 → extra 1개월
-        // 주거유형 업그레이드가 extra가 더 작아 horizonScore 높고, condImprovScore도 0.7 → 더 높은 점수 가능
-        put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 80_000_000L, 0);  // 평수 업그레이드
-        put(REGION, HousingType.APT, DealType.JEONSE, 20, 25, 60_000_000L, 0);  // 주거유형 업그레이드
+    @DisplayName("다음 등급의 투영 보증금으로 calculateSavingFixed를 호출한다")
+    void reachesNextRungBySavingFixed() {
+        put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 80_000_000L, 0); // median = 72,000,000
 
-        List<RecommendationItem> result = algorithm.recommend(
+        algorithm.recommend(
                 MEMBER_ID, defaultRequest(), ctx,
-                jeonseBaseline(HousingType.ROW_HOUSE, 20, 25, 50_000_000L));
+                jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getCondition()).isNotNull();
-        // 두 후보 중 하나가 선택됨 — 주거유형 업그레이드(같은 평수, APT)가 더 가까워 선택될 가능성 높음
-        assertThat(result.get(0).getCondition().getHousingType()).isEqualTo(HousingType.APT);
+        ArgumentCaptor<Long> amount = ArgumentCaptor.forClass(Long.class);
+        Mockito.verify(loanPlanCalculator).calculateSavingFixed(
+                anyLong(), amount.capture(), any(AssetNetWorthBreakdown.class), anyLong(), any());
+        assertThat(amount.getValue()).isEqualTo(72_000_000L);
     }
 
     // ─── 헬퍼 ────────────────────────────────────────────────────────────────
@@ -358,26 +340,6 @@ class HoldOutAlgorithmTest {
                         .depositMin(0L)
                         .depositMax(Long.MAX_VALUE)
                         .monthlyRent(0L)
-                        .sampleCount(10)
-                        .marketMedianAmount(deposit)
-                        .build())
-                .build();
-    }
-
-    private RecommendationItem wolseBaseline(HousingType ht, int areaMin, int areaMax,
-                                              long deposit, long monthlyRent) {
-        return RecommendationItem.builder()
-                .type(AlgorithmType.REALISTIC)
-                .condition(GoalRecommendationResponse.Condition.builder()
-                        .regionCode(REGION)
-                        .regionName("테스트구")
-                        .housingType(ht)
-                        .dealType(DealType.WOLSE)
-                        .areaMin(areaMin)
-                        .areaMax(areaMax)
-                        .depositMin(0L)
-                        .depositMax(Long.MAX_VALUE)
-                        .monthlyRent(monthlyRent)
                         .sampleCount(10)
                         .marketMedianAmount(deposit)
                         .build())
