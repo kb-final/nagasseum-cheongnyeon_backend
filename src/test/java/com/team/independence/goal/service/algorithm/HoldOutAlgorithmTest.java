@@ -219,6 +219,62 @@ class HoldOutAlgorithmTest {
         assertThat(condition.getMonthlyRent()).isEqualTo(270_000L);
     }
 
+    @Test
+    @DisplayName("다음 등급이 월세면 loanX·loanO의 monthlySaving에 월세를 더해 보여준다")
+    void addsMonthlyRentToLoanXAndLoanOWhenNextRungIsWolse() {
+        // baseline: APT/JEONSE/20~25평, 5천만
+        // 다음 등급: APT/WOLSE/26~40평, 보증금 5천만 + 월세 30만 → comparable = 5천만+30만*12/0.05=1억1800만 > baseline
+        put(REGION, HousingType.APT, DealType.WOLSE, 26, 40, 50_000_000L, 300_000L);
+
+        when(loanPlanCalculator.calculateSavingFixed(
+                anyLong(), anyLong(), any(AssetNetWorthBreakdown.class), anyLong(), any()))
+                .thenReturn(LoanPlans.builder()
+                        .loanX(GoalRecommendationResponse.LoanXPlan.builder()
+                                .targetAmount(45_000_000L).targetDate(NOW.plusMonths(10)).monthlySaving(1_000_000L)
+                                .build())
+                        .loanO(GoalRecommendationResponse.LoanOPlan.builder()
+                                .loanAmount(10_000_000L).targetAmount(35_000_000L).targetDate(NOW.plusMonths(7))
+                                .monthlySaving(1_000_000L).shortenedMonths(3L)
+                                .build())
+                        .build());
+
+        List<RecommendationItem> result = algorithm.recommend(
+                MEMBER_ID, defaultRequest(), ctx,
+                jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
+
+        assertThat(result).hasSize(1);
+        var item = result.get(0);
+        assertThat(item.getCondition().getDealType()).isEqualTo(DealType.WOLSE);
+        // getMedian() = 30만 * 0.9 = 27만
+        assertThat(item.getCondition().getMonthlyRent()).isEqualTo(270_000L);
+        // 목의 monthlySaving(100만) + 월세(27만) = 127만
+        assertThat(item.getLoanX().getMonthlySaving()).isEqualTo(1_270_000L);
+        assertThat(item.getLoanO().getMonthlySaving()).isEqualTo(1_270_000L);
+        // 월세와 무관한 필드는 그대로 유지된다
+        assertThat(item.getLoanO().getShortenedMonths()).isEqualTo(3L);
+    }
+
+    @Test
+    @DisplayName("다음 등급이 전세면 monthlySaving을 그대로 둔다")
+    void keepsMonthlySavingUnchangedWhenNextRungIsJeonse() {
+        put(REGION, HousingType.APT, DealType.JEONSE, 26, 40, 80_000_000L, 0);
+
+        when(loanPlanCalculator.calculateSavingFixed(
+                anyLong(), anyLong(), any(AssetNetWorthBreakdown.class), anyLong(), any()))
+                .thenReturn(LoanPlans.builder()
+                        .loanX(GoalRecommendationResponse.LoanXPlan.builder()
+                                .targetAmount(72_000_000L).targetDate(NOW.plusMonths(20)).monthlySaving(1_000_000L)
+                                .build())
+                        .build());
+
+        List<RecommendationItem> result = algorithm.recommend(
+                MEMBER_ID, defaultRequest(), ctx,
+                jeonseBaseline(HousingType.APT, 20, 25, 50_000_000L));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getLoanX().getMonthlySaving()).isEqualTo(1_000_000L);
+    }
+
     // ─── 도달 개월 상한 없음 ─────────────────────────────────────────────────
 
     @Test
