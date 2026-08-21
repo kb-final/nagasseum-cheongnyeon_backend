@@ -90,7 +90,7 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         long targetMonths = RecommendationAlgorithm.monthsUntil(targetDate);
 
         AssetNetWorthBreakdown netWorth = ctx.netWorth();
-        long effectiveSaving  = ctx.effectiveSaving();
+        long rawMonthlySaving = ctx.rawMonthlySaving();
 
         HousingType housingType = request.getPropertyType() != null
                 ? request.getPropertyType() : DEFAULT_HOUSING_TYPE;
@@ -129,7 +129,7 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         try {
             PriceModelRequest priceReq = RecommendationAlgorithm.buildPriceModelRequest(
                     median.getRegionCode(), housingType, dealType, areaMin, areaMax);
-            long budgetAtT = budgetCalculator.calculate(netWorth, effectiveSaving, targetMonths);
+            long budgetAtT = budgetCalculator.calculate(netWorth, rawMonthlySaving, ctx.loanSchedules(), targetMonths);
             MonteCarloEngine.Result mc = monteCarloService.simulate(
                     priceReq, deposit, budgetAtT, (int) targetMonths);
             projectedDeposit = mc.priceP50();
@@ -155,7 +155,7 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
 
         // ① 저축 고정 — 사용자의 월 저축액을 그대로 두고 도달 시점을 계산
         LoanPlans savingFixedPlans = loanPlanCalculator.calculateSavingFixed(
-                memberId, projectedDeposit, netWorth, effectiveSaving);
+                memberId, projectedDeposit, netWorth, rawMonthlySaving, ctx.loanSchedules());
         GoalRecommendationResponse.RecommendationItem savingFixedCard =
                 GoalRecommendationResponse.RecommendationItem.builder()
                         .type(AlgorithmType.PREFERENCE_SAVING_FIXED)
@@ -168,7 +168,7 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         // 목표 시점을 입력하지 않았으면 고정할 시점이 없어 조건 없는(null) 카드를 낸다.
         GoalRecommendationResponse.RecommendationItem dateFixedCard;
         if (request.getTargetDate() != null) {
-            LoanPlans dateFixedPlans = loanPlanCalculator.calculate(memberId, projectedDeposit, targetDate, effectiveSaving);
+            LoanPlans dateFixedPlans = loanPlanCalculator.calculate(memberId, projectedDeposit, targetDate, ctx.currentEffectiveSaving());
             GoalRecommendationResponse.LoanOPlan dateFixedLoanO = dateFixedPlans.getLoanO();
             if (dateFixedLoanO != null) {
                 // 시점을 고정한 카드라 대출은 개월을 줄이는 게 아니라 필요 저축액을 낮춘다 → 단축 개월은 0

@@ -1,6 +1,7 @@
 package com.team.independence.goal.service.calculator;
 
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
+import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
@@ -59,6 +60,59 @@ public class BudgetCalculator {
             if (budget >= targetAmount) {
                 return m;
             }
+        }
+        return null;
+    }
+
+    /**
+     * n개월 후 예상 총 예산을 계산한다 — 대출 스케줄 반영 버전.
+     *
+     * <p>매월 아직 상환 중인 대출(remainingMonths >= m)의 월 원리금 합계를 rawSaving에서 차감한 뒤
+     * 복리로 누적한다. 대출이 끝난 달부터는 rawSaving 전액이 저축된다.
+     */
+    public long calculate(AssetNetWorthBreakdown netWorth, long rawSaving,
+                          List<LoanSchedule> loanSchedules, long months) {
+        double r = monthlyInterestRate();
+        long cumulativeSavings = 0L;
+        for (long m = 1; m <= months; m++) {
+            final long month = m;
+            long activePayment = loanSchedules.stream()
+                    .filter(l -> l.remainingMonths() >= month)
+                    .mapToLong(LoanSchedule::monthlyPayment)
+                    .sum();
+            long effectiveThisMonth = Math.max(0, rawSaving - activePayment);
+            cumulativeSavings = Math.round(cumulativeSavings * (1 + r)) + effectiveThisMonth;
+        }
+        return calculateGrownAmount(netWorth.getInterestBearingAssets(), months)
+                + netWorth.getFlatRecognizedAssets()
+                + cumulativeSavings;
+    }
+
+    /**
+     * 예산이 목표 금액에 도달하는 최소 개월수를 탐색한다 — 대출 스케줄 반영 버전.
+     *
+     * <p>매월 활성 대출 상환액만 차감 후 복리 누적. 대출 소멸 이후에는 rawSaving 전액 반영.
+     */
+    public Long monthsToReach(AssetNetWorthBreakdown netWorth, long rawSaving,
+                              List<LoanSchedule> loanSchedules, long targetAmount) {
+        long growingAssets = netWorth.getInterestBearingAssets();
+        long fixedAssets   = netWorth.getFlatRecognizedAssets();
+
+        if (growingAssets + fixedAssets >= targetAmount) return 0L;
+
+        double r = monthlyInterestRate();
+        long cumulativeSavings = 0L;
+        for (long m = 1; m <= MAX_FORECAST_MONTHS; m++) {
+            final long month = m;
+            long activePayment = loanSchedules.stream()
+                    .filter(l -> l.remainingMonths() >= month)
+                    .mapToLong(LoanSchedule::monthlyPayment)
+                    .sum();
+            long effectiveThisMonth = Math.max(0, rawSaving - activePayment);
+            cumulativeSavings = Math.round(cumulativeSavings * (1 + r)) + effectiveThisMonth;
+
+            long budget = calculateGrownAmount(growingAssets, m) + fixedAssets + cumulativeSavings;
+            if (budget >= targetAmount) return m;
         }
         return null;
     }

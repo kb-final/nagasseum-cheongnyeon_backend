@@ -29,7 +29,9 @@ import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.dto.RentMedianResponse.Quartile;
 import com.team.independence.property.service.RegionQueryService;
 import com.team.independence.property.service.RentMedianService;
+import com.team.independence.goal.service.calculator.LoanSchedule;
 import java.time.YearMonth;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -133,7 +135,7 @@ class GoalServiceImplMarketTrendTest {
     @DisplayName("getMarketTrend - 캐시 미스면 refreshMarketTrend로 계산 후 캐시에 저장한다")
     void getMarketTrend_cacheMiss_computesAndCaches() {
         Goal goal = goal(100_000_000L, 90_000_000L, 1_000_000L);
-        when(loanPlanCalculator.calcTotalExistingMonthlyPayment(MEMBER_ID)).thenReturn(0L);
+        when(loanPlanCalculator.getLoanSchedules(MEMBER_ID)).thenReturn(List.of());
         when(goalMapper.findActiveByMemberId(MEMBER_ID)).thenReturn(goal);
         when(goalMapper.findById(GOAL_ID)).thenReturn(goal);
         when(goalMarketTrendCacheStore.find(GOAL_ID)).thenReturn(Optional.empty());
@@ -197,7 +199,7 @@ class GoalServiceImplMarketTrendTest {
     @DisplayName("refreshMarketTrend - maintainEta는 재계산하지 않고 goal.target_date를 그대로 반환한다")
     void refreshMarketTrend_maintainEta_usesStoredTargetDateAsIs() {
         Goal goal = goal(1L, 90_000_000L, 1_000_000L); // targetAmount=1원, 사실상 이미 달성
-        when(loanPlanCalculator.calcTotalExistingMonthlyPayment(MEMBER_ID)).thenReturn(0L);
+        when(loanPlanCalculator.getLoanSchedules(MEMBER_ID)).thenReturn(List.of());
         when(goalMapper.findById(GOAL_ID)).thenReturn(goal);
         when(goalHousingMapper.findByGoalId(GOAL_ID)).thenReturn(goalHousing());
         when(regionQueryService.resolveRegionName("11680")).thenReturn("서울 강남구");
@@ -220,7 +222,7 @@ class GoalServiceImplMarketTrendTest {
     @DisplayName("refreshMarketTrend - reflectEta는 상한(240개월) 내 도달 불가능하면 null, maintainEta는 그대로 target_date")
     void refreshMarketTrend_unreachable_reflectEtaIsNull() {
         Goal goal = goal(9_999_999_999L, 90_000_000L, 0L); // 저축 0, 목표는 사실상 도달 불가
-        when(loanPlanCalculator.calcTotalExistingMonthlyPayment(MEMBER_ID)).thenReturn(0L);
+        when(loanPlanCalculator.getLoanSchedules(MEMBER_ID)).thenReturn(List.of());
         when(goalMapper.findById(GOAL_ID)).thenReturn(goal);
         when(goalHousingMapper.findByGoalId(GOAL_ID)).thenReturn(goalHousing());
         when(regionQueryService.resolveRegionName("11680")).thenReturn("서울 강남구");
@@ -243,7 +245,7 @@ class GoalServiceImplMarketTrendTest {
     void refreshMarketTrend_maintainAndReflect_diverge() {
         // targetAmount(100M)가 currentMiddleAmount(10M)보다 훨씬 커서, 반영(reflect) 쪽이 훨씬 빨리 도달해야 한다
         Goal goal = goal(100_000_000L, 90_000_000L, 1_000_000L);
-        when(loanPlanCalculator.calcTotalExistingMonthlyPayment(MEMBER_ID)).thenReturn(0L);
+        when(loanPlanCalculator.getLoanSchedules(MEMBER_ID)).thenReturn(List.of());
         when(goalMapper.findById(GOAL_ID)).thenReturn(goal);
         when(goalHousingMapper.findByGoalId(GOAL_ID)).thenReturn(goalHousing());
         when(regionQueryService.resolveRegionName("11680")).thenReturn("서울 강남구");

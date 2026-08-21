@@ -23,7 +23,9 @@ import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
 import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
+import com.team.independence.goal.service.calculator.LoanSchedule;
 import com.team.independence.goal.mapper.SavingRecordMapper;
+import java.util.List;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import java.time.LocalDate;
@@ -75,6 +77,8 @@ class GoalDetailServiceImplTest {
                         new LoanPlanCalculator(null, null, null, null) {
                             @Override
                             public long calcTotalExistingMonthlyPayment(long memberId) { return 0L; }
+                            @Override
+                            public List<LoanSchedule> getLoanSchedules(long memberId) { return List.of(); }
                         }));
     }
 
