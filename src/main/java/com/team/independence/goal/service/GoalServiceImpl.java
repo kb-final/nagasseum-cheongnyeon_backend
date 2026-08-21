@@ -19,6 +19,8 @@ import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
 import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
+import com.team.independence.goal.service.calculator.LoanSchedule;
+import java.util.List;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.RentMedianRequest;
@@ -101,9 +103,10 @@ public class GoalServiceImpl implements GoalService {
 
         long months = monthsUntil(request.getTargetDate()); // 현재 시점부터 목표 시점까지 남은 개월 수 계산
 
-        long effectiveMonthlySavings = calcEffectiveMonthlySaving(memberId, request.getMonthlySavings());
+        List<LoanSchedule> loanSchedules = loanPlanCalculator.getLoanSchedules(memberId);
+        long rawMonthlySavings = request.getMonthlySavings();
         long recognizedAssets = budgetCalculator.calculate(netWorth, 0L, months);
-        long totalBudget = budgetCalculator.calculate(netWorth, effectiveMonthlySavings, months);
+        long totalBudget = budgetCalculator.calculate(netWorth, rawMonthlySavings, loanSchedules, months);
         long projectedSavings = totalBudget - recognizedAssets;
 
         // 사용자 희망 조건에 맞는 실거래 4분위값을 조회
@@ -131,9 +134,9 @@ public class GoalServiceImpl implements GoalService {
             long median = marketStats.getDeposit().getMedian();
             adjustmentSuggestions = GoalDiagnosisResponse.AdjustmentSuggestions.builder()
                     .increaseSavings(calculateIncreaseSavingsSuggestion(
-                            median, netWorth, effectiveMonthlySavings, months))
+                            median, netWorth, rawMonthlySavings, loanSchedules, months))
                     .extendPeriod(calculateExtendPeriodSuggestion(
-                            netWorth, effectiveMonthlySavings, months,
+                            netWorth, rawMonthlySavings, loanSchedules, months,
                             median, request.getTargetDate()))
                     .reduceSize(calculateReduceSizeSuggestion(
                             regionCode, housingType, dealType,
@@ -364,14 +367,8 @@ public class GoalServiceImpl implements GoalService {
     @Override
     public Long calculateEffectiveMonthToReach(long memberId, AssetNetWorthBreakdown netWorth,
                                                long monthlySaving, long targetAmount) {
-        long effective = calcEffectiveMonthlySaving(memberId, monthlySaving);
-        return budgetCalculator.monthsToReach(netWorth, effective, targetAmount);
-    }
-
-    /** 기존 대출 월상환액을 차감한 실질 월저축액. 대출 상환액이 저축액을 초과하면 0으로 처리한다. */
-    private long calcEffectiveMonthlySaving(long memberId, long monthlySaving) {
-        long loanPayment = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
-        return Math.max(0L, monthlySaving - loanPayment);
+        List<LoanSchedule> schedules = loanPlanCalculator.getLoanSchedules(memberId);
+        return budgetCalculator.monthsToReach(netWorth, monthlySaving, schedules, targetAmount);
     }
 
     // 현재 활성 목표에 대한 매물 시세 변화 데이터 조회
@@ -567,8 +564,13 @@ public class GoalServiceImpl implements GoalService {
     }
 
     /** 같은 개월수 기준, budget이 median에 도달하도록 월저축액을 이진탐색으로 역산 */
+    /**
+     * 이진탐색으로 "필요 raw 저축액"을 찾는다.
+     * 대출 스케줄은 고정이므로 rawSaving을 높이는 방향으로만 탐색한다.
+     */
     private GoalDiagnosisResponse.IncreaseSavingsSuggestion calculateIncreaseSavingsSuggestion(
-            long median, AssetNetWorthBreakdown netWorth, long monthlySavings, long months) {
+            long median, AssetNetWorthBreakdown netWorth, long monthlySavings,
+            List<LoanSchedule> loanSchedules, long months) {
         if (months == 0) {
             return null;
         }
@@ -576,7 +578,7 @@ public class GoalServiceImpl implements GoalService {
         long hi = median;
         while (hi - lo > 1) {
             long mid = (lo + hi) / 2;
-            if (budgetCalculator.calculate(netWorth, mid, months) >= median) {
+            if (budgetCalculator.calculate(netWorth, mid, loanSchedules, months) >= median) {
                 hi = mid;
             } else {
                 lo = mid;
@@ -591,11 +593,11 @@ public class GoalServiceImpl implements GoalService {
 
     /** 월저축액 고정, budget이 median에 도달하는 최소 개월수를 탐색(최대 EXTEND_PERIOD_MAX_MONTHS). */
     private GoalDiagnosisResponse.ExtendPeriodSuggestion calculateExtendPeriodSuggestion(
-            AssetNetWorthBreakdown netWorth, long monthlySavings, long months,
-            long median, YearMonth targetDate) {
+            AssetNetWorthBreakdown netWorth, long monthlySavings, List<LoanSchedule> loanSchedules,
+            long months, long median, YearMonth targetDate) {
 
         for (long n = months + 1; n <= EXTEND_PERIOD_MAX_MONTHS; n++) {
-            if (budgetCalculator.calculate(netWorth, monthlySavings, n) >= median) {
+            if (budgetCalculator.calculate(netWorth, monthlySavings, loanSchedules, n) >= median) {
                 long additionalMonths = n - months;
                 return GoalDiagnosisResponse.ExtendPeriodSuggestion.builder()
                         .additionalMonths(additionalMonths)

@@ -3,6 +3,7 @@ package com.team.independence.goal.service;
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
+import com.team.independence.goal.service.calculator.LoanSchedule;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.PriceModelRequest;
@@ -62,11 +63,13 @@ public interface RecommendationAlgorithm {
     record MemberFinancialContext(
             AssetNetWorthBreakdown netWorth,
             long rawMonthlySaving,
-            long loanPayment) {
+            List<LoanSchedule> loanSchedules) {
 
-        /** 기존 대출 월상환액 차감 후 실질 저축 여력 */
-        public long effectiveSaving() {
-            return Math.max(0, rawMonthlySaving - loanPayment);
+        /** "지금 시점" 기준 실질 저축 여력 — DSR 계산 등 현재 스냅샷이 필요한 곳에서만 사용 */
+        public long currentEffectiveSaving() {
+            long totalNow = loanSchedules.stream()
+                    .mapToLong(LoanSchedule::monthlyPayment).sum();
+            return Math.max(0, rawMonthlySaving - totalNow);
         }
     }
 

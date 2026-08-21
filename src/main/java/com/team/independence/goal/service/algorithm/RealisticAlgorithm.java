@@ -151,7 +151,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         long desiredMonths = RecommendationAlgorithm.monthsUntil(targetDate);
 
         AssetNetWorthBreakdown netWorth = ctx.netWorth();
-        long effectiveSaving  = ctx.effectiveSaving();
+        long effectiveSaving  = ctx.currentEffectiveSaving();
 
         Search search = new Search(memberId, netWorth, effectiveSaving, desiredMonths);
 
@@ -502,12 +502,10 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         // 화면에 나가는 목표 금액은 환산값이 아니라 실제로 모아야 하는 보증금이다.
         LoanPlans plans = loanPlanCalculator.calculate(memberId, chosen.deposit(), targetDate, search.effectiveSaving);
 
+        // 날짜 고정 카드라 대출은 시점을 앞당기는 게 아니라 필요 저축액을 낮춘다 → 단축 개월은 0
         GoalRecommendationResponse.LoanOPlan loanO = plans.getLoanO();
-        if (loanO != null && chosen.reachMonths() != null) {
-            Long shortened = loanPlanCalculator.calcShortenedMonths(
-                    memberId, search.netWorth, search.effectiveSaving,
-                    chosen.deposit(), chosen.reachMonths());
-            loanO = loanO.toBuilder().shortenedMonths(shortened).build();
+        if (loanO != null) {
+            loanO = loanO.toBuilder().shortenedMonths(0L).build();
         }
 
         GoalRecommendationResponse.Condition condition = GoalRecommendationResponse.Condition.builder()
