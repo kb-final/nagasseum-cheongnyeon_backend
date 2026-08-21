@@ -7,9 +7,12 @@ import com.team.independence.goal.service.calculator.LoanSchedule;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.PriceModelRequest;
+import com.team.independence.property.dto.RentMedianResponse;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 추천 알고리즘 하나. 구현체 하나가 곧 추천 카드 한 장을 만든다.
@@ -63,7 +66,19 @@ public interface RecommendationAlgorithm {
     record MemberFinancialContext(
             AssetNetWorthBreakdown netWorth,
             long rawMonthlySaving,
-            List<LoanSchedule> loanSchedules) {
+            List<LoanSchedule> loanSchedules,
+            /**
+             * 요청 한 건 내에서 알고리즘들이 공유하는 bulkMedian 캐시. key는 regionCode.
+             * Realistic이 시군구를 확정한 뒤 채우면 HoldOut이 같은 지역·기간의 반복 조회를 피한다.
+             * 알고리즘들은 Phase 1 → Phase 2 순차라 락 없이 접근하지만, 방어적으로 ConcurrentHashMap을 쓴다.
+             */
+            Map<String, Map<String, RentMedianResponse>> bulkMediansCache) {
+
+        /** 기본 캐시를 자동 생성하는 3-arg 편의 생성자 — 기존 호출부(테스트 포함) 호환 유지 */
+        public MemberFinancialContext(AssetNetWorthBreakdown netWorth, long rawMonthlySaving,
+                                       List<LoanSchedule> loanSchedules) {
+            this(netWorth, rawMonthlySaving, loanSchedules, new ConcurrentHashMap<>());
+        }
 
         /** "지금 시점" 기준 실질 저축 여력 — DSR 계산 등 현재 스냅샷이 필요한 곳에서만 사용 */
         public long currentEffectiveSaving() {
