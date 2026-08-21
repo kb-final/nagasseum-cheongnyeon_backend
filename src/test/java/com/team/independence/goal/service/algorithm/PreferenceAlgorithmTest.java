@@ -18,6 +18,7 @@ import com.team.independence.goal.dto.LoanPlans;
 import com.team.independence.goal.service.MonteCarloService;
 import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
+import com.team.independence.goal.service.calculator.LoanSchedule;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.RentMedianRequest;
@@ -73,11 +74,11 @@ class PreferenceAlgorithmTest {
                 .interestBearingAssets(0L)
                 .flatRecognizedAssets(0L)
                 .build();
-        ctx = new MemberFinancialContext(defaultNetWorth, 10_000_000L, 0L);
+        ctx = new MemberFinancialContext(defaultNetWorth, 10_000_000L, List.of());
 
         when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
                 .thenReturn(LoanPlans.builder().build());
-        when(loanPlanCalculator.calculateSavingFixed(anyLong(), anyLong(), any(), anyLong()))
+        when(loanPlanCalculator.calculateSavingFixed(anyLong(), anyLong(), any(), anyLong(), any()))
                 .thenReturn(LoanPlans.builder().build());
         stubMedian(2 * 억, 0, 120);
     }
@@ -166,7 +167,7 @@ class PreferenceAlgorithmTest {
 
         assertThat(item.getCondition().getMonthlyRent()).isEqualTo(40 * 만);
         // 환산값이 아니라 실제 보증금(1,000만)을 플랜 계산기로 넘긴다. targetDate가 없어 저축 고정 경로만 탄다.
-        verify(loanPlanCalculator).calculateSavingFixed(eq(MEMBER_ID), eq(1000 * 만), any(), anyLong());
+        verify(loanPlanCalculator).calculateSavingFixed(eq(MEMBER_ID), eq(1000 * 만), any(), anyLong(), any());
     }
 
     @Test

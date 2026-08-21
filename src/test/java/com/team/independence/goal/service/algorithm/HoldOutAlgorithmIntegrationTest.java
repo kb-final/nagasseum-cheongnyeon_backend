@@ -32,6 +32,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  *   <li>테스트에 쓸 memberId의 connected_account, asset_account, asset_summary.monthly_savings 존재</li>
  *   <li>rent_transaction에 해당 region/type/deal 최근 6개월 데이터 10건 이상</li>
  * </ul>
+ *
+ * <p>HoldOut은 Realistic 결과를 기준점으로 동작한다.
+ * 통합 테스트에서는 RealisticAlgorithm을 먼저 실행해 결과를 HoldOut에 전달한다.
  */
 @Disabled("로컬 MySQL + Redis 환경 전용")
 @ExtendWith(SpringExtension.class)
@@ -41,22 +44,19 @@ class HoldOutAlgorithmIntegrationTest {
     /** 테스트에 쓸 회원 ID — 로컬 DB에 맞게 변경 */
     private static final long TEST_MEMBER_ID = 1L;
 
-    @Autowired
-    private HoldOutAlgorithm holdOutAlgorithm;
-    @Autowired
-    private AssetSummaryService assetSummaryService;
-    @Autowired
-    private LoanPlanCalculator loanPlanCalculator;
+    @Autowired private RealisticAlgorithm realisticAlgorithm;
+    @Autowired private HoldOutAlgorithm   holdOutAlgorithm;
+    @Autowired private AssetSummaryService assetSummaryService;
+    @Autowired private LoanPlanCalculator  loanPlanCalculator;
 
     private MemberFinancialContext buildCtx(long memberId) {
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
         long monthlySaving = assetSummaryService.getMonthlySavingsOrZero(memberId);
-        long loanPayment = loanPlanCalculator.calcTotalExistingMonthlyPayment(memberId);
-        return new MemberFinancialContext(netWorth, monthlySaving, loanPayment);
+        return new MemberFinancialContext(netWorth, monthlySaving, loanPlanCalculator.getLoanSchedules(memberId));
     }
 
     /**
-     * request에 조건을 직접 넣어서 실행.
+     * Realistic을 먼저 실행한 뒤 그 결과를 HoldOut에 전달한다.
      * regionCode, propertyType, tradeType, sizeMin, sizeMax는 rent_transaction에 실제로 있는 값으로 변경.
      */
     @Test
@@ -67,12 +67,30 @@ class HoldOutAlgorithmIntegrationTest {
         request.setTradeType(DealType.JEONSE);
         request.setSizeMin(20);
         request.setSizeMax(30);
-        request.setTargetDate(YearMonth.now().plusMonths(24)); // n=24개월 기준
+        request.setTargetDate(YearMonth.now().plusMonths(24));
 
+        MemberFinancialContext ctx = buildCtx(TEST_MEMBER_ID);
+
+        // Phase 1: Realistic
+        List<GoalRecommendationResponse.RecommendationItem> realisticResult =
+                realisticAlgorithm.recommend(TEST_MEMBER_ID, request, ctx);
+        GoalRecommendationResponse.RecommendationItem realisticItem =
+                realisticResult.isEmpty() ? null : realisticResult.get(0);
+
+        System.out.println("=== Realistic 결과 ===");
+        System.out.println(realisticItem != null && realisticItem.getCondition() != null
+                ? realisticItem.getCondition().getRegionName()
+                    + " / " + realisticItem.getCondition().getHousingType()
+                    + " / " + realisticItem.getCondition().getDealType()
+                    + " / " + realisticItem.getCondition().getAreaMin()
+                    + "~" + realisticItem.getCondition().getAreaMax() + "평"
+                : "soft-fail (condition null)");
+
+        // Phase 2: HoldOut (Realistic 결과를 기준점으로 사용)
         List<GoalRecommendationResponse.RecommendationItem> result =
-                holdOutAlgorithm.recommend(TEST_MEMBER_ID, request, buildCtx(TEST_MEMBER_ID));
+                holdOutAlgorithm.recommend(TEST_MEMBER_ID, request, ctx, realisticItem);
 
-        System.out.println("=== HoldOut 결과 ===");
+        System.out.println("\n=== HoldOut 결과 ===");
         if (!result.isEmpty()) {
             GoalRecommendationResponse.RecommendationItem item = result.get(0);
             System.out.println("type   : " + item.getType());
@@ -88,30 +106,6 @@ class HoldOutAlgorithmIntegrationTest {
             System.out.println("추천 결과 없음 (빈 목록)");
         }
 
-        // 데이터가 충분하면 카드가 있어야 함 (로컬 DB 데이터에 따라 달라짐)
         if (!result.isEmpty()) assertNotNull(result.get(0));
-    }
-
-    /**
-     * request 조건 없이 active goal 기반으로 실행.
-     * TEST_MEMBER_ID에 ACTIVE 목표와 GoalHousing이 있어야 함.
-     */
-    @Test
-    void goal_fallback() {
-        GoalRecommendationRequest request = new GoalRecommendationRequest();
-        // 조건 미입력 → active goal의 housing 조건 사용
-
-        List<GoalRecommendationResponse.RecommendationItem> result =
-                holdOutAlgorithm.recommend(TEST_MEMBER_ID, request, buildCtx(TEST_MEMBER_ID));
-
-        System.out.println("=== HoldOut (goal fallback) 결과 ===");
-        if (!result.isEmpty() && result.get(0).getCondition() != null) {
-            GoalRecommendationResponse.RecommendationItem item = result.get(0);
-            System.out.println("조건   : " + item.getCondition().getRegionName()
-                    + " " + item.getCondition().getAreaMin()
-                    + "~" + item.getCondition().getAreaMax() + "평");
-        } else {
-            System.out.println("추천 결과 없음 (active goal 없거나 데이터 부족)");
-        }
     }
 }

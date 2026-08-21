@@ -92,7 +92,7 @@ class RealisticAlgorithmTest {
                 .interestBearingAssets(0L)
                 .flatRecognizedAssets(0L)
                 .build();
-        ctx = new MemberFinancialContext(defaultNetWorth, MONTHLY_SAVING, 0L);
+        ctx = new MemberFinancialContext(defaultNetWorth, MONTHLY_SAVING, List.of());
 
         // MC: 가격 변화 없음으로 스텁. 선택 로직이 가려지지 않게 priceP50 = initialPrice 반환.
         when(monteCarloService.simulate(any(PriceModelRequest.class), anyLong(), anyLong(), anyInt()))
@@ -156,7 +156,7 @@ class RealisticAlgorithmTest {
         // 월 저축 2천만 → 예산 4.8억. 이제 3억짜리도 들어온다.
         RecommendationItem item = algorithm.recommend(MEMBER_ID,
                 request("11110", HousingType.APT, DealType.JEONSE),
-                new MemberFinancialContext(defaultNetWorth, 20_000_000L, 0L))
+                new MemberFinancialContext(defaultNetWorth, 20_000_000L, List.of()))
                 .get(0);
 
         assertThat(item.getCondition().getAreaMin()).isEqualTo(20);
@@ -261,7 +261,7 @@ class RealisticAlgorithmTest {
 
         RecommendationItem item = algorithm.recommend(MEMBER_ID,
                 request("11110", HousingType.APT, DealType.JEONSE),
-                new MemberFinancialContext(defaultNetWorth, 0L, 0L))
+                new MemberFinancialContext(defaultNetWorth, 0L, List.of()))
                 .get(0);
 
         // 저축 0이어도 가장 가까운 후보(가장 싼 조건) 카드는 나온다
