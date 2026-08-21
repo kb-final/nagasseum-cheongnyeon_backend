@@ -49,6 +49,11 @@ public class GoalController {
         return ApiResponse.ok(goalService.createGoal(memberId, request));
     }
 
+    @GetMapping("/active")
+    public ApiResponse<GoalResponse> getActiveGoal(@LoginMember Long memberId) {
+        return ApiResponse.ok(goalService.getActiveGoal(memberId));
+    }
+
     @GetMapping("/{goalId}")
     public ApiResponse<GoalResponse> getGoal(
             @LoginMember Long memberId,
