@@ -154,14 +154,15 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
                 .build();
 
         // ① 저축 고정 — 사용자의 월 저축액을 그대로 두고 도달 시점을 계산
+        // monthlySaving은 보증금을 모으는 동안의 저축액이라 월세가 빠져 있다. 월세 조건이면 더해서 보여준다.
         LoanPlans savingFixedPlans = loanPlanCalculator.calculateSavingFixed(
                 memberId, projectedDeposit, netWorth, rawMonthlySaving, ctx.loanSchedules());
         GoalRecommendationResponse.RecommendationItem savingFixedCard =
                 GoalRecommendationResponse.RecommendationItem.builder()
                         .type(AlgorithmType.PREFERENCE_SAVING_FIXED)
                         .condition(condition)
-                        .loanX(savingFixedPlans.getLoanX())
-                        .loanO(savingFixedPlans.getLoanO())
+                        .loanX(RecommendationAlgorithm.withMonthlyRentAdded(savingFixedPlans.getLoanX(), monthlyRent))
+                        .loanO(RecommendationAlgorithm.withMonthlyRentAdded(savingFixedPlans.getLoanO(), monthlyRent))
                         .build();
 
         // ② 시점 고정 — 목표 시점을 고정하고 필요한 월 저축액을 역산.
@@ -169,7 +170,10 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         GoalRecommendationResponse.RecommendationItem dateFixedCard;
         if (request.getTargetDate() != null) {
             LoanPlans dateFixedPlans = loanPlanCalculator.calculate(memberId, projectedDeposit, targetDate, ctx.currentEffectiveSaving());
-            GoalRecommendationResponse.LoanOPlan dateFixedLoanO = dateFixedPlans.getLoanO();
+            GoalRecommendationResponse.LoanXPlan dateFixedLoanX =
+                    RecommendationAlgorithm.withMonthlyRentAdded(dateFixedPlans.getLoanX(), monthlyRent);
+            GoalRecommendationResponse.LoanOPlan dateFixedLoanO =
+                    RecommendationAlgorithm.withMonthlyRentAdded(dateFixedPlans.getLoanO(), monthlyRent);
             if (dateFixedLoanO != null) {
                 // 시점을 고정한 카드라 대출은 개월을 줄이는 게 아니라 필요 저축액을 낮춘다 → 단축 개월은 0
                 dateFixedLoanO = dateFixedLoanO.toBuilder().shortenedMonths(0L).build();
@@ -177,7 +181,7 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
             dateFixedCard = GoalRecommendationResponse.RecommendationItem.builder()
                     .type(AlgorithmType.PREFERENCE_DATE_FIXED)
                     .condition(condition)
-                    .loanX(dateFixedPlans.getLoanX())
+                    .loanX(dateFixedLoanX)
                     .loanO(dateFixedLoanO)
                     .build();
         } else {
