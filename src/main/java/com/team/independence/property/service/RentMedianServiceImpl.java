@@ -10,6 +10,8 @@ import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.dto.RentMedianResponse.Quartile;
 import com.team.independence.property.dto.SigunguMedianResult;
+import com.team.independence.property.dto.TypeDealPair;
+import java.util.ArrayList;
 import com.team.independence.property.mapper.RegionMapper;
 import com.team.independence.property.mapper.RentTransactionMapper;
 import java.time.YearMonth;
@@ -83,31 +85,35 @@ public class RentMedianServiceImpl implements RentMedianService {
             throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
         }
 
-        // (주거유형, 거래유형) 조합별로 개별 쿼리를 실행해 idx_rent_query 인덱스를 탄다.
-        // 단일 bulk 쿼리 대비 처리 행 수가 1/8로 줄어 윈도우 함수 비용이 크게 감소한다.
-        Map<String, RentMedianResponse> result = new HashMap<>();
-        for (HousingType housingType : HousingType.values()) {
-            for (DealType dealType : DealType.values()) {
-                List<BulkMedianResult> rows = rentTransactionMapper.findBulkMedianByType(
-                        regionCode, housingType, dealType, startYm, endYm);
-                for (BulkMedianResult r : rows) {
-                    String key = housingType + "|" + dealType + "|" + r.getAreaMin();
-                    RentMedianResponse response = RentMedianResponse.builder()
-                            .regionCode(regionCode)
-                            .regionName(regionName)
-                            .housingType(housingType)
-                            .dealType(dealType)
-                            .baseStartYm(startYm)
-                            .baseEndYm(endYm)
-                            .sampleCount(r.getSampleCount())
-                            .deposit(Quartile.of(r.getDepositQ1(), r.getDepositQ2(), r.getDepositQ3()))
-                            .monthlyRent(r.getRentQ2() != null
-                                    ? Quartile.of(r.getRentQ1(), r.getRentQ2(), r.getRentQ3())
-                                    : Quartile.empty())
-                            .build();
-                    result.put(key, response);
-                }
+        // 4 × 2 = 8개 (주거유형, 거래유형) 쌍을 한 왕복으로 조회한다.
+        // (housing_type, deal_type) IN (...)이 idx_rent_query 서브레인지 스캔을 조합별로 그대로 태우므로
+        // 처리 행 수는 8회 개별 쿼리 합과 동일하고, 왕복·파서·옵티마이저 오버헤드만 사라진다.
+        List<TypeDealPair> typePairs = new ArrayList<>(HousingType.values().length * DealType.values().length);
+        for (HousingType ht : HousingType.values()) {
+            for (DealType dt : DealType.values()) {
+                typePairs.add(new TypeDealPair(ht, dt));
             }
+        }
+        List<BulkMedianResult> rows = rentTransactionMapper.findBulkMedianBatch(
+                regionCode, typePairs, startYm, endYm);
+
+        Map<String, RentMedianResponse> result = new HashMap<>();
+        for (BulkMedianResult r : rows) {
+            String key = r.getHousingType() + "|" + r.getDealType() + "|" + r.getAreaMin();
+            RentMedianResponse response = RentMedianResponse.builder()
+                    .regionCode(regionCode)
+                    .regionName(regionName)
+                    .housingType(r.getHousingType())
+                    .dealType(r.getDealType())
+                    .baseStartYm(startYm)
+                    .baseEndYm(endYm)
+                    .sampleCount(r.getSampleCount())
+                    .deposit(Quartile.of(r.getDepositQ1(), r.getDepositQ2(), r.getDepositQ3()))
+                    .monthlyRent(r.getRentQ2() != null
+                            ? Quartile.of(r.getRentQ1(), r.getRentQ2(), r.getRentQ3())
+                            : Quartile.empty())
+                    .build();
+            result.put(key, response);
         }
         return result;
     }
