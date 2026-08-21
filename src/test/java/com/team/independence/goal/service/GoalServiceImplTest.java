@@ -26,7 +26,7 @@ class GoalServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new GoalServiceImpl(null, null, null, null, null, null, null, null, new BudgetCalculator(), null);
+        service = new GoalServiceImpl(null, null, null, null, null, null, null, null, new BudgetCalculator(), null, null);
     }
 
     // ------------------------------------------------------------------

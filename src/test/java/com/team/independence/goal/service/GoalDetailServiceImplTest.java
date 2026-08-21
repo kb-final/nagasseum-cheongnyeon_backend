@@ -21,11 +21,10 @@ import com.team.independence.goal.dto.GoalDetailResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
+import com.team.independence.goal.mapper.SavingRecordMapper;
 import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.goal.service.calculator.LoanSchedule;
-import com.team.independence.goal.mapper.SavingRecordMapper;
-import java.util.List;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import java.time.LocalDate;
@@ -68,18 +67,39 @@ class GoalDetailServiceImplTest {
         savingRecordMapper = new FakeSavingRecordMapper();
         assetConnectionService = new FakeAssetConnectionService();
         assetSummaryService = new FakeAssetSummaryService();
+
         // 소유권 검증과 도달 개월수 계산은 진짜 GoalServiceImpl이 담당한다.
         // 계산을 가짜로 바꾸면 forecasts 검증이 의미를 잃기 때문이다.
         // 그 외 의존성은 이 경로에서 쓰이지 않아 null로 둔다.
         service = new GoalDetailServiceImpl(
-                goalHousingMapper, savingRecordMapper, assetConnectionService, assetSummaryService,
-                new GoalServiceImpl(null, null, null, null, goalMapper, null, null, null, new BudgetCalculator(),
+                goalHousingMapper,
+                savingRecordMapper,
+                assetConnectionService,
+                assetSummaryService,
+                new GoalServiceImpl(
+                        null,
+                        null,
+                        null,
+                        null,
+                        goalMapper,
+                        null,
+                        null,
+                        null,
+                        new BudgetCalculator(),
                         new LoanPlanCalculator(null, null, null, null) {
                             @Override
-                            public long calcTotalExistingMonthlyPayment(long memberId) { return 0L; }
+                            public long calcTotalExistingMonthlyPayment(long memberId) {
+                                return 0L;
+                            }
+
                             @Override
-                            public List<LoanSchedule> getLoanSchedules(long memberId) { return List.of(); }
-                        }));
+                            public List<LoanSchedule> getLoanSchedules(long memberId) {
+                                return List.of();
+                            }
+                        },
+                        null
+                )
+        );
     }
 
     // ------------------------------------------------------------------
@@ -138,7 +158,10 @@ class GoalDetailServiceImplTest {
         assetSummaryService.growingAssets = 30_000_000L;
         assetSummaryService.fixedAssets = 20_000_000L;
 
-        assertEquals(50_000_000L, call().getProgress().getCurrentAmount().longValue());
+        assertEquals(
+                50_000_000L,
+                call().getProgress().getCurrentAmount().longValue()
+        );
     }
 
     @Test
@@ -172,9 +195,13 @@ class GoalDetailServiceImplTest {
     void 순자산이_마이너스여도_0() {
         goalMapper.goal.setTargetAmount(100_000_000L);
         assetSummaryService.growingAssets = 0L;
-        assetSummaryService.fixedAssets = -5_000_000L; // 대출이 자산보다 많은 경우
+        assetSummaryService.fixedAssets = -5_000_000L;
 
-        assertEquals(0.0, call().getProgress().getAchievementRate(), 0.0001);
+        assertEquals(
+                0.0,
+                call().getProgress().getAchievementRate(),
+                0.0001
+        );
     }
 
     @Test
@@ -184,12 +211,15 @@ class GoalDetailServiceImplTest {
         assetSummaryService.growingAssets = 100_000_000L;
         assetSummaryService.fixedAssets = 0L;
 
-        // 33.3333...% -> 33.33
-        assertEquals(33.33, call().getProgress().getAchievementRate(), 0.0001);
+        assertEquals(
+                33.33,
+                call().getProgress().getAchievementRate(),
+                0.0001
+        );
     }
 
     // ------------------------------------------------------------------
-    // 저축 현황 (명세의 저축 기록 건수별 분기)
+    // 저축 현황
     // ------------------------------------------------------------------
 
     @Test
@@ -199,21 +229,33 @@ class GoalDetailServiceImplTest {
 
         GoalDetailResponse response = call();
 
-        assertEquals(FIXED_SAVING, response.getSavingStatus().getFixedSaving());
+        assertEquals(
+                FIXED_SAVING,
+                response.getSavingStatus().getFixedSaving()
+        );
         assertNull(response.getSavingStatus().getLatestSaving());
         assertNull(response.getSavingStatus().getRecentAverageSaving());
         assertEquals(1, response.getForecasts().size());
-        assertEquals(SavingBasis.FIXED, response.getForecasts().get(0).getBasis());
+        assertEquals(
+                SavingBasis.FIXED,
+                response.getForecasts().get(0).getBasis()
+        );
     }
 
     @Test
     @DisplayName("기록이 3건 미만이면 평균은 내지 않고 RECENT_AVERAGE도 빠진다")
     void 기록_2건() {
-        savingRecordMapper.records = Arrays.asList(record("202607", 2_000_000L), record("202606", 1_800_000L));
+        savingRecordMapper.records = Arrays.asList(
+                record("202607", 2_000_000L),
+                record("202606", 1_800_000L)
+        );
 
         GoalDetailResponse response = call();
 
-        assertEquals(2_000_000L, response.getSavingStatus().getLatestSaving().longValue());
+        assertEquals(
+                2_000_000L,
+                response.getSavingStatus().getLatestSaving().longValue()
+        );
         assertNull(response.getSavingStatus().getRecentAverageSaving());
         assertFalse(hasBasis(response, SavingBasis.RECENT_AVERAGE));
         assertTrue(hasBasis(response, SavingBasis.LATEST));
@@ -225,21 +267,34 @@ class GoalDetailServiceImplTest {
         savingRecordMapper.records = Arrays.asList(
                 record("202607", 2_000_000L),
                 record("202606", 1_800_000L),
-                record("202605", 1_450_000L));
+                record("202605", 1_450_000L)
+        );
 
         GoalDetailResponse response = call();
 
-        assertEquals(2_000_000L, response.getSavingStatus().getLatestSaving().longValue());
-        assertEquals(1_750_000L, response.getSavingStatus().getRecentAverageSaving().longValue());
+        assertEquals(
+                2_000_000L,
+                response.getSavingStatus().getLatestSaving().longValue()
+        );
+        assertEquals(
+                1_750_000L,
+                response.getSavingStatus().getRecentAverageSaving().longValue()
+        );
         assertEquals(3, response.getForecasts().size());
     }
 
     @Test
     @DisplayName("가장 최근 달은 조회 결과의 첫 번째 행이다")
     void 최근달은_첫번째_행() {
-        savingRecordMapper.records = Arrays.asList(record("202607", 3_000_000L), record("202606", 1_000_000L));
+        savingRecordMapper.records = Arrays.asList(
+                record("202607", 3_000_000L),
+                record("202606", 1_000_000L)
+        );
 
-        assertEquals(3_000_000L, call().getSavingStatus().getLatestSaving().longValue());
+        assertEquals(
+                3_000_000L,
+                call().getSavingStatus().getLatestSaving().longValue()
+        );
     }
 
     // ------------------------------------------------------------------
@@ -254,7 +309,10 @@ class GoalDetailServiceImplTest {
         List<GoalForecastResponse> forecasts = call().getForecasts();
 
         assertEquals(SavingBasis.FIXED, forecasts.get(0).getBasis());
-        assertEquals(SavingBasis.RECENT_AVERAGE, forecasts.get(1).getBasis());
+        assertEquals(
+                SavingBasis.RECENT_AVERAGE,
+                forecasts.get(1).getBasis()
+        );
         assertEquals(SavingBasis.LATEST, forecasts.get(2).getBasis());
     }
 
@@ -263,20 +321,32 @@ class GoalDetailServiceImplTest {
     void 고정기준의_차이는_0() {
         savingRecordMapper.records = threeRecords();
 
-        assertEquals(0, findBasis(call(), SavingBasis.FIXED).getMonthsDiff().intValue());
+        assertEquals(
+                0,
+                findBasis(call(), SavingBasis.FIXED)
+                        .getMonthsDiff()
+                        .intValue()
+        );
     }
 
     @Test
     @DisplayName("더 많이 저축하면 예상 시점이 앞당겨지고 monthsDiff가 양수가 된다")
     void 더_저축하면_앞당겨진다() {
-        savingRecordMapper.records = threeRecords(); // 평균 175만 > 고정 150만
+        savingRecordMapper.records = threeRecords();
 
         GoalDetailResponse response = call();
-        GoalForecastResponse fixed = findBasis(response, SavingBasis.FIXED);
-        GoalForecastResponse average = findBasis(response, SavingBasis.RECENT_AVERAGE);
+        GoalForecastResponse fixed =
+                findBasis(response, SavingBasis.FIXED);
+        GoalForecastResponse average =
+                findBasis(response, SavingBasis.RECENT_AVERAGE);
 
-        assertTrue(average.getMonthsDiff() > 0, "앞당겨졌으면 양수여야 한다: " + average.getMonthsDiff());
-        assertTrue(average.getExpectedDate().isBefore(fixed.getExpectedDate()));
+        assertTrue(
+                average.getMonthsDiff() > 0,
+                "앞당겨졌으면 양수여야 한다: " + average.getMonthsDiff()
+        );
+        assertTrue(
+                average.getExpectedDate().isBefore(fixed.getExpectedDate())
+        );
     }
 
     @Test
@@ -285,9 +355,13 @@ class GoalDetailServiceImplTest {
         savingRecordMapper.records = Arrays.asList(
                 record("202607", 500_000L),
                 record("202606", 500_000L),
-                record("202605", 500_000L));
+                record("202605", 500_000L)
+        );
 
-        assertTrue(findBasis(call(), SavingBasis.RECENT_AVERAGE).getMonthsDiff() < 0);
+        assertTrue(
+                findBasis(call(), SavingBasis.RECENT_AVERAGE)
+                        .getMonthsDiff() < 0
+        );
     }
 
     @Test
@@ -299,8 +373,14 @@ class GoalDetailServiceImplTest {
         savingRecordMapper.records = threeRecords();
 
         for (GoalForecastResponse forecast : call().getForecasts()) {
-            assertNull(forecast.getExpectedDate(), forecast.getBasis() + "은 시점이 없어야 한다");
-            assertEquals(0, forecast.getMonthsDiff().intValue());
+            assertNull(
+                    forecast.getExpectedDate(),
+                    forecast.getBasis() + "은 시점이 없어야 한다"
+            );
+            assertEquals(
+                    0,
+                    forecast.getMonthsDiff().intValue()
+            );
         }
     }
 
@@ -314,9 +394,13 @@ class GoalDetailServiceImplTest {
 
         assertFalse(hasBasis(response, SavingBasis.FIXED));
         assertEquals(2, response.getForecasts().size());
+
         for (GoalForecastResponse forecast : response.getForecasts()) {
             assertNotNull(forecast.getExpectedDate());
-            assertNull(forecast.getMonthsDiff(), forecast.getBasis() + "은 비교 기준이 없다");
+            assertNull(
+                    forecast.getMonthsDiff(),
+                    forecast.getBasis() + "은 비교 기준이 없다"
+            );
         }
     }
 
@@ -324,7 +408,10 @@ class GoalDetailServiceImplTest {
     @DisplayName("실제 저축액이 0인 달만 있으면 그 기준은 목록에서 빠진다")
     void 저축액_0인_기준은_제외() {
         savingRecordMapper.records = Arrays.asList(
-                record("202607", 0L), record("202606", 0L), record("202605", 0L));
+                record("202607", 0L),
+                record("202606", 0L),
+                record("202605", 0L)
+        );
 
         GoalDetailResponse response = call();
 
@@ -338,9 +425,13 @@ class GoalDetailServiceImplTest {
     void 예상시점은_이번달_기준() {
         savingRecordMapper.records = Collections.emptyList();
 
-        YearMonth expected = findBasis(call(), SavingBasis.FIXED).getExpectedDate();
+        YearMonth expected =
+                findBasis(call(), SavingBasis.FIXED).getExpectedDate();
 
-        assertTrue(expected.isAfter(YearMonth.now()), "미래여야 한다: " + expected);
+        assertTrue(
+                expected.isAfter(YearMonth.now()),
+                "미래여야 한다: " + expected
+        );
     }
 
     // ------------------------------------------------------------------
@@ -354,7 +445,11 @@ class GoalDetailServiceImplTest {
 
         call();
 
-        assertEquals(1, assetSummaryService.netWorthCalls, "forecasts 세 개를 만들어도 자산 조회는 1회");
+        assertEquals(
+                1,
+                assetSummaryService.netWorthCalls,
+                "forecasts 세 개를 만들어도 자산 조회는 1회"
+        );
         assertEquals(1, savingRecordMapper.calls);
     }
 
@@ -366,15 +461,26 @@ class GoalDetailServiceImplTest {
         return service.getGoalDetail(MEMBER_ID, GOAL_ID);
     }
 
-    private boolean hasBasis(GoalDetailResponse response, SavingBasis basis) {
-        return response.getForecasts().stream().anyMatch(f -> f.getBasis() == basis);
+    private boolean hasBasis(
+            GoalDetailResponse response,
+            SavingBasis basis
+    ) {
+        return response.getForecasts()
+                .stream()
+                .anyMatch(f -> f.getBasis() == basis);
     }
 
-    private GoalForecastResponse findBasis(GoalDetailResponse response, SavingBasis basis) {
-        return response.getForecasts().stream()
+    private GoalForecastResponse findBasis(
+            GoalDetailResponse response,
+            SavingBasis basis
+    ) {
+        return response.getForecasts()
+                .stream()
                 .filter(f -> f.getBasis() == basis)
                 .findFirst()
-                .orElseThrow(() -> new AssertionError(basis + " 기준이 없다"));
+                .orElseThrow(
+                        () -> new AssertionError(basis + " 기준이 없다")
+                );
     }
 
     /** 평균 175만원이 되는 3개월치 기록 */
@@ -382,10 +488,14 @@ class GoalDetailServiceImplTest {
         return Arrays.asList(
                 record("202607", 2_000_000L),
                 record("202606", 1_800_000L),
-                record("202605", 1_450_000L));
+                record("202605", 1_450_000L)
+        );
     }
 
-    private SavingRecord record(String recordYm, long actualSaving) {
+    private SavingRecord record(
+            String recordYm,
+            long actualSaving
+    ) {
         return SavingRecord.builder()
                 .goalId(GOAL_ID)
                 .recordYm(recordYm)
@@ -452,7 +562,8 @@ class GoalDetailServiceImplTest {
         }
     }
 
-    private static class FakeGoalHousingMapper implements GoalHousingMapper {
+    private static class FakeGoalHousingMapper
+            implements GoalHousingMapper {
 
         private GoalHousing housing = GoalHousing.builder()
                 .goalId(GOAL_ID)
@@ -483,34 +594,49 @@ class GoalDetailServiceImplTest {
         }
     }
 
-    private static class FakeSavingRecordMapper implements SavingRecordMapper {
+    private static class FakeSavingRecordMapper
+            implements SavingRecordMapper {
 
         private List<SavingRecord> records = new ArrayList<>();
         private int calls = 0;
 
         @Override
-        public List<SavingRecord> findRecentByGoalId(Long goalId, int limit) {
+        public List<SavingRecord> findRecentByGoalId(
+                Long goalId,
+                int limit
+        ) {
             calls++;
-            return records.size() > limit ? records.subList(0, limit) : records;
+
+            return records.size() > limit
+                    ? records.subList(0, limit)
+                    : records;
         }
     }
 
-    private static class FakeAssetConnectionService implements AssetConnectionService {
+    private static class FakeAssetConnectionService
+            implements AssetConnectionService {
 
         @Override
-        public com.team.independence.asset.dto.connection.AssetLinkResponse linkAccount(
-                Long memberId, com.team.independence.asset.dto.connection.AssetLinkRequest request) {
+        public com.team.independence.asset.dto.connection.AssetLinkResponse
+        linkAccount(
+                Long memberId,
+                com.team.independence.asset.dto.connection.AssetLinkRequest request
+        ) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public List<com.team.independence.asset.dto.connection.LinkedOrganizationResponse> getConnections(Long memberId) {
+        public List<com.team.independence.asset.dto.connection.LinkedOrganizationResponse>
+        getConnections(Long memberId) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public com.team.independence.asset.dto.connection.UnlinkOrganizationResponse unlinkOrganization(
-                Long memberId, String organizationCode) {
+        public com.team.independence.asset.dto.connection.UnlinkOrganizationResponse
+        unlinkOrganization(
+                Long memberId,
+                String organizationCode
+        ) {
             throw new UnsupportedOperationException();
         }
 
@@ -520,15 +646,19 @@ class GoalDetailServiceImplTest {
         }
     }
 
-    private static class FakeAssetSummaryService implements AssetSummaryService {
+    private static class FakeAssetSummaryService
+            implements AssetSummaryService {
 
         private long growingAssets = 100_000_000L;
         private long fixedAssets = 20_000_000L;
         private int netWorthCalls = 0;
 
         @Override
-        public AssetNetWorthBreakdown getNetWorthBreakdown(Long memberId) {
+        public AssetNetWorthBreakdown getNetWorthBreakdown(
+                Long memberId
+        ) {
             netWorthCalls++;
+
             return AssetNetWorthBreakdown.builder()
                     .interestBearingAssets(growingAssets)
                     .flatRecognizedAssets(fixedAssets)
@@ -546,7 +676,10 @@ class GoalDetailServiceImplTest {
         }
 
         @Override
-        public void updateMonthlySavings(Long memberId, Long monthlySavings) {
+        public void updateMonthlySavings(
+                Long memberId,
+                Long monthlySavings
+        ) {
             throw new UnsupportedOperationException();
         }
     }
