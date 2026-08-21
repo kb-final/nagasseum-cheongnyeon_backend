@@ -15,7 +15,8 @@ import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -23,27 +24,28 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * Realistic 결과를 기준점으로 삼아 변수 하나씩 업그레이드한 조건을 추천하는 HoldOut 알고리즘.
+ * Realistic 결과를 기준점으로 삼아 "가격순 바로 위 칸"을 추천하는 HoldOut 알고리즘.
  *
  * <h3>컨셉</h3>
  * Realistic이 "지금 저축으로 목표 시점 안에 가능한 조건"을 찾아주면,
- * HoldOut은 그 결과를 기준점(baseline)으로 삼아 변수 하나만 올린 업그레이드 후보를 탐색한다.
+ * HoldOut은 그 결과를 기준점(baseline)으로 삼아 <b>조금 더 비싼 다음 등급</b>을 찾는다.
  * "조금 더 기다리면 한 단계 나은 집을 얻을 수 있다"는 메시지를 만드는 카드다.
  *
- * <h3>업그레이드 후보 (한 번에 하나씩)</h3>
- * <ul>
- *   <li><b>평수</b>: baseline의 areaMax보다 areaMin이 큰 바로 다음 SIZE_BUCKET</li>
- *   <li><b>주거유형</b>: 현재 타입 바로 상위 (DETACHED → ROW_HOUSE, ROW_HOUSE·OFFICETEL → APT)</li>
- *   <li><b>거래유형</b>: baseline이 월세인 경우에만 전세로 변경</li>
- * </ul>
+ * <h3>후보군: 40개 조합 전체</h3>
+ * 평수 하나만 키우거나 주거유형만 올리는 식으로 변수를 하나씩 바꾸면, 다른 조합이 더 싼 다음 등급인데도
+ * 못 보고 지나칠 수 있다. 그래서 주거유형(4) × 거래유형(2) × 평수 버킷(5) = 40개 조합을 모두 실거래
+ * 가격으로 평가하고, baseline보다 <b>비싼 것 중 가장 싼 것</b>을 고른다. "다음 등급이 무엇인지"는
+ * 우리가 정하지 않고 시장 가격이 정한다. baseline과 같은 조합은 자연히 후보에서 제외된다
+ * (자기 자신보다 비쌀 수 없으므로).
  *
- * <h3>스코어링</h3>
- * score = 0.5 × condImprovScore + 0.5 × horizonScore
- * <ul>
- *   <li>condImprovScore: 조건 개선 폭 (평수 면적비, 주거유형·거래유형 업그레이드 고정점수)</li>
- *   <li>horizonScore = 1 / (1 + extraMonths / 24): 추가 대기 개월이 짧을수록 높다</li>
- * </ul>
- * extraMonths가 {@link #MAX_EXTRA_MONTHS}를 초과하는 후보는 제외한다.
+ * <h3>도달 개월 상한을 두지 않는다</h3>
+ * 다음 등급이 baseline 바로 위 칸이라 가격 점프가 이미 최소이므로, 추가로 대기 개월을 잘라낼 필요가
+ * 없다. 계산된 결과가 아무리 오래 걸리더라도 그대로 보여준다.
+ *
+ * <h3>baseline이 최상위 조합일 때</h3>
+ * 40개 조합을 다 훑어도 baseline보다 비싼 것이 없으면(이미 최고가 조합이면) soft-fail 카드
+ * ({@code condition = null})를 반환한다. baseline을 그대로 복제해 보여주지 않는다 — "다음 등급"이라는
+ * 이 카드의 정체성에 맞는 답이 없다는 뜻이라, 없는 답을 지어내지 않는다.
  *
  * <h3>실행 순서 의존성</h3>
  * 이 알고리즘은 Realistic 결과에 의존한다.
@@ -58,7 +60,6 @@ import org.springframework.stereotype.Service;
 public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
     private static final int    MIN_SAMPLE_COUNT   = 3;
-    private static final long   MAX_EXTRA_MONTHS   = 36L;
     private static final double ANNUAL_INTEREST_RATE = 0.05;
     private static final long   DEPOSIT_MAX_DISPLAY  = 1_000_000_000_000L;
 
@@ -94,9 +95,6 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
         long baselineComparable = toComparableAmount(
                 baseline.getMarketMedianAmount(), baseline.getMonthlyRent());
-        Long baselineReachMonths = budgetCalculator.monthsToReach(
-                ctx.netWorth(), ctx.rawMonthlySaving(), ctx.loanSchedules(), baselineComparable);
-        if (baselineReachMonths == null) baselineReachMonths = 0L;
 
         long desiredMonths = request.getTargetDate() != null
                 ? RecommendationAlgorithm.monthsUntil(request.getTargetDate())
@@ -108,86 +106,66 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         Map<String, RentMedianResponse> bulkMedians =
                 rentMedianService.getBulkMedian(baseline.getRegionCode(), startYm, endYm);
 
-        List<UpgradeCandidate> candidates = buildUpgradeCandidates(baseline);
+        // 목표 시점(desiredMonths)의 예산은 후보와 무관하게 같으므로 루프 밖에서 한 번만 계산한다.
+        long budgetAtT = budgetCalculator.calculate(
+                ctx.netWorth(), ctx.rawMonthlySaving(), ctx.loanSchedules(), desiredMonths);
 
-        ScoredCandidate best = null;
-        for (UpgradeCandidate uc : candidates) {
-            ScoredCandidate scored = evaluate(uc, baseline, baselineReachMonths, bulkMedians, ctx, desiredMonths);
-            if (scored == null) continue;
-            if (best == null || scored.score() > best.score()) best = scored;
-        }
+        // 40개 조합(주거유형 × 거래유형 × 평수 버킷)을 모두 평가해 baseline보다 비싼 것 중 가장 싼 것을 고른다.
+        EvaluatedCandidate nextRung = Arrays.stream(HousingType.values())
+                .flatMap(ht -> Arrays.stream(DealType.values())
+                        .flatMap(dt -> Arrays.stream(SIZE_BUCKETS)
+                                .map(size -> evaluate(baseline.getRegionCode(), ht, dt, size, bulkMedians, budgetAtT, desiredMonths))))
+                .filter(c -> c != null && c.comparableAmount() > baselineComparable)
+                .min(Comparator.comparingLong(EvaluatedCandidate::comparableAmount))
+                .orElse(null);
 
-        if (best == null) {
+        if (nextRung == null) {
             return List.of(emptyCard());
         }
 
         LoanPlans plans = loanPlanCalculator.calculateSavingFixed(
-                memberId, best.deposit(), ctx.netWorth(), ctx.rawMonthlySaving(), ctx.loanSchedules());
+                memberId, nextRung.deposit(), ctx.netWorth(), ctx.rawMonthlySaving(), ctx.loanSchedules());
 
         return List.of(GoalRecommendationResponse.RecommendationItem.builder()
                 .type(AlgorithmType.HOLD_OUT)
                 .condition(GoalRecommendationResponse.Condition.builder()
-                        .regionCode(best.regionCode())
-                        .regionName(best.regionName())
-                        .housingType(best.housingType())
-                        .dealType(best.dealType())
-                        .areaMin(best.areaMin())
-                        .areaMax(best.areaMax())
+                        .regionCode(nextRung.regionCode())
+                        .regionName(nextRung.regionName())
+                        .housingType(nextRung.housingType())
+                        .dealType(nextRung.dealType())
+                        .areaMin(nextRung.areaMin())
+                        .areaMax(nextRung.areaMax())
                         .depositMin(0L)
                         .depositMax(DEPOSIT_MAX_DISPLAY)
-                        .monthlyRent(best.monthlyRent())
-                        .sampleCount(best.sampleCount())
-                        .marketMedianAmount(best.deposit())
+                        .monthlyRent(nextRung.monthlyRent())
+                        .sampleCount(nextRung.sampleCount())
+                        .marketMedianAmount(nextRung.deposit())
                         .build())
                 .loanX(plans.getLoanX())
                 .loanO(plans.getLoanO())
                 .build());
     }
 
-    // ─── 업그레이드 후보 생성 ─────────────────────────────────────────────────────
-
-    private List<UpgradeCandidate> buildUpgradeCandidates(GoalRecommendationResponse.Condition baseline) {
-        List<UpgradeCandidate> candidates = new ArrayList<>();
-
-        // 평수 업그레이드: baseline.areaMax보다 areaMin이 큰 바로 다음 버킷
-        int[] nextSize = nextSizeBucket(baseline.getAreaMax());
-        if (nextSize != null) {
-            candidates.add(new UpgradeCandidate(
-                    baseline.getRegionCode(), baseline.getHousingType(), baseline.getDealType(),
-                    nextSize[0], nextSize[1], UpgradeType.SIZE));
-        }
-
-        // 주거유형 업그레이드: 현재 타입의 바로 상위
-        HousingType nextType = nextHousingType(baseline.getHousingType());
-        if (nextType != null) {
-            candidates.add(new UpgradeCandidate(
-                    baseline.getRegionCode(), nextType, baseline.getDealType(),
-                    baseline.getAreaMin(), baseline.getAreaMax(), UpgradeType.HOUSING_TYPE));
-        }
-
-        // 거래유형 업그레이드: 월세 → 전세
-        if (baseline.getDealType() == DealType.WOLSE) {
-            candidates.add(new UpgradeCandidate(
-                    baseline.getRegionCode(), baseline.getHousingType(), DealType.JEONSE,
-                    baseline.getAreaMin(), baseline.getAreaMax(), UpgradeType.DEAL_TYPE));
-        }
-
-        return candidates;
-    }
-
     // ─── 후보 평가 ────────────────────────────────────────────────────────────────
 
-    private ScoredCandidate evaluate(UpgradeCandidate uc, GoalRecommendationResponse.Condition baseline,
-                                      long baselineReachMonths, Map<String, RentMedianResponse> bulkMedians,
-                                      MemberFinancialContext ctx, long desiredMonths) {
-        String key = uc.housingType() + "|" + uc.dealType() + "|" + uc.areaMin();
+    /**
+     * 조합 하나(주거유형·거래유형·평수 버킷)의 실거래 median을 조회해 목표 시점의 투영 가격까지 계산한다.
+     * 표본 부족이거나 실거래 데이터가 없으면 null.
+     */
+    private EvaluatedCandidate evaluate(
+            String regionCode, HousingType housingType, DealType dealType, int[] size,
+            Map<String, RentMedianResponse> bulkMedians, long budgetAtT, long desiredMonths) {
+
+        int areaMin = size[0];
+        int areaMax = size[1];
+        String key = housingType + "|" + dealType + "|" + areaMin;
         RentMedianResponse median = bulkMedians.get(key);
         if (median == null || median.getSampleCount() < MIN_SAMPLE_COUNT) return null;
         if (median.getDeposit() == null || median.getDeposit().getMedian() == null) return null;
 
         long deposit = median.getDeposit().getMedian();
         long monthlyRent = 0L;
-        if (uc.dealType() == DealType.WOLSE) {
+        if (dealType == DealType.WOLSE) {
             Long rentMedian = median.getMonthlyRent() != null ? median.getMonthlyRent().getMedian() : null;
             if (rentMedian == null) return null;
             monthlyRent = rentMedian;
@@ -196,71 +174,23 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         // MC로 목표 시점의 예상 가격 투영 — Realistic과 동일한 1회 시뮬레이션
         long projectedDeposit = deposit;
         try {
-            long budgetAtT = budgetCalculator.calculate(
-                    ctx.netWorth(), ctx.rawMonthlySaving(), ctx.loanSchedules(), desiredMonths);
             MonteCarloEngine.Result mc = monteCarloService.simulate(
-                    RecommendationAlgorithm.buildPriceModelRequest(
-                            uc.regionCode(), uc.housingType(), uc.dealType(), uc.areaMin(), uc.areaMax()),
+                    RecommendationAlgorithm.buildPriceModelRequest(regionCode, housingType, dealType, areaMin, areaMax),
                     deposit, budgetAtT, (int) desiredMonths);
             projectedDeposit = mc.priceP50();
         } catch (RuntimeException e) {
-            log.debug("MC 실패, 현재 시세 사용. housingType={}, dealType={}", uc.housingType(), uc.dealType());
+            log.debug("MC 실패, 현재 시세 사용. housingType={}, dealType={}", housingType, dealType);
         }
 
         long comparableAmount = toComparableAmount(projectedDeposit, monthlyRent);
-        Long upgradeReachMonths = budgetCalculator.monthsToReach(
-                ctx.netWorth(), ctx.rawMonthlySaving(), ctx.loanSchedules(), comparableAmount);
-        if (upgradeReachMonths == null) return null;
 
-        long extraMonths = upgradeReachMonths - baselineReachMonths;
-        if (extraMonths > MAX_EXTRA_MONTHS) return null;
-
-        double condImprovScore = conditionImprovementScore(baseline, uc);
-        double horizonScore    = 1.0 / (1.0 + Math.max(0, extraMonths) / 24.0);
-        double score           = 0.5 * condImprovScore + 0.5 * horizonScore;
-
-        return new ScoredCandidate(
-                uc.regionCode(), median.getRegionName(), uc.housingType(), uc.dealType(),
-                uc.areaMin(), uc.areaMax(), projectedDeposit, monthlyRent,
-                median.getSampleCount(), extraMonths, score);
-    }
-
-    private double conditionImprovementScore(GoalRecommendationResponse.Condition baseline, UpgradeCandidate uc) {
-        return switch (uc.upgradeType()) {
-            case SIZE -> {
-                double baseMid    = (baseline.getAreaMin() + baseline.getAreaMax()) / 2.0;
-                double upgradeMid = (uc.areaMin() + uc.areaMax()) / 2.0;
-                yield Math.min(1.0, Math.max(0.0, 0.5 + (upgradeMid - baseMid) / 20.0));
-            }
-            case HOUSING_TYPE -> 0.7;
-            case DEAL_TYPE    -> 0.6;
-        };
+        return new EvaluatedCandidate(
+                regionCode, median.getRegionName(), housingType, dealType,
+                areaMin, areaMax, projectedDeposit, monthlyRent,
+                median.getSampleCount(), comparableAmount);
     }
 
     // ─── 헬퍼 ────────────────────────────────────────────────────────────────────
-
-    /**
-     * baseline.areaMax보다 areaMin이 큰 버킷 중 가장 가까운(areaMin이 가장 작은) 버킷.
-     * 이미 최대 버킷이면 null.
-     */
-    private int[] nextSizeBucket(int baselineAreaMax) {
-        int[] result = null;
-        for (int[] bucket : SIZE_BUCKETS) {
-            if (bucket[0] > baselineAreaMax && (result == null || bucket[0] < result[0])) {
-                result = bucket;
-            }
-        }
-        return result;
-    }
-
-    /** DETACHED(1) → ROW_HOUSE(2), ROW_HOUSE·OFFICETEL(2) → APT(3), APT → null */
-    private HousingType nextHousingType(HousingType current) {
-        return switch (current) {
-            case DETACHED          -> HousingType.ROW_HOUSE;
-            case ROW_HOUSE, OFFICETEL -> HousingType.APT;
-            case APT               -> null;
-        };
-    }
 
     private long toComparableAmount(long deposit, long monthlyRent) {
         if (monthlyRent <= 0) return deposit;
@@ -275,14 +205,9 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
 
     // ─── 내부 타입 ────────────────────────────────────────────────────────────────
 
-    private enum UpgradeType { SIZE, HOUSING_TYPE, DEAL_TYPE }
-
-    private record UpgradeCandidate(
-            String regionCode, HousingType housingType, DealType dealType,
-            int areaMin, int areaMax, UpgradeType upgradeType) {}
-
-    private record ScoredCandidate(
+    /** 평가가 끝난 조합 하나. {@code deposit}은 목표 시점 투영가, {@code comparableAmount}는 전세 환산 후 정렬용 값. */
+    private record EvaluatedCandidate(
             String regionCode, String regionName, HousingType housingType, DealType dealType,
             int areaMin, int areaMax, long deposit, long monthlyRent,
-            int sampleCount, long extraMonths, double score) {}
+            int sampleCount, long comparableAmount) {}
 }
