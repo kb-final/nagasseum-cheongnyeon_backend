@@ -101,29 +101,29 @@ class CompareServiceImplTest {
 
     @Test
     @DisplayName("인원이 0인 구간도 자리를 지킨다")
-    void 빈_구간도_9칸에_포함된다() {
+    void 빈_구간도_10칸에_포함된다() {
         mapper.cohortCount = 10;
         // 쿼리는 인원이 있는 구간만 돌려준다. 0~10과 10~20은 아예 없다.
         mapper.buckets = Arrays.asList(bucket(2, 4), bucket(6, 6));
 
         List<AchievementBucket> buckets = call().getAchievementDistribution().getBuckets();
 
-        assertEquals(9, buckets.size());
+        assertEquals(10, buckets.size());
         assertEquals(0, buckets.get(0).getCount().intValue());
         assertEquals(0.0, buckets.get(0).getRatio(), 0.0001);
         assertEquals(4, buckets.get(2).getCount().intValue());
     }
 
     @Test
-    @DisplayName("마지막 구간만 80~100으로 폭이 두 배다")
-    void 마지막_구간은_80에서_100이다() {
+    @DisplayName("모든 구간이 10% 폭이고 마지막은 90~100이다")
+    void 마지막_구간은_90에서_100이다() {
         mapper.cohortCount = 10;
         List<AchievementBucket> buckets = call().getAchievementDistribution().getBuckets();
 
         assertEquals(0, buckets.get(0).getRangeMin().intValue());
         assertEquals(10, buckets.get(0).getRangeMax().intValue());
-        assertEquals(80, buckets.get(8).getRangeMin().intValue());
-        assertEquals(100, buckets.get(8).getRangeMax().intValue());
+        assertEquals(90, buckets.get(9).getRangeMin().intValue());
+        assertEquals(100, buckets.get(9).getRangeMax().intValue());
     }
 
     @Test
@@ -139,7 +139,7 @@ class CompareServiceImplTest {
     }
 
     @Test
-    @DisplayName("달성률 80 이상은 모두 마지막 구간에 들어간다")
+    @DisplayName("달성률 90 이상은 모두 마지막 구간에 들어간다")
     void 달성률_100도_마지막_구간이다() {
         mapper.cohortCount = 10;
         mapper.me.setAchievementRate(100.0);
@@ -147,7 +147,7 @@ class CompareServiceImplTest {
         List<AchievementBucket> buckets = call().getAchievementDistribution().getBuckets();
 
         // (int)(100 / 10) = 10. 방어하지 않으면 배열 밖을 가리킨다.
-        assertTrue(buckets.get(8).getIsMine());
+        assertTrue(buckets.get(9).getIsMine());
     }
 
     // ------------------------------------------------------------------

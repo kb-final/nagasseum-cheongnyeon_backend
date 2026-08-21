@@ -39,8 +39,7 @@ public class GoalCompareResponse {
     }
 
     /**
-     * 달성률 10% 단위 구간.
-     * 마지막 구간(80~100%)만 폭이 20이다.
+     * 달성률 10% 단위 구간. 마지막 구간은 90~100%이다.
      * isMine은 primitive boolean이 아닌 Boolean — Jackson이 "isMine"으로 직렬화하려면 래퍼 타입이어야 한다.
      */
     @Getter

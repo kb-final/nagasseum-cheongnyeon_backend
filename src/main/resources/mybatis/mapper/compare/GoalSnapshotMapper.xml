@@ -199,15 +199,15 @@
 
     <!--
       달성률을 10 단위로 나눈 구간 번호로 묶는다.
-      LEAST(..., 8) 로 80% 이상은 모두 마지막 구간(80~100%)에 넣는다.
+      LEAST(..., 9) 로 90% 이상은 모두 마지막 구간(90~100%)에 넣는다.
     -->
     <select id="countByAchievementBucket"
             resultType="com.team.independence.compare.dto.AchievementBucketCount">
-        SELECT LEAST(FLOOR(achievement_rate / 10), 8) AS bucketIndex,
+        SELECT LEAST(FLOOR(achievement_rate / 10), 9) AS bucketIndex,
                COUNT(*)                               AS `count`
         FROM goal_snapshot
         <include refid="cohortWhere"/>
-        GROUP BY LEAST(FLOOR(achievement_rate / 10), 8)
+        GROUP BY LEAST(FLOOR(achievement_rate / 10), 9)
         ORDER BY bucketIndex
     </select>
 
