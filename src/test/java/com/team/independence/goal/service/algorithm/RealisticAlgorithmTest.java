@@ -13,12 +13,14 @@ import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
 import com.team.independence.goal.dto.AlgorithmType;
 import com.team.independence.goal.service.RecommendationAlgorithm.MemberFinancialContext;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
+import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.goal.dto.GoalRecommendationResponse.RecommendationItem;
 import com.team.independence.goal.dto.LoanPlans;
 import com.team.independence.goal.service.MonteCarloEngine;
 import com.team.independence.goal.service.MonteCarloService;
 import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
+import com.team.independence.goal.service.calculator.LoanSchedule;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.dto.PriceModelRequest;
@@ -103,17 +105,18 @@ class RealisticAlgorithmTest {
                 });
 
         // BudgetCalculator.monthsToReach: 목표액 ÷ 월저축액 (복리 계산 대신 단순 나눗셈)
-        when(budgetCalculator.monthsToReach(any(), anyLong(), anyLong())).thenAnswer(call -> {
+        // loanSchedules 인자는 이 테스트들에서 항상 빈 리스트라 무시하고 rawMonthlySaving만 쓴다.
+        when(budgetCalculator.monthsToReach(any(), anyLong(), any(), anyLong())).thenAnswer(call -> {
             long monthlySaving = call.getArgument(1);
-            long targetAmount = call.getArgument(2);
+            long targetAmount = call.getArgument(3);
             if (monthlySaving <= 0) return null;
             return (long) Math.ceil((double) targetAmount / monthlySaving);
         });
 
         // BudgetCalculator.calculate: MC에 넘기는 budgetAtT 용도라 값 자체는 중요하지 않음
-        when(budgetCalculator.calculate(any(), anyLong(), anyLong())).thenAnswer(call -> {
+        when(budgetCalculator.calculate(any(), anyLong(), any(), anyLong())).thenAnswer(call -> {
             long monthlySaving = call.getArgument(1);
-            long months = call.getArgument(2);
+            long months = call.getArgument(3);
             return monthlySaving * months;
         });
 
@@ -223,6 +226,32 @@ class RealisticAlgorithmTest {
     }
 
     @Test
+    @DisplayName("월세 후보를 고르면 loanX·loanO monthlySaving에 월세를 더해 보여준다")
+    void addsMonthlyRentToLoanXAndLoanOWhenWolseChosen() {
+        put("11110", HousingType.APT, DealType.WOLSE, 15, 1000 * 만, 40 * 만);
+
+        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
+                .thenReturn(LoanPlans.builder()
+                        .loanX(GoalRecommendationResponse.LoanXPlan.builder()
+                                .targetAmount(1000 * 만).monthlySaving(1_000_000L).build())
+                        .loanO(GoalRecommendationResponse.LoanOPlan.builder()
+                                .loanAmount(500 * 만).targetAmount(500 * 만).monthlySaving(1_000_000L).build())
+                        .build());
+
+        GoalRecommendationRequest request = request("11110", HousingType.APT, null);
+        request.setSizeMin(15);
+        request.setSizeMax(19);
+
+        RecommendationItem item = recommend(request);
+
+        // 목(100만) + 월세(40만) = 140만
+        assertThat(item.getLoanX().getMonthlySaving()).isEqualTo(1_400_000L);
+        assertThat(item.getLoanO().getMonthlySaving()).isEqualTo(1_400_000L);
+        // 월세와 무관한 필드는 유지된다
+        assertThat(item.getLoanO().getShortenedMonths()).isEqualTo(0L);
+    }
+
+    @Test
     @DisplayName("환산했을 때 월세가 더 비싸면 전세를 고른다")
     void prefersJeonseWhenWolseIsPricierAfterConversion() {
         put("11110", HousingType.APT, DealType.JEONSE, 15, 2 * 억, 0);
@@ -237,6 +266,22 @@ class RealisticAlgorithmTest {
 
         assertThat(item.getCondition().getDealType()).isEqualTo(DealType.JEONSE);
         assertThat(item.getCondition().getMonthlyRent()).isZero();
+    }
+
+    @Test
+    @DisplayName("예산 계산에 loanSchedules를 그대로 넘긴다 — 대출이 끝나는 시점을 구간별로 반영하기 위함")
+    void passesLoanSchedulesThroughToBudgetCalculator() {
+        put("11110", HousingType.APT, DealType.JEONSE, 15, 2 * 억, 0);
+
+        List<LoanSchedule> schedules = List.of(new LoanSchedule(1_000_000L, 12L));
+        MemberFinancialContext ctxWithLoan = new MemberFinancialContext(defaultNetWorth, MONTHLY_SAVING, schedules);
+
+        algorithm.recommend(MEMBER_ID, request("11110", HousingType.APT, DealType.JEONSE), ctxWithLoan);
+
+        org.mockito.ArgumentCaptor<List<LoanSchedule>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(budgetCalculator, org.mockito.Mockito.atLeastOnce())
+                .monthsToReach(any(), anyLong(), captor.capture(), anyLong());
+        assertThat(captor.getValue()).isEqualTo(schedules);
     }
 
     @Test

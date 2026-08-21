@@ -13,6 +13,7 @@ import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
 import com.team.independence.goal.dto.AlgorithmType;
 import com.team.independence.goal.service.RecommendationAlgorithm.MemberFinancialContext;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
+import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.goal.dto.GoalRecommendationResponse.RecommendationItem;
 import com.team.independence.goal.dto.LoanPlans;
 import com.team.independence.goal.service.MonteCarloService;
@@ -168,6 +169,47 @@ class PreferenceAlgorithmTest {
         assertThat(item.getCondition().getMonthlyRent()).isEqualTo(40 * 만);
         // 환산값이 아니라 실제 보증금(1,000만)을 플랜 계산기로 넘긴다. targetDate가 없어 저축 고정 경로만 탄다.
         verify(loanPlanCalculator).calculateSavingFixed(eq(MEMBER_ID), eq(1000 * 만), any(), anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("월세면 저축 고정·시점 고정 두 카드 모두 monthlySaving에 월세를 더한다")
+    void addsMonthlyRentToBothCardsWhenWolse() {
+        stubMedian(1000 * 만, 40 * 만, 60);
+        when(loanPlanCalculator.calculateSavingFixed(anyLong(), anyLong(), any(), anyLong(), any()))
+                .thenReturn(LoanPlans.builder()
+                        .loanX(GoalRecommendationResponse.LoanXPlan.builder()
+                                .targetAmount(1000 * 만).monthlySaving(1_000_000L).build())
+                        .build());
+        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
+                .thenReturn(LoanPlans.builder()
+                        .loanX(GoalRecommendationResponse.LoanXPlan.builder()
+                                .targetAmount(1000 * 만).monthlySaving(500_000L).build())
+                        .build());
+
+        GoalRecommendationRequest request = request("11110");
+        request.setTradeType(DealType.WOLSE);
+        request.setTargetDate(java.time.YearMonth.now().plusMonths(24));
+
+        List<RecommendationItem> result = algorithm.recommend(MEMBER_ID, request, ctx);
+
+        // 저축 고정: 목(100만) + 월세(40만) = 140만
+        assertThat(result.get(0).getLoanX().getMonthlySaving()).isEqualTo(1_400_000L);
+        // 시점 고정: 목(50만) + 월세(40만) = 90만
+        assertThat(result.get(1).getLoanX().getMonthlySaving()).isEqualTo(900_000L);
+    }
+
+    @Test
+    @DisplayName("전세면 monthlySaving을 그대로 둔다")
+    void keepsMonthlySavingUnchangedWhenJeonse() {
+        when(loanPlanCalculator.calculateSavingFixed(anyLong(), anyLong(), any(), anyLong(), any()))
+                .thenReturn(LoanPlans.builder()
+                        .loanX(GoalRecommendationResponse.LoanXPlan.builder()
+                                .targetAmount(2 * 억).monthlySaving(1_000_000L).build())
+                        .build());
+
+        RecommendationItem item = recommend(request("11110"));
+
+        assertThat(item.getLoanX().getMonthlySaving()).isEqualTo(1_000_000L);
     }
 
     @Test
