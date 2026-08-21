@@ -23,12 +23,14 @@ import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.goal.service.calculator.LoanSchedule;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
-import com.team.independence.property.dto.PriceModelRequest;
+import com.team.independence.property.dto.PriceModelKey;
+import com.team.independence.property.dto.PriceModelResponse;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.dto.RentMedianResponse.Quartile;
 import com.team.independence.property.dto.SigunguMedianResult;
 import com.team.independence.property.mapper.RegionMapper;
+import com.team.independence.property.service.PriceModelService;
 import com.team.independence.property.service.RentMedianService;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -72,6 +74,8 @@ class RealisticAlgorithmTest {
     private BudgetCalculator budgetCalculator;
     @Mock
     private MonteCarloService monteCarloService;
+    @Mock
+    private PriceModelService priceModelService;
 
     private RealisticAlgorithm algorithm;
     private AssetNetWorthBreakdown defaultNetWorth;
@@ -87,7 +91,7 @@ class RealisticAlgorithmTest {
     void setUp() {
         algorithm = new RealisticAlgorithm(
                 rentMedianService, regionMapper, loanPlanCalculator,
-                budgetCalculator, monteCarloService);
+                budgetCalculator, monteCarloService, priceModelService);
         market = new HashMap<>();
         lookedUp = new ArrayList<>();
 
@@ -98,10 +102,27 @@ class RealisticAlgorithmTest {
         ctx = new MemberFinancialContext(defaultNetWorth, MONTHLY_SAVING, List.of());
 
         // MC: 가격 변화 없음으로 스텁. 선택 로직이 가려지지 않게 priceP50 = initialPrice 반환.
-        when(monteCarloService.simulate(any(PriceModelRequest.class), anyLong(), anyLong(), anyInt()))
+        when(monteCarloService.simulate(any(PriceModelResponse.class), anyLong(), anyLong(), anyInt()))
                 .thenAnswer(call -> {
                     long initialPrice = call.getArgument(1);
                     return new MonteCarloEngine.Result(initialPrice, initialPrice, initialPrice, 1.0);
+                });
+
+        // 배치 PriceModel: 요청 조합마다 임의의 PriceModelResponse를 반환 (MC 스텁이 이 값을 실제로 쓰지 않음)
+        when(priceModelService.estimateBatch(any(), any()))
+                .thenAnswer(call -> {
+                    String region = call.getArgument(0);
+                    Iterable<PriceModelKey> keys = call.getArgument(1);
+                    Map<PriceModelKey, PriceModelResponse> result = new HashMap<>();
+                    for (PriceModelKey k : keys) {
+                        result.put(k, PriceModelResponse.builder()
+                                .regionCode(region)
+                                .housingType(k.housingType())
+                                .dealType(k.dealType())
+                                .annualDrift(0.0).cagr(0.0).annualVol(0.0)
+                                .months(12).build());
+                    }
+                    return result;
                 });
 
         // BudgetCalculator.monthsToReach: 목표액 ÷ 월저축액 (복리 계산 대신 단순 나눗셈)

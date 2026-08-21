@@ -11,14 +11,19 @@ import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
+import com.team.independence.property.dto.PriceModelKey;
+import com.team.independence.property.dto.PriceModelResponse;
 import com.team.independence.property.dto.RentMedianResponse;
+import com.team.independence.property.service.PriceModelService;
 import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -70,6 +75,7 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
     private final BudgetCalculator   budgetCalculator;
     private final RentMedianService  rentMedianService;
     private final MonteCarloService  monteCarloService;
+    private final PriceModelService  priceModelService;
 
     /** Realistic 결과 없이 직접 호출되면 soft-fail을 반환한다. */
     @Override
@@ -100,11 +106,26 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
                 ? RecommendationAlgorithm.monthsUntil(request.getTargetDate())
                 : 24L;
 
+        // Realistic이 이미 채워 둔 request-scoped 캐시에서 먼저 찾는다. HoldOut은 항상 Realistic 뒤에
+        // 실행되고 baseline.regionCode == Realistic의 chosenRegion이므로, 정상 경로에서는 캐시 히트.
         YearMonth now = YearMonth.now();
         String endYm   = now.format(YM);
         String startYm = now.minusMonths(MONTHS - 1).format(YM);
-        Map<String, RentMedianResponse> bulkMedians =
-                rentMedianService.getBulkMedian(baseline.getRegionCode(), startYm, endYm);
+        Map<String, RentMedianResponse> bulkMedians = ctx.bulkMediansCache().computeIfAbsent(
+                baseline.getRegionCode(), rc -> rentMedianService.getBulkMedian(rc, startYm, endYm));
+
+        // 40조합의 PriceModel을 배치로 준비한다. Realistic이 앞선 Phase에서 같은 시군구를 이미 캐시에 채워
+        // 두었다면 대부분 Redis HIT로 흡수되고, 미스만 단일 DB 왕복으로 채워진다.
+        Set<PriceModelKey> combos = new LinkedHashSet<>();
+        for (HousingType ht : HousingType.values()) {
+            for (DealType dt : DealType.values()) {
+                for (int[] size : SIZE_BUCKETS) {
+                    combos.add(new PriceModelKey(ht, dt, size[0], size[1]));
+                }
+            }
+        }
+        Map<PriceModelKey, PriceModelResponse> priceModels =
+                priceModelService.estimateBatch(baseline.getRegionCode(), combos);
 
         // 목표 시점(desiredMonths)의 예산은 후보와 무관하게 같으므로 루프 밖에서 한 번만 계산한다.
         long budgetAtT = budgetCalculator.calculate(
@@ -114,7 +135,7 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
         EvaluatedCandidate nextRung = Arrays.stream(HousingType.values())
                 .flatMap(ht -> Arrays.stream(DealType.values())
                         .flatMap(dt -> Arrays.stream(SIZE_BUCKETS)
-                                .map(size -> evaluate(baseline.getRegionCode(), ht, dt, size, bulkMedians, budgetAtT, desiredMonths))))
+                                .map(size -> evaluate(baseline.getRegionCode(), ht, dt, size, bulkMedians, priceModels, budgetAtT, desiredMonths))))
                 .filter(c -> c != null && c.comparableAmount() > baselineComparable)
                 .min(Comparator.comparingLong(EvaluatedCandidate::comparableAmount))
                 .orElse(null);
@@ -154,7 +175,9 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
      */
     private EvaluatedCandidate evaluate(
             String regionCode, HousingType housingType, DealType dealType, int[] size,
-            Map<String, RentMedianResponse> bulkMedians, long budgetAtT, long desiredMonths) {
+            Map<String, RentMedianResponse> bulkMedians,
+            Map<PriceModelKey, PriceModelResponse> priceModels,
+            long budgetAtT, long desiredMonths) {
 
         int areaMin = size[0];
         int areaMax = size[1];
@@ -171,15 +194,19 @@ public class HoldOutAlgorithm implements RecommendationAlgorithm {
             monthlyRent = rentMedian;
         }
 
-        // MC로 목표 시점의 예상 가격 투영 — Realistic과 동일한 1회 시뮬레이션
+        // MC로 목표 시점의 예상 가격 투영 — Realistic과 동일한 1회 시뮬레이션.
+        // 배치에서 표본 부족으로 스킵된 조합은 priceModels에 없어 자동으로 현재 시세 폴백.
         long projectedDeposit = deposit;
-        try {
-            MonteCarloEngine.Result mc = monteCarloService.simulate(
-                    RecommendationAlgorithm.buildPriceModelRequest(regionCode, housingType, dealType, areaMin, areaMax),
-                    deposit, budgetAtT, (int) desiredMonths);
-            projectedDeposit = mc.priceP50();
-        } catch (RuntimeException e) {
-            log.debug("MC 실패, 현재 시세 사용. housingType={}, dealType={}", housingType, dealType);
+        PriceModelResponse priceModel = priceModels.get(
+                new PriceModelKey(housingType, dealType, areaMin, areaMax));
+        if (priceModel != null) {
+            try {
+                MonteCarloEngine.Result mc = monteCarloService.simulate(
+                        priceModel, deposit, budgetAtT, (int) desiredMonths);
+                projectedDeposit = mc.priceP50();
+            } catch (RuntimeException e) {
+                log.debug("MC 실패, 현재 시세 사용. housingType={}, dealType={}", housingType, dealType);
+            }
         }
 
         long comparableAmount = toComparableAmount(projectedDeposit, monthlyRent);

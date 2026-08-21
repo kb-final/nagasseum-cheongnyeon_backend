@@ -13,21 +13,26 @@ import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.goal.service.calculator.LoanSchedule;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
-import com.team.independence.property.dto.PriceModelRequest;
+import com.team.independence.property.dto.PriceModelKey;
+import com.team.independence.property.dto.PriceModelResponse;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.dto.SigunguMedianResult;
 import com.team.independence.property.mapper.RegionMapper;
+import com.team.independence.property.service.PriceModelService;
 import com.team.independence.property.service.RentMedianService;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -144,6 +149,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     private final LoanPlanCalculator loanPlanCalculator;
     private final BudgetCalculator budgetCalculator;
     private final MonteCarloService monteCarloService;
+    private final PriceModelService priceModelService;
 
     @Override
     public List<GoalRecommendationResponse.RecommendationItem> recommend(
@@ -165,17 +171,26 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
             return List.of(emptyCard());
         }
 
-        // 시군구 확정 후 (주거유형, 거래유형, 평수) 40개 조합을 bulk 1회 쿼리로 선조회
+        // 시군구 확정 후 (주거유형, 거래유형, 평수) 40개 조합을 bulk 1회 쿼리로 선조회.
+        // ctx의 request-scoped 캐시에 담아, 뒤이어 실행되는 HoldOut이 같은 지역을 재조회하지 않도록 공유한다.
         YearMonth now = YearMonth.now();
         String endYm   = now.format(YM);
         String startYm = now.minusMonths(MONTHS - 1).format(YM);
-        Map<String, RentMedianResponse> bulkMedians = rentMedianService.getBulkMedian(regionCode, startYm, endYm);
+        Map<String, RentMedianResponse> bulkMedians = ctx.bulkMediansCache().computeIfAbsent(
+                regionCode, rc -> rentMedianService.getBulkMedian(rc, startYm, endYm));
+
+        // 1차 + 2차에서 실제로 평가할 조합 전체를 미리 뽑아 PriceModel을 배치로 준비한다.
+        // 조합마다 개별 estimate로 돌리면 콜드 캐시 시 조합당 36개월 원본행 스캔이 왕복하지만,
+        // 배치 한 방이면 인덱스 서브레인지 스캔이 조합별로 겹치는 페이지를 재활용해 크게 절감된다.
+        Set<PriceModelKey> combos = collectCombos(request);
+        Map<PriceModelKey, PriceModelResponse> priceModels =
+                priceModelService.estimateBatch(regionCode, combos);
 
         // 2단계: 사용자가 준 조건을 지킨 채, 주지 않은 항목만 움직여 본다
         long depositMin = request.getDepositMin() != null ? request.getDepositMin() : 0L;
         long depositMax = request.getDepositMax() != null ? request.getDepositMax() : DEPOSIT_MAX_DEFAULT;
 
-        List<Candidate> asRequested = evaluateConditions(regionCode, request, search, true, bulkMedians);
+        List<Candidate> asRequested = evaluateConditions(regionCode, request, search, true, bulkMedians, priceModels);
         Optional<Candidate> keepingInput = bestWithinTarget(asRequested);
         if (keepingInput.isPresent()) {
             return List.of(assemble(memberId, keepingInput.get(), targetDate, search, depositMin, depositMax));
@@ -184,7 +199,7 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         // 3단계: 입력한 조건으로는 목표 시점을 못 지킨다. 그때만 조건을 풀고 다시 찾는다.
         // 준 조건이 하나도 없으면 1차가 이미 전 범위 탐색이라 다시 조회하지 않는다.
         List<Candidate> relaxed = hasInputCondition(request)
-                ? evaluateConditions(regionCode, request, search, false, bulkMedians)
+                ? evaluateConditions(regionCode, request, search, false, bulkMedians, priceModels)
                 : asRequested;
         if (relaxed.isEmpty()) {
             log.warn("실거래 표본이 있는 조합이 없습니다. memberId={}, regionCode={}", memberId, regionCode);
@@ -193,6 +208,32 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
 
         Candidate chosen = bestWithinTarget(relaxed).orElseGet(() -> cheapest(relaxed));
         return List.of(assemble(memberId, chosen, targetDate, search, depositMin, depositMax));
+    }
+
+    /**
+     * 1차·2차에서 평가 대상이 될 수 있는 모든 (주거유형, 거래유형, 평수) 조합을 모은다.
+     * 사용자가 준 조건은 그 값 하나로 고정, 안 준 항목은 전체 후보로 펼쳐 배치 조회 대상에 포함.
+     * 사용자 지정 area가 SIZE_BUCKETS 경계와 일치하지 않는 경우는 배치가 못 담아 자동 폴백된다.
+     */
+    private Set<PriceModelKey> collectCombos(GoalRecommendationRequest request) {
+        Set<PriceModelKey> combos = new LinkedHashSet<>();
+        List<int[]> sizes = new ArrayList<>();
+        // 1차 후보(keepInput=true)와 2차(keepInput=false)의 합집합만 있으면 되므로 항상 전체 버킷을 기본에 둔다.
+        Collections.addAll(sizes, SIZE_BUCKETS);
+        int[] userSize = inputSize(request);
+        if (userSize != null && !isBucketRange(userSize[0], userSize[1])) {
+            sizes.add(userSize);
+        }
+        List<HousingType> housingTypes = Arrays.asList(HousingType.values());
+        List<DealType> dealTypes = Arrays.asList(DealType.values());
+        for (int[] size : sizes) {
+            for (HousingType ht : housingTypes) {
+                for (DealType dt : dealTypes) {
+                    combos.add(new PriceModelKey(ht, dt, size[0], size[1]));
+                }
+            }
+        }
+        return combos;
     }
 
     /**
@@ -297,13 +338,14 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
      */
     private List<Candidate> evaluateConditions(
             String regionCode, GoalRecommendationRequest request, Search search, boolean keepInput,
-            Map<String, RentMedianResponse> bulkMedians) {
+            Map<String, RentMedianResponse> bulkMedians,
+            Map<PriceModelKey, PriceModelResponse> priceModels) {
 
         List<Candidate> candidates = new ArrayList<>();
         for (int[] size : sizeCandidates(request, keepInput)) {
             for (HousingType housingType : housingTypeCandidates(request, keepInput)) {
                 for (DealType dealType : dealTypeCandidates(request, keepInput)) {
-                    evaluate(regionCode, housingType, dealType, size[0], size[1], request, search, bulkMedians)
+                    evaluate(regionCode, housingType, dealType, size[0], size[1], request, search, bulkMedians, priceModels)
                             .ifPresent(candidates::add);
                 }
             }
@@ -383,14 +425,15 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     private Optional<Candidate> evaluate(
             String regionCode, HousingType housingType, DealType dealType,
             int areaMin, int areaMax, GoalRecommendationRequest request, Search search,
-            Map<String, RentMedianResponse> bulkMedians) {
+            Map<String, RentMedianResponse> bulkMedians,
+            Map<PriceModelKey, PriceModelResponse> priceModels) {
 
         String key = regionCode + "|" + housingType + "|" + dealType + "|" + areaMin + "|" + areaMax;
         Optional<Candidate> cached = search.evaluated.get(key);
         if (cached != null) {
             return cached;
         }
-        Optional<Candidate> result = lookUp(regionCode, housingType, dealType, areaMin, areaMax, request, search, bulkMedians);
+        Optional<Candidate> result = lookUp(regionCode, housingType, dealType, areaMin, areaMax, request, search, bulkMedians, priceModels);
         search.evaluated.put(key, result);
         return result;
     }
@@ -398,7 +441,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
     private Optional<Candidate> lookUp(
             String regionCode, HousingType housingType, DealType dealType,
             int areaMin, int areaMax, GoalRecommendationRequest request, Search search,
-            Map<String, RentMedianResponse> bulkMedians) {
+            Map<String, RentMedianResponse> bulkMedians,
+            Map<PriceModelKey, PriceModelResponse> priceModels) {
 
         // SIZE_BUCKETS 범위이면 bulk 맵에서 바로 꺼낸다.
         // 사용자 지정 범위이거나 bulk 결과가 없으면 개별 쿼리로 폴백한다.
@@ -427,18 +471,21 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
 
         // MC로 목표 시점(desiredMonths)의 예상 가격을 투영한다.
         // Realistic은 시점이 고정이므로 HoldOut과 달리 수렴 루프 없이 1회 시뮬레이션으로 끝낸다.
-        // MC 실패 시 현재 시세를 그대로 사용한다.
+        // MC 실패 또는 배치 준비 실패(표본 부족)시 현재 시세를 그대로 사용한다.
         long projectedDeposit = deposit;
-        try {
-            PriceModelRequest priceReq = RecommendationAlgorithm.buildPriceModelRequest(regionCode, housingType, dealType, areaMin, areaMax);
-            long budgetAtT = budgetCalculator.calculate(
-                    search.netWorth, search.rawMonthlySaving, search.loanSchedules, search.desiredMonths);
-            MonteCarloEngine.Result mc = monteCarloService.simulate(
-                    priceReq, deposit, budgetAtT, (int) search.desiredMonths);
-            projectedDeposit = mc.priceP50();
-        } catch (RuntimeException e) {
-            log.debug("MC 실패, 현재 시세 폴백. regionCode={}, housingType={}, dealType={}",
-                    regionCode, housingType, dealType, e);
+        PriceModelResponse priceModel = priceModels.get(
+                new PriceModelKey(housingType, dealType, areaMin, areaMax));
+        if (priceModel != null) {
+            try {
+                long budgetAtT = budgetCalculator.calculate(
+                        search.netWorth, search.rawMonthlySaving, search.loanSchedules, search.desiredMonths);
+                MonteCarloEngine.Result mc = monteCarloService.simulate(
+                        priceModel, deposit, budgetAtT, (int) search.desiredMonths);
+                projectedDeposit = mc.priceP50();
+            } catch (RuntimeException e) {
+                log.debug("MC 실패, 현재 시세 폴백. regionCode={}, housingType={}, dealType={}",
+                        regionCode, housingType, dealType, e);
+            }
         }
 
         long comparableAmount = toComparableAmount(projectedDeposit, monthlyRent);

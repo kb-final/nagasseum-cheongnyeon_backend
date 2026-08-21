@@ -2,6 +2,7 @@ package com.team.independence.goal.service;
 
 import com.team.independence.goal.dto.MonteCarloResponse;
 import com.team.independence.property.dto.PriceModelRequest;
+import com.team.independence.property.dto.PriceModelResponse;
 
 public interface MonteCarloService {
 
@@ -25,4 +26,12 @@ public interface MonteCarloService {
      * @return p5 / p50 / p95 가격 분위값과 성공 확률
      */
     MonteCarloEngine.Result simulate(PriceModelRequest housing, long initialPrice, long budgetAtT, int months);
+
+    /**
+     * 이미 산출된 PriceModelResponse(μ, σ)를 그대로 받아 시뮬레이션만 실행한다.
+     *
+     * <p>Realistic·HoldOut처럼 여러 조합의 PriceModel을 배치로 미리 준비해 두는 경로에서 사용한다.
+     * 조합마다 priceModelService.estimate를 재호출하지 않아 Redis 캐시 검사·DB 왕복이 사라진다.
+     */
+    MonteCarloEngine.Result simulate(PriceModelResponse priceModel, long initialPrice, long budgetAtT, int months);
 }

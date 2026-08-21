@@ -102,6 +102,11 @@ public class MonteCarloServiceImpl implements MonteCarloService {
     @Override
     public MonteCarloEngine.Result simulate(PriceModelRequest housing, long initialPrice, long budgetAtT, int months) {
         PriceModelResponse priceModel = priceModelService.estimate(housing);
+        return simulate(priceModel, initialPrice, budgetAtT, months);
+    }
+
+    @Override
+    public MonteCarloEngine.Result simulate(PriceModelResponse priceModel, long initialPrice, long budgetAtT, int months) {
         return MonteCarloEngine.simulate(
                 priceModel.getAnnualDrift(), priceModel.getAnnualVol(),
                 initialPrice, budgetAtT,
