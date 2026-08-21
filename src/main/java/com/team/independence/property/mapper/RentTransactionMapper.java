@@ -3,10 +3,11 @@ package com.team.independence.property.mapper;
 import com.team.independence.property.domain.DealType;
 import com.team.independence.property.domain.HousingType;
 import com.team.independence.property.domain.RentTransaction;
-import com.team.independence.property.dto.MonthlyPricePoint;
 import com.team.independence.property.dto.BulkMedianResult;
 import com.team.independence.property.dto.MedianAggResult;
+import com.team.independence.property.dto.MonthlyPricePoint;
 import com.team.independence.property.dto.RentMedianRequest;
+import com.team.independence.property.dto.SigunguMedianResult;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -44,6 +45,23 @@ public interface RentTransactionMapper {
                                                 @Param("dealType") DealType dealType,
                                                 @Param("startYm") String startYm,
                                                 @Param("endYm") String endYm);
+
+    /**
+     * 시도 내 모든 시군구의 보증금 및 월세 중앙값을 단일 쿼리로 반환한다.
+     * RealisticAlgorithm.selectRegion()에서 N개 시군구 개별 조회를 대체한다.
+     */
+    List<SigunguMedianResult> findMediansBySidoPrefix(
+            @Param("sidoPrefix") String sidoPrefix,
+            @Param("housingType") HousingType housingType,
+            @Param("dealType") DealType dealType,
+            @Param("areaMinSqm") long areaMinSqm,
+            @Param("areaMaxSqm") long areaMaxSqm,
+            @Param("startYm") String startYm,
+            @Param("endYm") String endYm,
+            @Param("depositMin") long depositMin,
+            @Param("depositMax") long depositMax,
+            @Param("monthlyRentMin") Long monthlyRentMin,
+            @Param("monthlyRentMax") Long monthlyRentMax);
 
     /** 가격 모델(μ, σ) 산출용 월별 (거래연월, 보증금, 면적) 목록. 보증금 0 제외 */
     List<MonthlyPricePoint> findAmountsForPriceModel(@Param("regionCode") String regionCode,

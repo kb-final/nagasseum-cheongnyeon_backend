@@ -25,6 +25,7 @@ import com.team.independence.property.dto.PriceModelRequest;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.dto.RentMedianResponse.Quartile;
+import com.team.independence.property.dto.SigunguMedianResult;
 import com.team.independence.property.mapper.RegionMapper;
 import com.team.independence.property.service.RentMedianService;
 import java.util.ArrayList;
@@ -122,6 +123,35 @@ class RealisticAlgorithmTest {
                     asked.getDealType(), asked.getAreaMin()));
             return toResponse(asked);
         });
+
+        // selectRegion()이 시도(2자리) 입력 시 호출하는 배치 조회 스텁.
+        // market 맵에서 sidoPrefix로 시작하는 시군구·조합을 걸러 SigunguMedianResult로 변환한다.
+        when(rentMedianService.getMediansBySidoPrefix(
+                any(), any(), any(), anyInt(), anyInt(), anyLong(), anyLong(), any(), any()))
+                .thenAnswer(call -> {
+                    String sidoPrefix = call.getArgument(0);
+                    HousingType ht  = call.getArgument(1);
+                    DealType    dt  = call.getArgument(2);
+                    int         am  = call.<Integer>getArgument(3);
+
+                    Map<String, SigunguMedianResult> result = new HashMap<>();
+                    for (Map.Entry<String, long[]> entry : market.entrySet()) {
+                        String[] parts = entry.getKey().split("\\|");
+                        if (!parts[0].startsWith(sidoPrefix)) continue;
+                        if (!parts[1].equals(ht.name()))       continue;
+                        if (!parts[2].equals(dt.name()))       continue;
+                        if (Integer.parseInt(parts[3]) != am)  continue;
+
+                        long[] data = entry.getValue();
+                        SigunguMedianResult r = new SigunguMedianResult();
+                        r.setRegionCode(parts[0]);
+                        r.setDepositMedian(data[0]);
+                        r.setRentMedian(data[1] > 0 ? data[1] : null);
+                        r.setSampleCount((int) data[2]);
+                        result.put(parts[0], r);
+                    }
+                    return result;
+                });
 
         when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
                 .thenReturn(LoanPlans.builder().build());
