@@ -77,7 +77,10 @@
     </select>
 
     <!-- MySQL 8.0 윈도우 함수로 분위값을 DB에서 직접 계산해 1행으로 반환한다.
-         deposit = 0 이상치 제외. 조건에 맞는 데이터가 없으면 sampleCount=null인 1행이 반환된다. -->
+         deposit = 0 이상치 제외. 조건에 맞는 데이터가 없으면 sampleCount=null인 1행이 반환된다.
+         시도 요청이어도 LIKE가 아니라 IN(시군구 목록)으로 받는다. LIKE는 region_code가 범위 조건이
+         되어 뒤따르는 housing_type·deal_type·deal_ym을 인덱스 키로 못 쓰고 시도 전체를 훑지만,
+         IN은 코드별 등치 조건이라 조합마다 idx_rent_query 서브레인지 스캔으로 좁혀진다. -->
     <select id="findAggregatedMedian" resultType="com.team.independence.property.dto.MedianAggResult">
         SELECT
             MAX(CASE WHEN dep_rn  = CEIL(0.25 * total) THEN deposit      END) AS deposit_q1,
@@ -93,14 +96,10 @@
                    ROW_NUMBER() OVER (ORDER BY monthly_rent) AS rent_rn,
                    COUNT(*)     OVER ()                      AS total
               FROM rent_transaction
-            <choose>
-                <when test="request.regionCode.length() == 2">
-             WHERE region_code LIKE CONCAT(#{request.regionCode}, '%')
-                </when>
-                <otherwise>
-             WHERE region_code = #{request.regionCode}
-                </otherwise>
-            </choose>
+             WHERE region_code IN
+                   <foreach collection="regionCodes" item="code" open="(" separator="," close=")">
+                       #{code}
+                   </foreach>
                AND housing_type = #{request.housingType}
                AND deal_type    = #{request.dealType}
                AND deal_ym      BETWEEN #{startYm} AND #{endYm}
@@ -213,14 +212,10 @@
                         END
                 ) AS total
               FROM rent_transaction
-            <choose>
-                <when test="regionCode.length() == 2">
-             WHERE region_code LIKE CONCAT(#{regionCode}, '%')
-                </when>
-                <otherwise>
-             WHERE region_code = #{regionCode}
-                </otherwise>
-            </choose>
+             WHERE region_code IN
+                   <foreach collection="regionCodes" item="code" open="(" separator="," close=")">
+                       #{code}
+                   </foreach>
                AND (housing_type, deal_type) IN
                    <foreach collection="typePairs" item="p" open="(" separator="," close=")">
                        (#{p.housingType}, #{p.dealType})

@@ -9,6 +9,7 @@ import com.team.independence.property.dto.MedianAggResult;
 import com.team.independence.property.dto.RentMedianRequest;
 import com.team.independence.property.dto.RentMedianResponse;
 import com.team.independence.property.mapper.RentTransactionMapper;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -69,6 +70,7 @@ class RentMedianIntegrationTest {
     void 전세_금액_조회() {
         MedianAggResult agg = rentTransactionMapper.findAggregatedMedian(
                 request(DealType.JEONSE, null, null),
+                List.of(REGION_CODE),
                 AREA_MIN_SQM, AREA_MAX_SQM, DEAL_YM, DEAL_YM);
 
         System.out.println("전세 조회 건수: " + agg.getSampleCount());
@@ -86,6 +88,7 @@ class RentMedianIntegrationTest {
     void 월세_금액_조회() {
         MedianAggResult agg = rentTransactionMapper.findAggregatedMedian(
                 request(DealType.WOLSE, MONTHLY_RENT_MIN, MONTHLY_RENT_MAX),
+                List.of(REGION_CODE),
                 AREA_MIN_SQM, AREA_MAX_SQM, DEAL_YM, DEAL_YM);
 
         System.out.println("월세 조회 건수: " + agg.getSampleCount());

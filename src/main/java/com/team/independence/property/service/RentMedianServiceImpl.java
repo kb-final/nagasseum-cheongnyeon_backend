@@ -53,6 +53,7 @@ public class RentMedianServiceImpl implements RentMedianService {
 
         MedianAggResult agg = rentTransactionMapper.findAggregatedMedian(
                 request,
+                resolveRegionCodes(request.getRegionCode()),
                 toSqm(request.getAreaMin()),
                 toSqm(request.getAreaMax()),
                 startYm,
@@ -95,7 +96,7 @@ public class RentMedianServiceImpl implements RentMedianService {
             }
         }
         List<BulkMedianResult> rows = rentTransactionMapper.findBulkMedianBatch(
-                regionCode, typePairs, startYm, endYm);
+                resolveRegionCodes(regionCode), typePairs, startYm, endYm);
 
         Map<String, RentMedianResponse> result = new HashMap<>();
         for (BulkMedianResult r : rows) {
@@ -151,6 +152,26 @@ public class RentMedianServiceImpl implements RentMedianService {
             return regionMapper.findSidoNameByPrefix(regionCode);
         }
         return regionMapper.findFullNameByCode(regionCode);
+    }
+
+    /**
+     * 집계 대상 시군구 코드 목록을 만든다. 시군구 코드면 그 자신 하나, 시도 코드면 소속 시군구 전체.
+     *
+     * <p>시도 요청을 {@code region_code LIKE '11%'}로 처리하면 region_code가 범위 조건이 되어
+     * idx_rent_query의 뒤쪽 컬럼(housing_type·deal_type·deal_ym)을 인덱스 키로 쓸 수 없다.
+     * 결과적으로 그 시도의 모든 유형·모든 월을 훑고 나서야 필터가 걸린다.
+     * 코드 목록을 풀어 {@code IN}으로 넘기면 코드마다 등치 조건이 되어 조합별 서브레인지 스캔이 된다.
+     * 집계 대상 행 자체는 동일하므로 결과값은 바뀌지 않는다.
+     */
+    private List<String> resolveRegionCodes(String regionCode) {
+        if (regionCode != null && regionCode.length() == SIDO_CODE_LENGTH) {
+            List<String> sigunguCodes = regionMapper.findCodesBySidoPrefix(regionCode);
+            if (sigunguCodes.isEmpty()) {
+                throw new BusinessException(ErrorCode.REGION_NOT_FOUND);
+            }
+            return sigunguCodes;
+        }
+        return List.of(regionCode);
     }
 
     private long toSqm(int pyeong) {
