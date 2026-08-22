@@ -3,6 +3,7 @@ package com.team.independence.goal.service;
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
 import com.team.independence.asset.service.AssetConnectionService;
 import com.team.independence.asset.service.AssetSummaryService;
+import com.team.independence.common.diagnostics.RecommendationProfiler;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.dto.GoalRecommendationRequest;
@@ -70,6 +71,8 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
      */
     @Override
     public GoalRecommendationResponse recommend(long memberId, GoalRecommendationRequest request) {
+        RecommendationProfiler.reset();
+        long startedAt = System.nanoTime();
         assetConnectionService.validateConnectedAccountExists(memberId);
 
         AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
@@ -126,6 +129,9 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
                 .build();
 
         recommendationStore.save(memberId, response);
+        log.info("[추천계측] 총 {}ms | 추천카드={}개 | {}",
+                (System.nanoTime() - startedAt) / 1_000_000, recommendations.size(),
+                RecommendationProfiler.summary());
         return response;
     }
 
@@ -200,8 +206,11 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
     private List<GoalRecommendationResponse.RecommendationItem> runSafely(
             RecommendationAlgorithm algorithm, long memberId,
             GoalRecommendationRequest request, MemberFinancialContext ctx) {
+        long t0 = System.nanoTime();
         try {
-            return algorithm.recommend(memberId, request, ctx);
+            List<GoalRecommendationResponse.RecommendationItem> result = algorithm.recommend(memberId, request, ctx);
+            log.info("[추천계측] {} {}ms", algorithm.getClass().getSimpleName(), (System.nanoTime() - t0) / 1_000_000);
+            return result;
         } catch (Exception e) {
             log.error("추천 알고리즘 실행 실패. algorithm={}, memberId={}",
                     algorithm.getClass().getSimpleName(), memberId, e);
@@ -212,8 +221,12 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
     private List<GoalRecommendationResponse.RecommendationItem> runHoldOutSafely(
             long memberId, GoalRecommendationRequest request, MemberFinancialContext ctx,
             GoalRecommendationResponse.RecommendationItem realisticItem) {
+        long t0 = System.nanoTime();
         try {
-            return holdOutAlgorithm.recommend(memberId, request, ctx, realisticItem);
+            List<GoalRecommendationResponse.RecommendationItem> result =
+                    holdOutAlgorithm.recommend(memberId, request, ctx, realisticItem);
+            log.info("[추천계측] HoldOutAlgorithm {}ms", (System.nanoTime() - t0) / 1_000_000);
+            return result;
         } catch (Exception e) {
             log.error("HoldOut 알고리즘 실행 실패. memberId={}", memberId, e);
             return List.of();
