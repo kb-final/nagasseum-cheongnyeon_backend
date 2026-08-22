@@ -19,17 +19,20 @@ import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.compare.domain.GoalSnapshot;
 import com.team.independence.compare.dto.AchievementBucketCount;
+import com.team.independence.compare.dto.AssetCohortStats;
 import com.team.independence.compare.dto.CohortAverages;
 import com.team.independence.compare.dto.CohortCondition;
 import com.team.independence.compare.dto.CompareResponse;
 import com.team.independence.compare.dto.CompareResponse.AchievementBucket;
 import com.team.independence.compare.dto.CompareResponse.DealTypeItem;
 import com.team.independence.compare.dto.DealTypeCount;
+import com.team.independence.compare.dto.GoalCohortStats;
 import com.team.independence.compare.dto.IncomeBracketCount;
 import com.team.independence.compare.dto.OccupationTypeCount;
 import com.team.independence.compare.dto.RegionCount;
 import com.team.independence.compare.dto.SavingRangeResult;
 import com.team.independence.compare.mapper.GoalSnapshotMapper;
+import java.util.Optional;
 import com.team.independence.member.domain.Agreement;
 import com.team.independence.member.domain.Agreement.AgreementType;
 import com.team.independence.member.service.AgreementService;
@@ -55,7 +58,7 @@ class CompareServiceImplTest {
     void setUp() {
         mapper = new FakeMapper();
         agreementService = new FakeAgreementService();
-        service = new CompareServiceImpl(mapper, agreementService);
+        service = new CompareServiceImpl(mapper, agreementService, new FakeCompareCacheStore());
     }
 
     // ------------------------------------------------------------------
@@ -556,5 +559,30 @@ class CompareServiceImplTest {
             aggregateCalls++;
             return new ArrayList<>();
         }
+    }
+
+    static class FakeCompareCacheStore extends CompareCacheStore {
+        FakeCompareCacheStore() {
+            super(null, null);
+        }
+
+        @Override
+        public Optional<AssetCohortStats> findAssetStats(CohortCondition condition) {
+            return Optional.empty();
+        }
+
+        @Override
+        public void saveAssetStats(CohortCondition condition, AssetCohortStats stats) {}
+
+        @Override
+        public Optional<GoalCohortStats> findGoalStats(CohortCondition condition) {
+            return Optional.empty();
+        }
+
+        @Override
+        public void saveGoalStats(CohortCondition condition, GoalCohortStats stats) {}
+
+        @Override
+        public void evictAll() {}
     }
 }

@@ -10,6 +10,7 @@ import com.team.independence.compare.mapper.GoalSnapshotMapper;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.team.independence.compare.service.CompareCacheStore;
 
 /**
  * 목표 스냅샷 생성 배치 구현.
@@ -25,6 +26,7 @@ public class GoalSnapshotBatchServiceImpl implements GoalSnapshotBatchService {
     private static final DateTimeFormatter YM = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final GoalSnapshotMapper goalSnapshotMapper;
+    private final CompareCacheStore compareCacheStore;
 
     @Override
     @Transactional
@@ -35,6 +37,7 @@ public class GoalSnapshotBatchServiceImpl implements GoalSnapshotBatchService {
 
         int affected = goalSnapshotMapper.insertSnapshots(snapshotYm, baseDate);
         log.info("[배치] 목표 스냅샷 생성 완료. snapshotYm={}, 처리 {}건", snapshotYm, affected);
+        compareCacheStore.evictAll();
         return affected;
     }
 
