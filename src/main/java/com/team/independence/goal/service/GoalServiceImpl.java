@@ -8,15 +8,19 @@ import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.domain.Goal;
 import com.team.independence.goal.domain.GoalHousing;
 import com.team.independence.goal.domain.SavingBasis;
+import com.team.independence.goal.domain.SavingRecord;
 import com.team.independence.goal.dto.GoalDiagnosisRequest;
 import com.team.independence.goal.dto.GoalDiagnosisResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalResponse;
 import com.team.independence.goal.dto.GoalSaveRequest;
+import com.team.independence.goal.dto.GoalSavingCurrentResponse;
+import com.team.independence.goal.dto.GoalSavingCurrentUpdateRequest;
 import com.team.independence.goal.dto.GoalSummaryResponse;
 import com.team.independence.goal.mapper.GoalHousingMapper;
 import com.team.independence.goal.mapper.GoalMapper;
+import com.team.independence.goal.mapper.SavingRecordMapper;
 import com.team.independence.goal.service.calculator.BudgetCalculator;
 import com.team.independence.goal.service.calculator.LoanPlanCalculator;
 import com.team.independence.goal.service.calculator.LoanSchedule;
@@ -69,6 +73,7 @@ public class GoalServiceImpl implements GoalService {
     private final RentMedianService rentMedianService; // 조건에 맞는 실거래 4분위값 조회
     private final GoalMapper goalMapper;
     private final GoalHousingMapper goalHousingMapper;
+    private final SavingRecordMapper savingRecordMapper;
     private final GoalMarketTrendCacheStore goalMarketTrendCacheStore;
     private final MonteCarloSimulationStore monteCarloSimulationStore;
     private final BudgetCalculator budgetCalculator;
@@ -615,6 +620,55 @@ public class GoalServiceImpl implements GoalService {
                         .achievementRate(achievementRate)
                         .remainingMonths(remainingMonths)
                         .build())
+                .build();
+    }
+
+    // 홈 화면 「이번 달 저축 기록」 카드 데이터 조회. 아직 입력하지 않은 달은 오류가 아니라 recorded=false로 응답한다.
+    @Override
+    @Transactional(readOnly = true)
+    public GoalSavingCurrentResponse getCurrentSaving(Long memberId) {
+        Goal goal = goalMapper.findActiveByMemberId(memberId);
+        if (goal == null) {
+            throw new BusinessException(ErrorCode.GOAL_NOT_FOUND);
+        }
+
+        String recordYm = YearMonth.now().format(YM_FORMATTER);
+        SavingRecord record = savingRecordMapper.findByGoalIdAndRecordYm(goal.getId(), recordYm);
+        if (record == null) {
+            return GoalSavingCurrentResponse.builder()
+                    .recordYm(recordYm)
+                    .targetSaving(goal.getMonthlySaving())
+                    .actualSaving(null)
+                    .recorded(false)
+                    .differenceAmount(null)
+                    .build();
+        }
+        return toSavingCurrentResponse(record);
+    }
+
+    // 이번 달 실제 저축액 입력/수정(같은 API로 upsert). target_saving은 최초 입력 시점 monthly_saving으로 고정한다.
+    @Override
+    @Transactional
+    public GoalSavingCurrentResponse updateCurrentSaving(Long memberId, GoalSavingCurrentUpdateRequest request) {
+        Goal goal = goalMapper.findActiveByMemberId(memberId);
+        if (goal == null) {
+            throw new BusinessException(ErrorCode.GOAL_NOT_FOUND);
+        }
+
+        String recordYm = YearMonth.now().format(YM_FORMATTER);
+        savingRecordMapper.upsertActualSaving(goal.getId(), recordYm, goal.getMonthlySaving(), request.getActualSaving());
+
+        SavingRecord record = savingRecordMapper.findByGoalIdAndRecordYm(goal.getId(), recordYm);
+        return toSavingCurrentResponse(record);
+    }
+
+    private GoalSavingCurrentResponse toSavingCurrentResponse(SavingRecord record) {
+        return GoalSavingCurrentResponse.builder()
+                .recordYm(record.getRecordYm())
+                .targetSaving(record.getTargetSaving())
+                .actualSaving(record.getActualSaving())
+                .recorded(true)
+                .differenceAmount(record.getActualSaving() - record.getTargetSaving())
                 .build();
     }
 

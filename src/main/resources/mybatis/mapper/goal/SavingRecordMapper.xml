@@ -25,4 +25,21 @@
          LIMIT #{limit}
     </select>
 
+    <select id="findByGoalIdAndRecordYm" resultMap="savingRecordMap">
+        SELECT id, goal_id, record_ym, target_saving, actual_saving,
+               is_modified, created_at, updated_at
+          FROM saving_record
+         WHERE goal_id = #{goalId}
+           AND record_ym = #{recordYm}
+    </select>
+
+    <!-- target_saving은 최초 입력에서만 고정하고 수정 시에는 건드리지 않는다(그 시점 monthly_saving 스냅샷 유지). -->
+    <insert id="upsertActualSaving">
+        INSERT INTO saving_record (goal_id, record_ym, target_saving, actual_saving, is_modified)
+        VALUES (#{goalId}, #{recordYm}, #{targetSaving}, #{actualSaving}, TRUE)
+        ON DUPLICATE KEY UPDATE
+            actual_saving = VALUES(actual_saving),
+            is_modified   = TRUE
+    </insert>
+
 </mapper>
