@@ -160,8 +160,12 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
 
         AssetNetWorthBreakdown netWorth = ctx.netWorth();
 
+        // 목표 시점의 예산은 후보와 무관하게 같으므로 조합 평가 루프 밖에서 한 번만 계산한다.
+        long budgetAtT = budgetCalculator.calculate(
+                netWorth, ctx.rawMonthlySaving(), ctx.loanSchedules(), desiredMonths);
+
         Search search = new Search(memberId, netWorth, ctx.rawMonthlySaving(), ctx.loanSchedules(),
-                ctx.currentEffectiveSaving(), desiredMonths);
+                ctx.currentEffectiveSaving(), desiredMonths, budgetAtT);
 
         // 1단계: 시군구 확정
         String regionCode = selectRegion(request, search);
@@ -477,10 +481,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
                 new PriceModelKey(housingType, dealType, areaMin, areaMax));
         if (priceModel != null) {
             try {
-                long budgetAtT = budgetCalculator.calculate(
-                        search.netWorth, search.rawMonthlySaving, search.loanSchedules, search.desiredMonths);
                 MonteCarloEngine.Result mc = monteCarloService.simulate(
-                        priceModel, deposit, budgetAtT, (int) search.desiredMonths);
+                        priceModel, deposit, search.budgetAtT, (int) search.desiredMonths);
                 projectedDeposit = mc.priceP50();
             } catch (RuntimeException e) {
                 log.debug("MC 실패, 현재 시세 폴백. regionCode={}, housingType={}, dealType={}",
@@ -597,17 +599,26 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         /** "지금 시점" 스냅샷 순저축액. loanO 달성 가능 여부(capacity) 판정 등 현재 스냅샷이 필요한 곳에서만 쓴다. */
         private final long currentEffectiveSaving;
         private final long desiredMonths;
+        /**
+         * 목표 시점(desiredMonths)의 예상 예산. 후보와 무관하게 고정된 값이라 여기서 한 번만 계산한다.
+         *
+         * <p>후보마다 다시 구하면 개월 수만큼 도는 예산 누적 루프가 조합 수(최대 40)만큼 반복된다.
+         * HoldOut도 같은 이유로 루프 밖에서 한 번만 계산한다.
+         */
+        private final long budgetAtT;
         /** 조합 키 → 평가 결과. 표본이 없어 후보가 되지 못한 조합도 담아 재조회를 막는다. */
         private final Map<String, Optional<Candidate>> evaluated = new HashMap<>();
 
         private Search(long memberId, AssetNetWorthBreakdown netWorth, long rawMonthlySaving,
-                       List<LoanSchedule> loanSchedules, long currentEffectiveSaving, long desiredMonths) {
+                       List<LoanSchedule> loanSchedules, long currentEffectiveSaving, long desiredMonths,
+                       long budgetAtT) {
             this.memberId = memberId;
             this.netWorth = netWorth;
             this.rawMonthlySaving = rawMonthlySaving;
             this.loanSchedules = loanSchedules;
             this.currentEffectiveSaving = currentEffectiveSaving;
             this.desiredMonths = desiredMonths;
+            this.budgetAtT = budgetAtT;
         }
     }
 
