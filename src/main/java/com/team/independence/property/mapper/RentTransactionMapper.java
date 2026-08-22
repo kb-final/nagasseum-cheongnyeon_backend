@@ -28,10 +28,14 @@ public interface RentTransactionMapper {
      * SQL 윈도우 함수로 분위값을 계산해 1행으로 반환한다.
      * 조건에 맞는 거래가 없으면 sampleCount=null 인 결과 1행을 반환한다.
      *
+     * @param regionCodes 집계 대상 시군구 코드 목록. 시도 요청이면 그 시도에 속한 시군구 전체가 들어온다.
+     *                    {@code LIKE '11%'}가 아니라 {@code IN}이어야 region_code 뒤의
+     *                    housing_type·deal_type·deal_ym까지 인덱스 키로 쓸 수 있다.
      * @param areaMinSqm 요청의 평수를 ㎡로 환산한 하한 (버림)
      * @param areaMaxSqm 요청의 평수를 ㎡로 환산한 상한 (버림)
      */
     MedianAggResult findAggregatedMedian(@Param("request") RentMedianRequest request,
+                                         @Param("regionCodes") List<String> regionCodes,
                                          @Param("areaMinSqm") long areaMinSqm,
                                          @Param("areaMaxSqm") long areaMaxSqm,
                                          @Param("startYm") String startYm,
@@ -42,8 +46,10 @@ public interface RentTransactionMapper {
      * (housing_type, deal_type) IN 절이 idx_rent_query 서브레인지를 조합별로 그대로 태우므로
      * 처리 행 수는 페어별 개별 쿼리 합과 동일하고, 왕복·파서·옵티마이저 오버헤드만 사라진다.
      * 결과 최대 8 × 5 = 40행.
+     *
+     * @param regionCodes 집계 대상 시군구 코드 목록. 시도 요청이면 그 시도에 속한 시군구 전체가 들어온다.
      */
-    List<BulkMedianResult> findBulkMedianBatch(@Param("regionCode") String regionCode,
+    List<BulkMedianResult> findBulkMedianBatch(@Param("regionCodes") List<String> regionCodes,
                                                @Param("typePairs") List<TypeDealPair> typePairs,
                                                @Param("startYm") String startYm,
                                                @Param("endYm") String endYm);

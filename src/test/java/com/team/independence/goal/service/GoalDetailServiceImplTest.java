@@ -86,7 +86,7 @@ class GoalDetailServiceImplTest {
                         null,
                         null,
                         new BudgetCalculator(),
-                        new LoanPlanCalculator(null, null, null, null) {
+                        new LoanPlanCalculator(null, null, null) {
                             @Override
                             public long calcTotalExistingMonthlyPayment(long memberId) {
                                 return 0L;

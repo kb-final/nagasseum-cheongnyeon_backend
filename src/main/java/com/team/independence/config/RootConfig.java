@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import javax.sql.DataSource;
 
@@ -92,7 +93,9 @@ public class RootConfig {
         config.setJdbcUrl(dbUrl);
         config.setUsername(dbUsername);
         config.setPassword(dbPassword);
-        config.setMaximumPoolSize(10);
+        // 추천 요청 하나가 요청 스레드와 알고리즘 스레드에서 각각 커넥션을 잡는다.
+        // algorithmExecutor(core 8 / max 16)와 함께 봐야 하며, 10이면 동시 요청 서너 건에서 이미 고갈된다.
+        config.setMaximumPoolSize(20);
         config.setConnectionTimeout(5000);
         config.setConnectionInitSql("SET NAMES utf8mb4");
         return new HikariDataSource(config);
@@ -163,12 +166,27 @@ public class RootConfig {
         return executor;
     }
 
+    /**
+     * 목표 추천 알고리즘 병렬 실행용 풀.
+     *
+     * <p>ThreadPoolExecutor는 큐가 가득 차기 전에는 스레드를 core 이상으로 늘리지 않는다.
+     * core 3 / queue 20이면 큐에 20개가 쌓일 때까지 실질 병렬도가 3에 묶여, 요청 하나가
+     * 태스크 3개를 던지는 이 경로에서는 동시 요청 두 번째부터 바로 대기가 시작됐다.
+     * core를 실사용 병렬도에 맞추고 큐를 짧게 잡아 부하 시 max까지 늘어나도록 한다.
+     *
+     * <p>큐까지 넘치면 CallerRunsPolicy로 요청 스레드가 직접 실행한다. 무한정 쌓아 두고
+     * 전부 느려지는 것보다, 유입 속도를 처리 속도에 맞춰 자연스럽게 낮추는 편이 낫다.
+     * 풀 크기는 DataSource 커넥션 풀(20)과 함께 봐야 한다 — 알고리즘 스레드는 각자 커넥션을 잡는다.
+     */
     @Bean("algorithmExecutor")
     public Executor algorithmExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(3);
-        executor.setMaxPoolSize(6);
-        executor.setQueueCapacity(20);
+        executor.setCorePoolSize(8);
+        executor.setMaxPoolSize(16);
+        executor.setQueueCapacity(8);
+        executor.setKeepAliveSeconds(60);
+        executor.setAllowCoreThreadTimeOut(true);
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setThreadNamePrefix("algo-rec-");
         executor.initialize();
         return executor;

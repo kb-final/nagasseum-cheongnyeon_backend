@@ -35,6 +35,14 @@ public class MemberServiceImpl implements MemberService {
 
     @Override
     @Transactional(readOnly = true)
+    public Long getMonthlyIncome(Long id) {
+        return memberMapper.findIncomeById(id)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND))
+                .getMonthlyIncome();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<Long> findMemberIdByKakaoId(String kakaoId) {
         return memberMapper.findByKakaoId(kakaoId).map(Member::getId);
     }

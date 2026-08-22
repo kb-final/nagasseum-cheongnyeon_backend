@@ -2,7 +2,6 @@ package com.team.independence.goal.service.calculator;
 
 import com.team.independence.asset.dto.account.LoanAccountDetailItem;
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
-import com.team.independence.asset.service.AssetSummaryService;
 import com.team.independence.asset.service.LoanAccountService;
 import com.team.independence.goal.dto.GoalRecommendationResponse;
 import com.team.independence.goal.dto.LoanPlans;
@@ -40,7 +39,6 @@ public class LoanPlanCalculator {
 
     private final MemberService       memberService;
     private final LoanAccountService  loanAccountService;
-    private final AssetSummaryService assetSummaryService;
     private final BudgetCalculator    budgetCalculator;
 
     /**
@@ -50,13 +48,18 @@ public class LoanPlanCalculator {
      * 대출 한도가 목표 금액을 초과하는 경우 대출액은 목표 금액으로 캡되며,
      * 자력 부담과 월 저축액은 0이 된다.
      *
+     * @param netWorth        호출자가 상위에서 한 번만 조회해 넘기는 순자산 구성.
+     *                        여기서 다시 조회하면 알고리즘마다 같은 4개 쿼리가 반복된다.
+     * @param loanSchedules   호출자가 상위에서 한 번만 조회해 넘기는 기존 대출 스케줄.
+     *                        DSR 여유분 계산의 기존 상환액 합계를 여기서 구한다.
      * @param effectiveSaving 호출자가 넘기는 월 순저축액(기존 대출 상환액 등을 이미 차감한 값).
      *                        loanO 달성 가능 여부(capacity) 판정에 쓴다. 서버 캐시가 아니라 이 값을 기준으로
      *                        삼아, 추천 요청이 넘긴 저축액과 예산 계산이 어긋나지 않게 한다.
      */
-    public LoanPlans calculate(long memberId, long requiredAmount, YearMonth targetDate, long effectiveSaving) {
+    public LoanPlans calculate(long memberId, long requiredAmount, YearMonth targetDate,
+                               AssetNetWorthBreakdown netWorth, List<LoanSchedule> loanSchedules,
+                               long effectiveSaving) {
         long months = ChronoUnit.MONTHS.between(YearMonth.now(), targetDate);
-        AssetNetWorthBreakdown netWorth = assetSummaryService.getNetWorthBreakdown(memberId);
 
         long loanXSaving = calcMonthlySavingNeeded(netWorth, requiredAmount, months);
         GoalRecommendationResponse.LoanXPlan loanX = GoalRecommendationResponse.LoanXPlan.builder()
@@ -65,7 +68,7 @@ public class LoanPlanCalculator {
                 .monthlySaving(loanXSaving)
                 .build();
 
-        long existingPayment = calcTotalExistingMonthlyPayment(memberId);
+        long existingPayment = totalMonthlyPayment(loanSchedules);
         long loanAmount = Math.min(calcMaxLoanAmount(memberId, existingPayment), requiredAmount);
         if (loanAmount <= 0) {
             return LoanPlans.builder().loanX(loanX).loanO(null).build();
@@ -118,7 +121,7 @@ public class LoanPlanCalculator {
                 .monthlySaving(rawMonthlySaving)
                 .build();
 
-        long existingPayment = calcTotalExistingMonthlyPayment(memberId);
+        long existingPayment = totalMonthlyPayment(loanSchedules);
         long loanAmount = Math.min(calcMaxLoanAmount(memberId, existingPayment), requiredAmount);
         if (loanAmount <= 0) {
             return LoanPlans.builder().loanX(loanX).loanO(null).build();
@@ -173,6 +176,18 @@ public class LoanPlanCalculator {
 
 
     /**
+     * 이미 확보해 둔 대출 스케줄에서 월 원리금 합계를 구한다.
+     *
+     * <p>{@link #getLoanSchedules(long)}가 상환 부담 없는 대출(잔액 0·만기 도래·end_date 없음)을
+     * 이미 걸러 내므로, 스케줄 합계는 {@link #calcTotalExistingMonthlyPayment(long)}과 같은 값이다.
+     * {@code MemberFinancialContext.currentEffectiveSaving()}도 같은 방식으로 합산한다.
+     * 상위에서 한 번 조회한 스케줄을 재사용해 계좌 조회 쿼리 반복을 없앤다.
+     */
+    private long totalMonthlyPayment(List<LoanSchedule> loanSchedules) {
+        return loanSchedules.stream().mapToLong(LoanSchedule::monthlyPayment).sum();
+    }
+
+    /**
      * 기존 대출 계좌 전체의 월 원리금 합계를 반환한다.
      *
      * <p>end_date가 없거나 이미 만기된 대출은 상환 부담 없음으로 처리한다.
@@ -196,7 +211,7 @@ public class LoanPlanCalculator {
     }
 
     private long calcMaxLoanAmount(long memberId, long existingMonthlyPayment) {
-        Long monthlyIncome = memberService.getMember(memberId).monthlyIncome();
+        Long monthlyIncome = memberService.getMonthlyIncome(memberId);
         if (monthlyIncome == null || monthlyIncome <= 0) return 0L;
 
         double r = ASSUMED_LOAN_ANNUAL_RATE / 12.0;

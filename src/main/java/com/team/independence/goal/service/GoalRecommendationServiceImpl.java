@@ -26,7 +26,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 등록된 추천 알고리즘을 2-Phase로 실행해 결과를 모은다.
@@ -61,8 +60,15 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
     @Qualifier("algorithmExecutor")
     private final Executor algorithmExecutor;
 
+    /**
+     * {@code @Transactional}을 붙이지 않는다.
+     *
+     * <p>실제 DB 작업은 대부분 algorithmExecutor 스레드에서 일어나는데, 그 스레드들은 요청 스레드의
+     * 트랜잭션을 상속받지 못하고 각자 커넥션을 잡는다. 여기에 트랜잭션을 걸면 요청 스레드가
+     * join()으로 대기하는 내내 커넥션 하나를 쓰지도 않으면서 붙잡고 있게 되어, 동시 요청 수만큼
+     * 커넥션 풀이 먼저 마른다. 개별 조회는 각 서비스의 readOnly 트랜잭션이 이미 감싸고 있다.
+     */
     @Override
-    @Transactional(readOnly = true)
     public GoalRecommendationResponse recommend(long memberId, GoalRecommendationRequest request) {
         assetConnectionService.validateConnectedAccountExists(memberId);
 
@@ -83,6 +89,11 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
                                 () -> runSafely(a, memberId, request, ctx), algorithmExecutor))
                         .collect(Collectors.toList());
 
+        // 응답의 originalPreference에 들어갈 기준 시세도 알고리즘과 무관한 별도 조회다.
+        // 결과 조립 시점에 부르면 모든 알고리즘이 끝난 뒤 무거운 median 쿼리가 직렬로 하나 더 붙는다.
+        CompletableFuture<Long> baseMedianFuture = CompletableFuture.supplyAsync(
+                () -> resolveBaseMedianAmount(request), algorithmExecutor);
+
         // Phase 2: Realistic 완료 후 HoldOut 실행
         CompletableFuture<List<GoalRecommendationResponse.RecommendationItem>> holdOutFuture =
                 realisticFuture.thenApplyAsync(realisticItems -> {
@@ -95,6 +106,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
         List<CompletableFuture<?>> allFutures = new ArrayList<>();
         allFutures.add(realisticFuture);
         allFutures.add(holdOutFuture);
+        allFutures.add(baseMedianFuture);
         allFutures.addAll(otherFutures);
         CompletableFuture.allOf(allFutures.toArray(new CompletableFuture[0])).join();
 
@@ -109,7 +121,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
         }
 
         GoalRecommendationResponse response = GoalRecommendationResponse.builder()
-                .originalPreference(buildOriginalPreference(request, monthlySaving))
+                .originalPreference(buildOriginalPreference(request, monthlySaving, baseMedianFuture.join()))
                 .recommendations(recommendations)
                 .build();
 
@@ -117,15 +129,15 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
         return response;
     }
 
+    /** Redis만 읽으므로 트랜잭션이 필요 없다. 걸어 두면 쓰지 않을 커넥션을 잡는다. */
     @Override
-    @Transactional(readOnly = true)
     public GoalRecommendationResponse getSavedRecommendation(long memberId) {
         return recommendationStore.find(memberId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.GOAL_RECOMMENDATION_NOT_FOUND));
     }
 
     private GoalRecommendationResponse.OriginalPreference buildOriginalPreference(
-            GoalRecommendationRequest request, long monthlySaving) {
+            GoalRecommendationRequest request, long monthlySaving, Long baseMedianAmount) {
 
         String regionCode = request.getRegionCode();
         String regionName = regionCode.length() == 2
@@ -144,7 +156,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
                         .depositMax(request.getDepositMax())
                         .monthlyRentMin(request.getMonthlyRentMin())
                         .monthlyRentMax(request.getMonthlyRentMax())
-                        .marketMedianAmount(resolveBaseMedianAmount(request))
+                        .marketMedianAmount(baseMedianAmount)
                         .build();
 
         return GoalRecommendationResponse.OriginalPreference.builder()

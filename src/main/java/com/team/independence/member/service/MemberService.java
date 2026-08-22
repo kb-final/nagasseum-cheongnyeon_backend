@@ -15,6 +15,16 @@ public interface MemberService {
 
     MemberProfileResponse getMember(Long id);
 
+    /**
+     * 월소득만 조회한다. 등록하지 않았으면 null.
+     *
+     * <p>DSR 한도 계산처럼 소득 한 필드만 필요한 호출부용이다.
+     * {@link #getMember(Long)}은 약관 동의 목록까지 함께 읽어 쿼리가 2개 나간다.
+     *
+     * @throws com.team.independence.common.exception.BusinessException 회원이 없으면 MEMBER_NOT_FOUND
+     */
+    Long getMonthlyIncome(Long id);
+
     /** kakaoId로 memberId 조회. 존재하지 않으면 Optional.empty() */
     Optional<Long> findMemberIdByKakaoId(String kakaoId);
 
