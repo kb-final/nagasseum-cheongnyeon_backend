@@ -106,9 +106,18 @@ CREATE TABLE rent_transaction (
     -- (지역, 연월, 유형) 단위 재적재 시 DELETE 대상을 구간으로 좁힌다.
     -- 최좌측 프리픽스가 region_code라 fk_rent_region의 인덱스 요건도 함께 충족.
     KEY idx_rent_reload (region_code, deal_ym, housing_type),
-    KEY idx_rent_query  (region_code, housing_type, deal_type, deal_ym),
+    -- 앞 4개(region_code, housing_type, deal_type, deal_ym)가 탐색 키, 뒤 3개는 커버링용 페이로드.
+    -- median·PriceModel 계열 쿼리는 구간에 걸린 행을 전부 읽고 나서 area·deposit·monthly_rent로
+    -- 거르는데, 이 세 컬럼이 인덱스에 없으면 걸린 행 수만큼 클러스터드 인덱스 랜덤 룩업이 발생한다.
+    -- 인덱스에 실어 두면 Using index(커버링)로 끝나 테이블 접근이 사라진다.
+    KEY idx_rent_query  (region_code, housing_type, deal_type, deal_ym, area, deposit, monthly_rent),
     CONSTRAINT fk_rent_region FOREIGN KEY (region_code) REFERENCES region (code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='실거래 전월세(4종 통합)';
+
+-- 기존 DB 마이그레이션용 (신규 생성 시에는 위 DDL에 이미 반영되어 있어 실행 불필요)
+-- ALTER TABLE rent_transaction
+--     DROP INDEX idx_rent_query,
+--     ADD  KEY   idx_rent_query (region_code, housing_type, deal_type, deal_ym, area, deposit, monthly_rent);
 
 -- 수집 이력
 -- 최초 수집/증분 수집을 코드에서 분기하지 않고, 조합별 성공 여부로 판단하기 위한 테이블.
