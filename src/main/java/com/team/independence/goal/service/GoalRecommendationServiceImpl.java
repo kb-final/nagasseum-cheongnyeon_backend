@@ -89,6 +89,11 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
                                 () -> runSafely(a, memberId, request, ctx), algorithmExecutor))
                         .collect(Collectors.toList());
 
+        // 응답의 originalPreference에 들어갈 기준 시세도 알고리즘과 무관한 별도 조회다.
+        // 결과 조립 시점에 부르면 모든 알고리즘이 끝난 뒤 무거운 median 쿼리가 직렬로 하나 더 붙는다.
+        CompletableFuture<Long> baseMedianFuture = CompletableFuture.supplyAsync(
+                () -> resolveBaseMedianAmount(request), algorithmExecutor);
+
         // Phase 2: Realistic 완료 후 HoldOut 실행
         CompletableFuture<List<GoalRecommendationResponse.RecommendationItem>> holdOutFuture =
                 realisticFuture.thenApplyAsync(realisticItems -> {
@@ -101,6 +106,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
         List<CompletableFuture<?>> allFutures = new ArrayList<>();
         allFutures.add(realisticFuture);
         allFutures.add(holdOutFuture);
+        allFutures.add(baseMedianFuture);
         allFutures.addAll(otherFutures);
         CompletableFuture.allOf(allFutures.toArray(new CompletableFuture[0])).join();
 
@@ -115,7 +121,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
         }
 
         GoalRecommendationResponse response = GoalRecommendationResponse.builder()
-                .originalPreference(buildOriginalPreference(request, monthlySaving))
+                .originalPreference(buildOriginalPreference(request, monthlySaving, baseMedianFuture.join()))
                 .recommendations(recommendations)
                 .build();
 
@@ -131,7 +137,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
     }
 
     private GoalRecommendationResponse.OriginalPreference buildOriginalPreference(
-            GoalRecommendationRequest request, long monthlySaving) {
+            GoalRecommendationRequest request, long monthlySaving, Long baseMedianAmount) {
 
         String regionCode = request.getRegionCode();
         String regionName = regionCode.length() == 2
@@ -150,7 +156,7 @@ public class GoalRecommendationServiceImpl implements GoalRecommendationService 
                         .depositMax(request.getDepositMax())
                         .monthlyRentMin(request.getMonthlyRentMin())
                         .monthlyRentMax(request.getMonthlyRentMax())
-                        .marketMedianAmount(resolveBaseMedianAmount(request))
+                        .marketMedianAmount(baseMedianAmount)
                         .build();
 
         return GoalRecommendationResponse.OriginalPreference.builder()
