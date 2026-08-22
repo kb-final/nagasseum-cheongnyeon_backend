@@ -85,6 +85,7 @@ class GoalDetailServiceImplTest {
                         null,
                         null,
                         null,
+                        null,
                         new BudgetCalculator(),
                         new LoanPlanCalculator(null, null, null, null) {
                             @Override
@@ -610,6 +611,16 @@ class GoalDetailServiceImplTest {
             return records.size() > limit
                     ? records.subList(0, limit)
                     : records;
+        }
+
+        @Override
+        public SavingRecord findByGoalIdAndRecordYm(Long goalId, String recordYm) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void upsertActualSaving(Long goalId, String recordYm, Long targetSaving, Long actualSaving) {
+            throw new UnsupportedOperationException();
         }
     }
 

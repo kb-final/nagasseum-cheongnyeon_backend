@@ -8,6 +8,8 @@ import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalResponse;
 import com.team.independence.goal.dto.GoalSaveRequest;
+import com.team.independence.goal.dto.GoalSavingCurrentResponse;
+import com.team.independence.goal.dto.GoalSavingCurrentUpdateRequest;
 import com.team.independence.goal.dto.GoalSummaryResponse;
 
 public interface GoalService {
@@ -83,4 +85,15 @@ public interface GoalService {
      * 달성률/예상 잔여 개월)을 한 번에 조회한다. 회원의 활성 목표가 없으면 GOAL_NOT_FOUND.
      */
     GoalSummaryResponse getSummary(Long memberId);
+
+    /**
+     * 홈 화면 「이번 달 저축 기록」 카드 데이터. 이번 달 saving_record가 없으면 오류가 아니라
+     * actualSaving=null, recorded=false로 응답한다. 활성 목표가 없으면 GOAL_NOT_FOUND.
+     */
+    GoalSavingCurrentResponse getCurrentSaving(Long memberId);
+
+    /**
+     * 이번 달 실제 저축액을 입력하거나 수정한다(같은 API로 upsert). 활성 목표가 없으면 GOAL_NOT_FOUND.
+     */
+    GoalSavingCurrentResponse updateCurrentSaving(Long memberId, GoalSavingCurrentUpdateRequest request);
 }

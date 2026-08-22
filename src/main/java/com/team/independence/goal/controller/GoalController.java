@@ -9,6 +9,8 @@ import com.team.independence.goal.dto.GoalMarketTrendResponse;
 import com.team.independence.goal.dto.GoalForecastResponse;
 import com.team.independence.goal.dto.GoalResponse;
 import com.team.independence.goal.dto.GoalSaveRequest;
+import com.team.independence.goal.dto.GoalSavingCurrentResponse;
+import com.team.independence.goal.dto.GoalSavingCurrentUpdateRequest;
 import com.team.independence.goal.dto.GoalSummaryResponse;
 import com.team.independence.goal.dto.MonteCarloResponse;
 import com.team.independence.goal.service.GoalDetailService;
@@ -107,5 +109,17 @@ public class GoalController {
     @GetMapping("/summary")
     public ApiResponse<GoalSummaryResponse> getSummary(@LoginMember Long memberId) {
         return ApiResponse.ok(goalService.getSummary(memberId));
+    }
+
+    @GetMapping("/savings/current")
+    public ApiResponse<GoalSavingCurrentResponse> getCurrentSaving(@LoginMember Long memberId) {
+        return ApiResponse.ok(goalService.getCurrentSaving(memberId));
+    }
+
+    @PutMapping("/savings/current")
+    public ApiResponse<GoalSavingCurrentResponse> updateCurrentSaving(
+            @LoginMember Long memberId,
+            @Valid @RequestBody GoalSavingCurrentUpdateRequest request) {
+        return ApiResponse.ok(goalService.updateCurrentSaving(memberId, request));
     }
 }

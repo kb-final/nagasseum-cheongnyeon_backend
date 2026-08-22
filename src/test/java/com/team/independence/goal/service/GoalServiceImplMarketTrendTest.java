@@ -85,6 +85,7 @@ class GoalServiceImplMarketTrendTest {
                 rentMedianService,
                 goalMapper,
                 goalHousingMapper,
+                null,
                 goalMarketTrendCacheStore,
                 null,
                 new BudgetCalculator(),
