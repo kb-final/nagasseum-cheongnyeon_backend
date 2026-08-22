@@ -109,14 +109,13 @@ public class PriceModelServiceImpl implements PriceModelService {
             return result;
         }
 
-        // 1) 캐시 조회 — 히트분은 즉시 결과에 담고, 미스만 다음 단계로 넘긴다.
+        // 1) 캐시 조회 — MGET 한 번으로 전체 조합을 확인하고, 미스만 다음 단계로 넘긴다.
+        //    조합마다 GET을 돌리면 40개 키에 왕복 40회가 나가고 Realistic·HoldOut이 연달아 불러 80회가 된다.
+        result.putAll(priceModelStore.findAll(regionCode, keys));
+
         List<PriceModelKey> misses = new ArrayList<>();
         for (PriceModelKey key : keys) {
-            PriceModelRequest req = toRequest(regionCode, key);
-            Optional<PriceModelResponse> cached = priceModelStore.find(req);
-            if (cached.isPresent()) {
-                result.put(key, cached.get());
-            } else {
+            if (!result.containsKey(key)) {
                 misses.add(key);
             }
         }
@@ -157,7 +156,8 @@ public class PriceModelServiceImpl implements PriceModelService {
                     row.getDealYm(), row.getDeposit(), row.getArea()));
         }
 
-        // 4) 조합별로 PriceModel.estimate → 캐시 저장 → 결과 맵에 담기.
+        // 4) 조합별로 PriceModel.estimate → 결과 맵에 담기.
+        Map<PriceModelKey, PriceModelResponse> computed = new HashMap<>();
         for (PriceModelKey miss : misses) {
             List<MonthlyPricePoint> raw = perKey.get(miss);
             PriceModelResponse response = buildPriceModel(regionCode, regionName, miss, raw, startYm, endYm);
@@ -165,9 +165,12 @@ public class PriceModelServiceImpl implements PriceModelService {
                 // 표본 부족은 배치에서는 예외를 던지지 않고 스킵한다. 호출자는 null을 폴백 신호로 쓴다.
                 continue;
             }
-            priceModelStore.save(toRequest(regionCode, miss), response);
-            result.put(miss, response);
+            computed.put(miss, response);
         }
+
+        // 5) 새로 계산한 조합만 파이프라인 한 번으로 캐싱한다.
+        priceModelStore.saveAll(regionCode, computed);
+        result.putAll(computed);
         return result;
     }
 
@@ -216,16 +219,6 @@ public class PriceModelServiceImpl implements PriceModelService {
                 .startYm(startYm)
                 .endYm(endYm)
                 .build();
-    }
-
-    private PriceModelRequest toRequest(String regionCode, PriceModelKey key) {
-        PriceModelRequest req = new PriceModelRequest();
-        req.setRegionCode(regionCode);
-        req.setHousingType(key.housingType());
-        req.setDealType(key.dealType());
-        req.setAreaMin(key.areaMin());
-        req.setAreaMax(key.areaMax());
-        return req;
     }
 
     /** 한 달치 거래 목록에서 평당 보증금(원/평)의 중앙값을 반환 */
