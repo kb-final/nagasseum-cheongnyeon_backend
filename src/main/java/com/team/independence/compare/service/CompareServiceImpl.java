@@ -16,12 +16,14 @@ import com.team.independence.compare.domain.CohortType;
 import com.team.independence.compare.domain.GoalSnapshot;
 import com.team.independence.compare.domain.MonthlyIncomeBracket;
 import com.team.independence.compare.dto.AchievementBucketCount;
+import com.team.independence.compare.dto.AssetCohortStats;
 import com.team.independence.compare.dto.AssetCompareResponse;
 import com.team.independence.compare.dto.CompareRequest;
 import com.team.independence.compare.dto.CohortAverages;
 import com.team.independence.compare.dto.CohortCondition;
 import com.team.independence.compare.dto.CompareCohort;
 import com.team.independence.compare.dto.CompareResponse;
+import com.team.independence.compare.dto.GoalCohortStats;
 import com.team.independence.compare.dto.CompareResponse.AchievementBucket;
 import com.team.independence.compare.dto.CompareResponse.AchievementDistribution;
 import com.team.independence.compare.dto.CompareResponse.Cohort;
@@ -79,6 +81,7 @@ public class CompareServiceImpl implements CompareService {
 
     private final GoalSnapshotMapper goalSnapshotMapper;
     private final AgreementService agreementService;
+    private final CompareCacheStore compareCacheStore;
 
     /** 자산 비교 */
     @Override
@@ -95,31 +98,41 @@ public class CompareServiceImpl implements CompareService {
 
         List<CohortType> applied = resolveApplied(request.getCohortTypes());
         CohortCondition condition = buildCondition(snapshotYm, me, request.getAssetRange(), request.getAgeRange(), applied);
-        int cohortSize = goalSnapshotMapper.countCohort(condition);
-        if (cohortSize < MINIMUM_COHORT_SIZE) {
+
+        AssetCohortStats stats = compareCacheStore.findAssetStats(condition).orElseGet(() -> {
+            int size = goalSnapshotMapper.countCohort(condition);
+            if (size < MINIMUM_COHORT_SIZE) {
+                return new AssetCohortStats(size, null, null, null, null);
+            }
+            AssetCohortStats fresh = new AssetCohortStats(
+                    size,
+                    goalSnapshotMapper.findAverages(condition),
+                    goalSnapshotMapper.findSavingRange(condition),
+                    goalSnapshotMapper.countByIncomeBracket(condition),
+                    goalSnapshotMapper.countByOccupationType(condition));
+            compareCacheStore.saveAssetStats(condition, fresh);
+            return fresh;
+        });
+
+        if (stats.getCohortSize() < MINIMUM_COHORT_SIZE) {
             return AssetCompareResponse.builder()
                     .snapshotYm(snapshotYm)
-                    .cohort(buildCohort(request.getAssetRange(), request.getAgeRange(), cohortSize, applied, false))
+                    .cohort(buildCohort(request.getAssetRange(), request.getAgeRange(), stats.getCohortSize(), applied, false))
                     .build();
         }
 
-        CohortAverages averages = goalSnapshotMapper.findAverages(condition);
-        SavingRangeResult savingRange = goalSnapshotMapper.findSavingRange(condition);
-        List<IncomeBracketCount> incomeCounts = goalSnapshotMapper.countByIncomeBracket(condition);
-        List<OccupationTypeCount> occupationCounts = goalSnapshotMapper.countByOccupationType(condition);
-
         return AssetCompareResponse.builder()
                 .snapshotYm(snapshotYm)
-                .cohort(buildCohort(request.getAssetRange(), request.getAgeRange(), cohortSize, applied, true))
+                .cohort(buildCohort(request.getAssetRange(), request.getAgeRange(), stats.getCohortSize(), applied, true))
                 .myMonthlyIncome(me.getMonthlyIncome())
-                .cohortAverageNetAssets(averages.getAverageNetAssets())
+                .cohortAverageNetAssets(stats.getAverages().getAverageNetAssets())
                 .saving(AssetCompareResponse.Saving.builder()
                         .mine(me.getMonthlySaving())
-                        .cohortMin(savingRange.getCohortRangeMin())
-                        .cohortMax(savingRange.getCohortRangeMax())
+                        .cohortMin(stats.getSavingRange().getCohortRangeMin())
+                        .cohortMax(stats.getSavingRange().getCohortRangeMax())
                         .build())
-                .incomeBracketDistribution(toIncomeBracketItems(incomeCounts, cohortSize))
-                .occupationDistribution(toOccupationItems(occupationCounts, cohortSize))
+                .incomeBracketDistribution(toIncomeBracketItems(stats.getIncomeBracketCounts(), stats.getCohortSize()))
+                .occupationDistribution(toOccupationItems(stats.getOccupationTypeCounts(), stats.getCohortSize()))
                 .build();
     }
 
@@ -140,33 +153,43 @@ public class CompareServiceImpl implements CompareService {
 
         List<CohortType> applied = resolveApplied(request.getCohortTypes());
         CohortCondition condition = buildCondition(snapshotYm, me, request.getAssetRange(), request.getAgeRange(), applied);
-        int cohortSize = goalSnapshotMapper.countCohort(condition);
-        if (cohortSize < MINIMUM_COHORT_SIZE) {
+
+        GoalCohortStats stats = compareCacheStore.findGoalStats(condition).orElseGet(() -> {
+            int size = goalSnapshotMapper.countCohort(condition);
+            if (size < MINIMUM_COHORT_SIZE) {
+                return new GoalCohortStats(size, null, null, null, null);
+            }
+            GoalCohortStats fresh = new GoalCohortStats(
+                    size,
+                    goalSnapshotMapper.findAverages(condition),
+                    goalSnapshotMapper.countByDealType(condition),
+                    goalSnapshotMapper.countTopRegions(condition),
+                    goalSnapshotMapper.countByAchievementBucket(condition));
+            compareCacheStore.saveGoalStats(condition, fresh);
+            return fresh;
+        });
+
+        if (stats.getCohortSize() < MINIMUM_COHORT_SIZE) {
             return GoalCompareResponse.builder()
                     .snapshotYm(snapshotYm)
-                    .cohort(buildCohort(request.getAssetRange(), request.getAgeRange(), cohortSize, applied, false))
+                    .cohort(buildCohort(request.getAssetRange(), request.getAgeRange(), stats.getCohortSize(), applied, false))
                     .build();
         }
 
-        CohortAverages averages = goalSnapshotMapper.findAverages(condition);
-        List<DealTypeCount> dealTypeCounts = goalSnapshotMapper.countByDealType(condition);
-        List<RegionCount> regionCounts = goalSnapshotMapper.countTopRegions(condition);
-        List<AchievementBucketCount> bucketCounts = goalSnapshotMapper.countByAchievementBucket(condition);
-
         return GoalCompareResponse.builder()
                 .snapshotYm(snapshotYm)
-                .cohort(buildCohort(request.getAssetRange(), request.getAgeRange(), cohortSize, applied, true))
+                .cohort(buildCohort(request.getAssetRange(), request.getAgeRange(), stats.getCohortSize(), applied, true))
                 .myMonthlyIncome(me.getMonthlyIncome())
-                .cohortAverageNetAssets(averages.getAverageNetAssets())
+                .cohortAverageNetAssets(stats.getAverages().getAverageNetAssets())
                 .achievement(GoalCompareResponse.Achievement.builder()
                         .mine(me.getAchievementRate())
-                        .cohortAverage(averages.getCohortAverageRate())
-                        .buckets(toAchievementBuckets(bucketCounts, cohortSize, me.getAchievementRate()))
+                        .cohortAverage(stats.getAverages().getCohortAverageRate())
+                        .buckets(toAchievementBuckets(stats.getAchievementBucketCounts(), stats.getCohortSize(), me.getAchievementRate()))
                         .build())
-                .dealTypeDistribution(toDealTypeItems(dealTypeCounts, cohortSize))
-                .averageTargetAmount(averages.getAverageTargetAmount())
-                .averagePrepMonths(averages.getAveragePrepMonths())
-                .popularRegions(toRegionItems(regionCounts, cohortSize))
+                .dealTypeDistribution(toDealTypeItems(stats.getDealTypeCounts(), stats.getCohortSize()))
+                .averageTargetAmount(stats.getAverages().getAverageTargetAmount())
+                .averagePrepMonths(stats.getAverages().getAveragePrepMonths())
+                .popularRegions(toRegionItems(stats.getRegionCounts(), stats.getCohortSize()))
                 .build();
     }
 
