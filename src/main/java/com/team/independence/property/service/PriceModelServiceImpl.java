@@ -1,5 +1,6 @@
 package com.team.independence.property.service;
 
+import com.team.independence.common.diagnostics.RecommendationProfiler;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.property.dto.MonthlyPricePoint;
@@ -46,6 +47,7 @@ public class PriceModelServiceImpl implements PriceModelService {
     public PriceModelResponse estimate(PriceModelRequest request) {
         Optional<PriceModelResponse> cached = priceModelStore.find(request);
         if (cached.isPresent()) {
+            RecommendationProfiler.recordPmHit();
             return cached.get();
         }
 
@@ -59,6 +61,7 @@ public class PriceModelServiceImpl implements PriceModelService {
         String startYm = start.format(YM);
         String endYm = end.format(YM);
 
+        long t0 = System.nanoTime();
         List<MonthlyPricePoint> raw = rentTransactionMapper.findAmountsForPriceModel(
                 request.getRegionCode(),
                 request.getHousingType(),
@@ -67,6 +70,7 @@ public class PriceModelServiceImpl implements PriceModelService {
                 toSqm(request.getAreaMax()),
                 startYm,
                 endYm);
+        RecommendationProfiler.recordPmDb(System.nanoTime() - t0);
 
         // 월별 그룹핑 → 표본 부족 월 제외 → 평단가 중앙값 시계열
         List<Double> monthlyMedians = raw.stream()

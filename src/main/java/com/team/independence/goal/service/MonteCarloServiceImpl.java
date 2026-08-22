@@ -3,6 +3,7 @@ package com.team.independence.goal.service;
 import com.team.independence.asset.dto.summary.AssetNetWorthBreakdown;
 import com.team.independence.asset.service.AssetConnectionService;
 import com.team.independence.asset.service.AssetSummaryService;
+import com.team.independence.common.diagnostics.RecommendationProfiler;
 import com.team.independence.common.exception.BusinessException;
 import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.goal.domain.Goal;
@@ -107,10 +108,13 @@ public class MonteCarloServiceImpl implements MonteCarloService {
 
     @Override
     public MonteCarloEngine.Result simulate(PriceModelResponse priceModel, long initialPrice, long budgetAtT, int months) {
-        return MonteCarloEngine.simulate(
+        long t0 = System.nanoTime();
+        MonteCarloEngine.Result result = MonteCarloEngine.simulate(
                 priceModel.getAnnualDrift(), priceModel.getAnnualVol(),
                 initialPrice, budgetAtT,
                 months, MonteCarloEngine.DEFAULT_SIMULATIONS, MonteCarloEngine.DEFAULT_SEED);
+        RecommendationProfiler.recordMc(System.nanoTime() - t0);
+        return result;
     }
 
     private PriceModelRequest buildPriceModelRequest(GoalHousing housing) {
