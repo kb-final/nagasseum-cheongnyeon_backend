@@ -77,7 +77,7 @@ class PreferenceAlgorithmTest {
                 .build();
         ctx = new MemberFinancialContext(defaultNetWorth, 10_000_000L, List.of());
 
-        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
+        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), any(), any(), anyLong()))
                 .thenReturn(LoanPlans.builder().build());
         when(loanPlanCalculator.calculateSavingFixed(anyLong(), anyLong(), any(), anyLong(), any()))
                 .thenReturn(LoanPlans.builder().build());
@@ -180,7 +180,7 @@ class PreferenceAlgorithmTest {
                         .loanX(GoalRecommendationResponse.LoanXPlan.builder()
                                 .targetAmount(1000 * 만).monthlySaving(1_000_000L).build())
                         .build());
-        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
+        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), any(), any(), anyLong()))
                 .thenReturn(LoanPlans.builder()
                         .loanX(GoalRecommendationResponse.LoanXPlan.builder()
                                 .targetAmount(1000 * 만).monthlySaving(500_000L).build())
@@ -259,7 +259,7 @@ class PreferenceAlgorithmTest {
         assertThat(result).hasSize(2);
         assertThat(result.get(1).getType()).isEqualTo(AlgorithmType.PREFERENCE_DATE_FIXED);
         assertThat(result.get(1).getCondition()).isNotNull();
-        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(2 * 억), any(), anyLong());
+        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(2 * 억), any(), any(), any(), anyLong());
     }
 
     // ===== 헬퍼 =====

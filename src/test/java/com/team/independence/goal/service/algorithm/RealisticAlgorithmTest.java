@@ -172,7 +172,7 @@ class RealisticAlgorithmTest {
                     return result;
                 });
 
-        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
+        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), any(), any(), anyLong()))
                 .thenReturn(LoanPlans.builder().build());
     }
 
@@ -191,7 +191,7 @@ class RealisticAlgorithmTest {
         assertThat(item.getCondition().getAreaMin()).isEqualTo(15);
         assertThat(item.getCondition().getAreaMax()).isEqualTo(19);
         // 화면에 나가는 목표 금액은 실제 보증금이다.
-        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(2 * 억), any(), anyLong());
+        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(2 * 억), any(), any(), any(), anyLong());
     }
 
     @Test
@@ -243,7 +243,7 @@ class RealisticAlgorithmTest {
         assertThat(item.getCondition().getDealType()).isEqualTo(DealType.WOLSE);
         assertThat(item.getCondition().getMonthlyRent()).isEqualTo(40 * 만);
         // 환산값(1.06억)이 아니라 실제로 모아야 하는 보증금(1,000만)을 넘긴다.
-        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(1000 * 만), any(), anyLong());
+        verify(loanPlanCalculator).calculate(eq(MEMBER_ID), eq(1000 * 만), any(), any(), any(), anyLong());
     }
 
     @Test
@@ -251,7 +251,7 @@ class RealisticAlgorithmTest {
     void addsMonthlyRentToLoanXAndLoanOWhenWolseChosen() {
         put("11110", HousingType.APT, DealType.WOLSE, 15, 1000 * 만, 40 * 만);
 
-        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), anyLong()))
+        when(loanPlanCalculator.calculate(anyLong(), anyLong(), any(), any(), any(), anyLong()))
                 .thenReturn(LoanPlans.builder()
                         .loanX(GoalRecommendationResponse.LoanXPlan.builder()
                                 .targetAmount(1000 * 만).monthlySaving(1_000_000L).build())

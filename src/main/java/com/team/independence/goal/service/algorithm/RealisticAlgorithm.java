@@ -538,7 +538,8 @@ public class RealisticAlgorithm implements RecommendationAlgorithm {
         // 화면에 나가는 목표 금액은 환산값이 아니라 실제로 모아야 하는 보증금이다.
         // loanO 달성 가능 여부 판정은 "지금 시점" 스냅샷이면 충분하므로 currentEffectiveSaving을 쓴다.
         LoanPlans plans = loanPlanCalculator.calculate(
-                memberId, chosen.deposit(), targetDate, search.currentEffectiveSaving);
+                memberId, chosen.deposit(), targetDate,
+                search.netWorth, search.loanSchedules, search.currentEffectiveSaving);
 
         // 날짜 고정 카드라 대출은 시점을 앞당기는 게 아니라 필요 저축액을 낮춘다 → 단축 개월은 0
         // monthlySaving은 보증금을 모으는 동안의 저축액이라 월세가 빠져 있다. 월세 후보면 더해서 보여준다.

@@ -169,7 +169,9 @@ public class PreferenceAlgorithm implements RecommendationAlgorithm {
         // 목표 시점을 입력하지 않았으면 고정할 시점이 없어 조건 없는(null) 카드를 낸다.
         GoalRecommendationResponse.RecommendationItem dateFixedCard;
         if (request.getTargetDate() != null) {
-            LoanPlans dateFixedPlans = loanPlanCalculator.calculate(memberId, projectedDeposit, targetDate, ctx.currentEffectiveSaving());
+            LoanPlans dateFixedPlans = loanPlanCalculator.calculate(
+                    memberId, projectedDeposit, targetDate,
+                    netWorth, ctx.loanSchedules(), ctx.currentEffectiveSaving());
             GoalRecommendationResponse.LoanXPlan dateFixedLoanX =
                     RecommendationAlgorithm.withMonthlyRentAdded(dateFixedPlans.getLoanX(), monthlyRent);
             GoalRecommendationResponse.LoanOPlan dateFixedLoanO =

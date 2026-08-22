@@ -30,6 +30,13 @@
          WHERE id = #{id}
     </select>
 
+    <!-- DSR 한도 계산용. monthly_income만 쓰지만 회원 존재 여부를 구분해야 해 id를 함께 읽는다. -->
+    <select id="findIncomeById" parameterType="long" resultMap="memberMap">
+        SELECT id, monthly_income
+          FROM member
+         WHERE id = #{id}
+    </select>
+
     <select id="findByKakaoId" parameterType="string" resultMap="memberMap">
         SELECT id, kakao_id, nickname, birth_date,
                income_bracket, income_bracket_updated_at,
