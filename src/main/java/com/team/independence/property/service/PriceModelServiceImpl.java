@@ -115,7 +115,9 @@ public class PriceModelServiceImpl implements PriceModelService {
 
         // 1) 캐시 조회 — MGET 한 번으로 전체 조합을 확인하고, 미스만 다음 단계로 넘긴다.
         //    조합마다 GET을 돌리면 40개 키에 왕복 40회가 나가고 Realistic·HoldOut이 연달아 불러 80회가 된다.
-        result.putAll(priceModelStore.findAll(regionCode, keys));
+        Map<PriceModelKey, PriceModelResponse> cacheHits = priceModelStore.findAll(regionCode, keys);
+        cacheHits.forEach((k, v) -> RecommendationProfiler.recordPmHit());
+        result.putAll(cacheHits);
 
         List<PriceModelKey> misses = new ArrayList<>();
         for (PriceModelKey key : keys) {
@@ -145,8 +147,10 @@ public class PriceModelServiceImpl implements PriceModelService {
         }
         List<TypeDealPair> typePairs = new ArrayList<>(pairSet);
 
+        long t0 = System.nanoTime();
         List<PriceModelBatchRow> rows = rentTransactionMapper.findAmountsForPriceModelBatch(
                 regionCode, typePairs, startYm, endYm);
+        RecommendationProfiler.recordPmDb(System.nanoTime() - t0);
 
         // 3) 조합 키(ht|dt|areaMin|areaMax)별로 행을 재그룹핑한다. area는 SIZE_BUCKETS 하드코딩 경계와 정확히 일치.
         Map<PriceModelKey, List<MonthlyPricePoint>> perKey = new HashMap<>();
