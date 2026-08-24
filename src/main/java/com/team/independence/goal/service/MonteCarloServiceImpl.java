@@ -17,6 +17,7 @@ import com.team.independence.property.service.PriceModelService;
 import com.team.independence.property.service.RegionQueryService;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class MonteCarloServiceImpl implements MonteCarloService {
+
+    /**
+     * MC 결과 메모이제이션. {@link MonteCarloEngine#DEFAULT_SEED}가 고정 상수라
+     * (annualDrift, annualVol, initialPrice, budgetAtT, months)가 같으면 결과도 항상 같다 — 순수 함수.
+     *
+     * <p>Preference·Realistic·HoldOut 세 알고리즘이 같은 조합(주거유형·거래유형·평수, 같은 목표시점)을
+     * 각자 따로 평가하면서 이 메서드를 공유 호출하므로, 알고리즘 간에도 같은 입력이 반복되는 경우가 많다.
+     * 특히 HoldOut은(수렴 루프 하는 다른 곳과 달리) 이 지점에서 내부 중복 제거를 하지 않는다.
+     *
+     * <p>키 공간이 지역·요청 조건에 따라 갈리긴 하지만 무한정 커지진 않아, 단순 Map으로 두고
+     * 크기가 넘치면 통째로 비운다. 정교한 축출(LRU/TTL)이 필요해지면 Caffeine 도입을 검토한다.
+     */
+    private static final ConcurrentHashMap<McKey, MonteCarloEngine.Result> MC_CACHE = new ConcurrentHashMap<>();
+    private static final int MC_CACHE_MAX_SIZE = 5_000;
+
+    private record McKey(double annualDrift, double annualVol, long initialPrice, long budgetAtT, int months) {}
 
     private final GoalService goalService;
     private final GoalHousingMapper goalHousingMapper;
@@ -108,12 +125,23 @@ public class MonteCarloServiceImpl implements MonteCarloService {
 
     @Override
     public MonteCarloEngine.Result simulate(PriceModelResponse priceModel, long initialPrice, long budgetAtT, int months) {
+        McKey key = new McKey(priceModel.getAnnualDrift(), priceModel.getAnnualVol(), initialPrice, budgetAtT, months);
+        MonteCarloEngine.Result cached = MC_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
+
         long t0 = System.nanoTime();
         MonteCarloEngine.Result result = MonteCarloEngine.simulate(
                 priceModel.getAnnualDrift(), priceModel.getAnnualVol(),
                 initialPrice, budgetAtT,
                 months, MonteCarloEngine.DEFAULT_SIMULATIONS, MonteCarloEngine.DEFAULT_SEED);
         RecommendationProfiler.recordMc(System.nanoTime() - t0);
+
+        if (MC_CACHE.size() >= MC_CACHE_MAX_SIZE) {
+            MC_CACHE.clear();
+        }
+        MC_CACHE.put(key, result);
         return result;
     }
 
