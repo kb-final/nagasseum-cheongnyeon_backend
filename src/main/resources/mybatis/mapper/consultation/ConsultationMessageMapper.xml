@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.consultation.mapper.ConsultationMessageMapper">
+
+    <resultMap id="messageMap" type="com.team.independence.consultation.domain.ConsultationMessage">
+        <id     property="messageId"     column="message_id"/>
+        <result property="reservationId" column="reservation_id"/>
+        <result property="senderType"    column="sender_type"
+                javaType="com.team.independence.consultation.domain.MessageSenderType"/>
+        <result property="content"       column="content"/>
+        <result property="createdAt"     column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.team.independence.consultation.domain.ConsultationMessage"
+            useGeneratedKeys="true" keyProperty="messageId">
+        INSERT INTO consultation_message (reservation_id, sender_type, content)
+        VALUES (#{reservationId}, #{senderType}, #{content})
+    </insert>
+
+    <select id="findByReservationId" resultMap="messageMap">
+        SELECT message_id, reservation_id, sender_type, content, created_at
+        FROM consultation_message
+        WHERE reservation_id = #{reservationId}
+        ORDER BY created_at ASC
+    </select>
+
+    <select id="findById" resultMap="messageMap">
+        SELECT message_id, reservation_id, sender_type, content, created_at
+        FROM consultation_message
+        WHERE message_id = #{messageId}
+    </select>
+
+</mapper>

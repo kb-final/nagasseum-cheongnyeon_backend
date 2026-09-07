@@ -20,4 +20,13 @@ public interface ConsultationMapper {
 
     /** 상담사 기준 상담 목록. 예정된 상담을 시간순으로 쓰기 쉽게 예약일시 오름차순. */
     List<ConsultationReservation> findByCounselorId(@Param("counselorId") Long counselorId);
+
+    /** id로 상담 예약을 조회한다. 없으면 null. */
+    ConsultationReservation findById(@Param("reservationId") Long reservationId);
+
+    /**
+     * RESERVED일 때만 IN_PROGRESS로 바꾼다(첫 메시지 전송 시점). status를 조건에 함께 걸어
+     * 이미 IN_PROGRESS/COMPLETED면 0건이 된다(멱등).
+     */
+    int updateStatusToInProgress(@Param("reservationId") Long reservationId);
 }

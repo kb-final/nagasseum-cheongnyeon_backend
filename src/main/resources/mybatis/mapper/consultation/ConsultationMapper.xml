@@ -54,4 +54,19 @@
         ORDER BY reservation_date ASC, reservation_time ASC
     </select>
 
+    <select id="findById" resultMap="reservationMap">
+        SELECT reservation_id, user_id, counselor_id, consultation_type, category,
+               reservation_date, reservation_time, request_message,
+               consult_info_json, diagnosis_json, status, created_at, ended_at
+        FROM consultation_reservation
+        WHERE reservation_id = #{reservationId}
+    </select>
+
+    <update id="updateStatusToInProgress">
+        UPDATE consultation_reservation
+           SET status = 'IN_PROGRESS'
+         WHERE reservation_id = #{reservationId}
+           AND status         = 'RESERVED'
+    </update>
+
 </mapper>

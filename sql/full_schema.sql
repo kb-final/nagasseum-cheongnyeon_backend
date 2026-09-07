@@ -426,3 +426,14 @@ CREATE TABLE consultation_reservation (
     KEY idx_consultation_counselor (counselor_id, reservation_date, reservation_time),
     CONSTRAINT fk_consultation_user FOREIGN KEY (user_id) REFERENCES member (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='1:1 상담 예약';
+
+CREATE TABLE consultation_message (
+    message_id     BIGINT      NOT NULL AUTO_INCREMENT,
+    reservation_id BIGINT      NOT NULL COMMENT '상담 예약 FK',
+    sender_type    VARCHAR(20) NOT NULL COMMENT 'USER / COUNSELOR',
+    content        TEXT        NOT NULL COMMENT '메시지 본문',
+    created_at     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (message_id),
+    KEY idx_message_reservation (reservation_id, created_at),
+    CONSTRAINT fk_message_reservation FOREIGN KEY (reservation_id) REFERENCES consultation_reservation (reservation_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='1:1 상담 채팅 메시지';

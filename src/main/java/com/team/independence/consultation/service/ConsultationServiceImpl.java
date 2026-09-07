@@ -85,6 +85,22 @@ public class ConsultationServiceImpl implements ConsultationService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public ConsultationReservation findReservation(Long reservationId) {
+        ConsultationReservation reservation = consultationMapper.findById(reservationId);
+        if (reservation == null) {
+            throw new BusinessException(ErrorCode.CONSULTATION_NOT_FOUND);
+        }
+        return reservation;
+    }
+
+    @Override
+    @Transactional
+    public void startIfReserved(Long reservationId) {
+        consultationMapper.updateStatusToInProgress(reservationId);
+    }
+
     private String toJson(Object obj) {
         try {
             return objectMapper.writeValueAsString(obj);
