@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.team.independence.consultation.mapper.ConsultationMapper">
+
+    <resultMap id="reservationMap" type="com.team.independence.consultation.domain.ConsultationReservation">
+        <id     property="reservationId"   column="reservation_id"/>
+        <result property="userId"          column="user_id"/>
+        <result property="counselorId"     column="counselor_id"/>
+        <result property="consultationType" column="consultation_type"
+                javaType="com.team.independence.consultation.domain.ConsultationType"/>
+        <result property="category"        column="category"
+                javaType="com.team.independence.consultation.domain.ConsultationCategory"/>
+        <result property="reservationDate" column="reservation_date"/>
+        <result property="reservationTime" column="reservation_time"/>
+        <result property="requestMessage"  column="request_message"/>
+        <result property="consultInfoJson" column="consult_info_json"/>
+        <result property="diagnosisJson"   column="diagnosis_json"/>
+        <result property="status"          column="status"
+                javaType="com.team.independence.consultation.domain.ConsultationStatus"/>
+        <result property="createdAt"       column="created_at"/>
+        <result property="endedAt"         column="ended_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.team.independence.consultation.domain.ConsultationReservation"
+            useGeneratedKeys="true" keyProperty="reservationId">
+        INSERT INTO consultation_reservation (
+            user_id, counselor_id, consultation_type, category,
+            reservation_date, reservation_time, request_message,
+            consult_info_json, diagnosis_json, status
+        ) VALUES (
+            #{userId}, #{counselorId}, #{consultationType}, #{category},
+            #{reservationDate}, #{reservationTime}, #{requestMessage},
+            #{consultInfoJson}, #{diagnosisJson}, #{status}
+        )
+    </insert>
+
+    <select id="findByUserId" resultMap="reservationMap">
+        SELECT reservation_id, user_id, counselor_id, consultation_type, category,
+               reservation_date, reservation_time, request_message,
+               consult_info_json, diagnosis_json, status, created_at, ended_at
+        FROM consultation_reservation
+        WHERE user_id = #{userId}
+        ORDER BY reservation_date DESC, reservation_time DESC
+    </select>
+
+    <select id="findByCounselorId" resultMap="reservationMap">
+        SELECT reservation_id, user_id, counselor_id, consultation_type, category,
+               reservation_date, reservation_time, request_message,
+               consult_info_json, diagnosis_json, status, created_at, ended_at
+        FROM consultation_reservation
+        WHERE counselor_id = #{counselorId}
+        ORDER BY reservation_date ASC, reservation_time ASC
+    </select>
+
+</mapper>

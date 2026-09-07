@@ -402,3 +402,27 @@ CREATE TABLE saving_record (
     UNIQUE KEY uk_saving_goal_ym (goal_id, record_ym),
     CONSTRAINT fk_saving_goal FOREIGN KEY (goal_id) REFERENCES goal (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='월별 저축 기록';
+
+-- =====================================================================
+-- [1:1 상담]
+-- =====================================================================
+
+CREATE TABLE consultation_reservation (
+    reservation_id    BIGINT      NOT NULL AUTO_INCREMENT,
+    user_id           BIGINT      NOT NULL COMMENT '상담 신청 회원 FK',
+    counselor_id      BIGINT      NOT NULL COMMENT '상담사 ID(상담사 인증 체계 확정 전이라 FK 없음)',
+    consultation_type VARCHAR(20) NOT NULL COMMENT 'GENERAL / GOAL_DIAGNOSIS',
+    category          VARCHAR(20) NOT NULL COMMENT 'GOAL / SAVING / HOUSING / LOAN / ASSET',
+    reservation_date  DATE        NOT NULL COMMENT '예약 날짜',
+    reservation_time  TIME        NOT NULL COMMENT '예약 시각',
+    request_message   TEXT        NULL     COMMENT '예약 시 작성한 상담 희망 내용',
+    consult_info_json JSON        NOT NULL COMMENT '이번 상담에 공유하기로 확정한 사용자 정보 스냅샷(원본 자산·목표 데이터 아님)',
+    diagnosis_json    JSON        NULL     COMMENT '목표 진단 결과 스냅샷(GOAL_DIAGNOSIS 상담만 사용)',
+    status            VARCHAR(20) NOT NULL DEFAULT 'RESERVED' COMMENT 'RESERVED / IN_PROGRESS / COMPLETED',
+    created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at          DATETIME    NULL     COMMENT '상담 종료 시각(다음 작업의 종료 API에서 기록)',
+    PRIMARY KEY (reservation_id),
+    KEY idx_consultation_user (user_id, reservation_date, reservation_time),
+    KEY idx_consultation_counselor (counselor_id, reservation_date, reservation_time),
+    CONSTRAINT fk_consultation_user FOREIGN KEY (user_id) REFERENCES member (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='1:1 상담 예약';
