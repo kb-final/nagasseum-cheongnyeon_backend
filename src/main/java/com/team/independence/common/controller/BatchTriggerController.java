@@ -3,6 +3,7 @@ package com.team.independence.common.controller;
 import com.team.independence.common.response.ApiResponse;
 import com.team.independence.compare.service.GoalSnapshotBatchService;
 import com.team.independence.goal.service.GoalMarketTrendBatchService;
+import com.team.independence.policy.service.PolicySyncService;
 import com.team.independence.property.service.RentTransactionSyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ public class BatchTriggerController {
     private final RentTransactionSyncService rentTransactionSyncService;
     private final GoalSnapshotBatchService goalSnapshotBatchService;
     private final GoalMarketTrendBatchService goalMarketTrendBatchService;
+    private final PolicySyncService policySyncService;
 
     /** 전체 배치를 순서대로 실행한다. 초기 데이터 세팅 시 사용. */
     @PostMapping("/all")
@@ -77,5 +79,14 @@ public class BatchTriggerController {
         goalMarketTrendBatchService.refreshAll();
         log.info("[수동 배치] 목표 시세 변화 갱신 완료");
         return ApiResponse.ok("목표 시세 변화 갱신 완료.");
+    }
+
+    /** 온통청년 주거 정책 동기화만 실행한다. */
+    @PostMapping("/policy-sync")
+    public ApiResponse<String> syncPolicies() {
+        log.info("[수동 배치] 정책 동기화 시작");
+        policySyncService.syncAll();
+        log.info("[수동 배치] 정책 동기화 완료");
+        return ApiResponse.ok("온통청년 주거 정책 동기화 완료.");
     }
 }
