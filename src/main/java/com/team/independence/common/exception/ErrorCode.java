@@ -61,6 +61,7 @@ public enum ErrorCode {
 
     // ===== 정책 POLICY_xxx =====
     POLICY_NOT_FOUND("POLICY_001", "정책을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    POLICY_SYNC_FAILED("POLICY_002", "정책 동기화에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
 
     // ===== 매물 PROPERTY_xxx =====
     REGION_NOT_FOUND("PROPERTY_001", "존재하지 않는 지역 코드입니다.", HttpStatus.NOT_FOUND),
