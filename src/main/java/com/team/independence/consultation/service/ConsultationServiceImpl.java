@@ -9,6 +9,7 @@ import com.team.independence.consultation.domain.ConsultationReservation;
 import com.team.independence.consultation.domain.ConsultationStatus;
 import com.team.independence.consultation.domain.ConsultationType;
 import com.team.independence.consultation.dto.ConsultationCounselorReservationResponse;
+import com.team.independence.consultation.dto.ConsultationEndResponse;
 import com.team.independence.consultation.dto.ConsultationReservationCreateRequest;
 import com.team.independence.consultation.dto.ConsultationReservationResponse;
 import com.team.independence.consultation.dto.ConsultationUserReservationResponse;
@@ -99,6 +100,24 @@ public class ConsultationServiceImpl implements ConsultationService {
     @Transactional
     public void startIfReserved(Long reservationId) {
         consultationMapper.updateStatusToInProgress(reservationId);
+    }
+
+    @Override
+    @Transactional
+    public ConsultationEndResponse endConsultation(Long reservationId) {
+        ConsultationReservation reservation = findReservation(reservationId);
+        if (reservation.getStatus() == ConsultationStatus.COMPLETED) {
+            throw new BusinessException(ErrorCode.CONSULTATION_ALREADY_COMPLETED, "이미 종료된 상담입니다.");
+        }
+
+        consultationMapper.updateStatusToCompleted(reservationId);
+        ConsultationReservation ended = consultationMapper.findById(reservationId);
+
+        return ConsultationEndResponse.builder()
+                .reservationId(ended.getReservationId())
+                .status(ended.getStatus().name())
+                .endedAt(ended.getEndedAt())
+                .build();
     }
 
     private String toJson(Object obj) {

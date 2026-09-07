@@ -2,6 +2,7 @@ package com.team.independence.consultation.service;
 
 import com.team.independence.consultation.domain.ConsultationReservation;
 import com.team.independence.consultation.dto.ConsultationCounselorReservationResponse;
+import com.team.independence.consultation.dto.ConsultationEndResponse;
 import com.team.independence.consultation.dto.ConsultationReservationCreateRequest;
 import com.team.independence.consultation.dto.ConsultationReservationResponse;
 import com.team.independence.consultation.dto.ConsultationUserReservationResponse;
@@ -23,4 +24,10 @@ public interface ConsultationService {
 
     /** RESERVED 상태일 때만 IN_PROGRESS로 바꾼다. 이미 IN_PROGRESS/COMPLETED면 아무 일도 하지 않는다(멱등). */
     void startIfReserved(Long reservationId);
+
+    /**
+     * 상담을 종료한다. RESERVED/IN_PROGRESS만 종료할 수 있고 COMPLETED로 바꾼다.
+     * 상담이 없으면 CONSULTATION_NOT_FOUND, 이미 COMPLETED면 CONSULTATION_ALREADY_COMPLETED.
+     */
+    ConsultationEndResponse endConsultation(Long reservationId);
 }

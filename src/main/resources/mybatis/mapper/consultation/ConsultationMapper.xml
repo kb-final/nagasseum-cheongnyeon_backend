@@ -69,4 +69,12 @@
            AND status         = 'RESERVED'
     </update>
 
+    <update id="updateStatusToCompleted">
+        UPDATE consultation_reservation
+           SET status   = 'COMPLETED',
+               ended_at = NOW()
+         WHERE reservation_id = #{reservationId}
+           AND status IN ('RESERVED', 'IN_PROGRESS')
+    </update>
+
 </mapper>

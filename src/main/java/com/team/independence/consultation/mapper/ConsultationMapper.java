@@ -29,4 +29,10 @@ public interface ConsultationMapper {
      * 이미 IN_PROGRESS/COMPLETED면 0건이 된다(멱등).
      */
     int updateStatusToInProgress(@Param("reservationId") Long reservationId);
+
+    /**
+     * RESERVED/IN_PROGRESS일 때만 COMPLETED로 바꾸고 종료 시각(ended_at)을 기록한다.
+     * status를 조건에 함께 걸어 이미 COMPLETED면 0건이 된다(중복 종료 방지).
+     */
+    int updateStatusToCompleted(@Param("reservationId") Long reservationId);
 }

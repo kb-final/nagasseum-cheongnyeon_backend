@@ -3,13 +3,22 @@ package com.team.independence.consultation.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team.independence.common.exception.BusinessException;
+import com.team.independence.common.exception.ErrorCode;
 import com.team.independence.config.RootConfig;
+import com.team.independence.consultation.domain.ConsultationCategory;
 import com.team.independence.consultation.domain.ConsultationReservation;
+import com.team.independence.consultation.domain.ConsultationStatus;
+import com.team.independence.consultation.domain.ConsultationType;
 import com.team.independence.consultation.dto.ConsultationCounselorReservationResponse;
+import com.team.independence.consultation.dto.ConsultationEndResponse;
+import com.team.independence.consultation.dto.ConsultationMessageCreateRequest;
+import com.team.independence.consultation.dto.ConsultationMessageResponse;
 import com.team.independence.consultation.dto.ConsultationReservationCreateRequest;
 import com.team.independence.consultation.dto.ConsultationReservationResponse;
 import com.team.independence.consultation.dto.ConsultationUserReservationResponse;
@@ -52,6 +61,9 @@ class ConsultationServiceImplIntegrationTest {
     private ConsultationService consultationService;
 
     @Autowired
+    private ConsultationMessageService consultationMessageService;
+
+    @Autowired
     private ConsultationMapper consultationMapper;
 
     @Autowired
@@ -64,6 +76,7 @@ class ConsultationServiceImplIntegrationTest {
     private Long userId;
     private Long generalReservationId;
     private Long diagnosisReservationId;
+    private Long endTestReservationId;
 
     @BeforeEach
     void setUp() {
@@ -80,6 +93,10 @@ class ConsultationServiceImplIntegrationTest {
         }
         if (diagnosisReservationId != null) {
             jdbc.update("DELETE FROM consultation_reservation WHERE reservation_id = ?", diagnosisReservationId);
+        }
+        if (endTestReservationId != null) {
+            jdbc.update("DELETE FROM consultation_message WHERE reservation_id = ?", endTestReservationId);
+            jdbc.update("DELETE FROM consultation_reservation WHERE reservation_id = ?", endTestReservationId);
         }
     }
 
@@ -141,6 +158,100 @@ class ConsultationServiceImplIntegrationTest {
         List<ConsultationCounselorReservationResponse> counselorList =
                 consultationService.getCounselorReservations(COUNSELOR_ID);
         assertTrue(counselorList.stream().anyMatch(r -> r.getReservationId().equals(generalReservationId)));
+    }
+
+    @Test
+    @DisplayName("RESERVED 상담을 종료하면 COMPLETED로 바뀌고 endedAt이 저장된다")
+    void RESERVED_상담_종료() {
+        endTestReservationId = insertReservation(ConsultationStatus.RESERVED);
+
+        ConsultationEndResponse response = consultationService.endConsultation(endTestReservationId);
+
+        assertEquals("COMPLETED", response.getStatus());
+        assertNotNull(response.getEndedAt());
+
+        ConsultationReservation ended = consultationMapper.findById(endTestReservationId);
+        assertEquals(ConsultationStatus.COMPLETED, ended.getStatus());
+        assertNotNull(ended.getEndedAt());
+    }
+
+    @Test
+    @DisplayName("IN_PROGRESS 상담을 종료하면 COMPLETED로 바뀌고 endedAt이 저장된다")
+    void IN_PROGRESS_상담_종료() {
+        endTestReservationId = insertReservation(ConsultationStatus.RESERVED);
+        consultationMessageService.createMessage(endTestReservationId, messageRequest("USER", "안녕하세요."));
+        assertEquals(ConsultationStatus.IN_PROGRESS, consultationMapper.findById(endTestReservationId).getStatus());
+
+        ConsultationEndResponse response = consultationService.endConsultation(endTestReservationId);
+
+        assertEquals("COMPLETED", response.getStatus());
+        assertNotNull(response.getEndedAt());
+    }
+
+    @Test
+    @DisplayName("이미 COMPLETED인 상담을 다시 종료하면 CONSULTATION_ALREADY_COMPLETED")
+    void 이미_종료된_상담_재종료_실패() {
+        endTestReservationId = insertReservation(ConsultationStatus.RESERVED);
+        consultationService.endConsultation(endTestReservationId);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> consultationService.endConsultation(endTestReservationId));
+        assertEquals(ErrorCode.CONSULTATION_ALREADY_COMPLETED, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 상담을 종료하면 CONSULTATION_NOT_FOUND")
+    void 존재하지_않는_상담_종료_실패() {
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> consultationService.endConsultation(999_999_999L));
+        assertEquals(ErrorCode.CONSULTATION_NOT_FOUND, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("종료 후에도 메시지 전송은 차단되고, 메시지 조회와 예약 데이터는 그대로 유지된다")
+    void 종료_후_메시지_전송_차단_및_데이터_유지() {
+        endTestReservationId = insertReservation(ConsultationStatus.RESERVED);
+        consultationMessageService.createMessage(endTestReservationId, messageRequest("USER", "안녕하세요."));
+
+        consultationService.endConsultation(endTestReservationId);
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> consultationMessageService.createMessage(endTestReservationId, messageRequest("USER", "종료 후 메시지")));
+        assertEquals(ErrorCode.CONSULTATION_ALREADY_COMPLETED, ex.getErrorCode());
+
+        List<ConsultationMessageResponse> messages = consultationMessageService.getMessages(endTestReservationId);
+        assertEquals(1, messages.size());
+        assertEquals("안녕하세요.", messages.get(0).getContent());
+
+        ConsultationReservation reservation = consultationMapper.findById(endTestReservationId);
+        assertEquals(ConsultationType.GENERAL, reservation.getConsultationType());
+        assertEquals(ConsultationCategory.HOUSING, reservation.getCategory());
+        assertTrue(reservation.getConsultInfoJson().contains("45000000"));
+    }
+
+    private ConsultationMessageCreateRequest messageRequest(String senderType, String content) {
+        String json = "{\"senderType\":\"" + senderType + "\",\"content\":\"" + content + "\"}";
+        try {
+            return objectMapper.readValue(json, ConsultationMessageCreateRequest.class);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private Long insertReservation(ConsultationStatus status) {
+        ConsultationReservation reservation = ConsultationReservation.builder()
+                .userId(userId)
+                .counselorId(COUNSELOR_ID)
+                .consultationType(ConsultationType.GENERAL)
+                .category(ConsultationCategory.HOUSING)
+                .reservationDate(LocalDate.now().plusDays(3))
+                .reservationTime(LocalTime.of(14, 0))
+                .requestMessage("현재 조건으로 독립이 가능한지 상담받고 싶습니다.")
+                .consultInfoJson("{\"currentAsset\":45000000}")
+                .status(status)
+                .build();
+        consultationMapper.insert(reservation);
+        return reservation.getReservationId();
     }
 
     private ConsultationReservationCreateRequest createRequest(
