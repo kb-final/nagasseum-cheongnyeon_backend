@@ -54,7 +54,9 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/v1/oauth/**",
                         "/api/v1/auth/refresh",
                         "/api/v1/members/health",
-                        "/api/v1/admin/batch/**"
+                        "/api/v1/admin/batch/**",
+                        "/api/v1/policies",
+                        "/api/v1/policies/**"
                 );
     }
 
