@@ -1,8 +1,6 @@
 name: CD - Build, Push & Deploy
 
 on:
-  push:
-    branches: [ develop ]
   workflow_dispatch:
 
 jobs:

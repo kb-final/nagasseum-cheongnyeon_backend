@@ -2,15 +2,15 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.team.independence.goal.mapper.GoalHousingMapper">
+<mapper namespace="GoalHousingMapper">
 
-    <resultMap id="goalHousingMap" type="com.team.independence.goal.domain.GoalHousing">
+    <resultMap id="goalHousingMap" type="GoalHousing">
         <id     property="goalId"          column="goal_id"/>
         <result property="regionCode"      column="region_code"/>
         <result property="housingType"     column="housing_type"
-                javaType="com.team.independence.property.domain.HousingType"/>
+                javaType="HousingType"/>
         <result property="dealType"        column="deal_type"
-                javaType="com.team.independence.property.domain.DealType"/>
+                javaType="DealType"/>
         <result property="areaMin"         column="area_min"/>
         <result property="areaMax"         column="area_max"/>
         <result property="depositMin"      column="deposit_min"/>
@@ -19,7 +19,7 @@
         <result property="monthlyRentMax"  column="monthly_rent_max"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.team.independence.goal.domain.GoalHousing">
+    <insert id="insert" parameterType="GoalHousing">
         INSERT INTO goal_housing (
             goal_id, region_code, housing_type, deal_type,
             area_min, area_max, deposit_min, deposit_max,
@@ -31,7 +31,7 @@
         )
     </insert>
 
-    <update id="update" parameterType="com.team.independence.goal.domain.GoalHousing">
+    <update id="update" parameterType="GoalHousing">
         UPDATE goal_housing
            SET region_code      = #{regionCode},
                housing_type     = #{housingType},
