@@ -2,9 +2,9 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.team.independence.asset.mapper.CardAccountMapper">
+<mapper namespace="CardAccountMapper">
 
-    <resultMap id="cardAccountMap" type="com.team.independence.asset.domain.account.CardAccount">
+    <resultMap id="cardAccountMap" type="CardAccount">
         <id     property="id"                       column="id"/>
         <result property="connectedInstitutionId"   column="connected_institution_id"/>
         <result property="cardNo"                   column="card_no"/>

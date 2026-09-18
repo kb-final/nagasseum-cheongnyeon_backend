@@ -2,9 +2,9 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.team.independence.goal.mapper.GoalMapper">
+<mapper namespace="GoalMapper">
 
-    <resultMap id="goalMap" type="com.team.independence.goal.domain.Goal">
+    <resultMap id="goalMap" type="Goal">
         <id     property="id"                        column="id"/>
         <result property="memberId"                  column="member_id"/>
         <result property="goalType"                  column="goal_type"/>
@@ -19,7 +19,7 @@
         <result property="updatedAt"                 column="updated_at"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.team.independence.goal.domain.Goal"
+    <insert id="insert" parameterType="Goal"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO goal (
             member_id, goal_type, target_amount, target_rent_middle_amount,
@@ -30,7 +30,7 @@
         )
     </insert>
 
-    <update id="update" parameterType="com.team.independence.goal.domain.Goal">
+    <update id="update" parameterType="Goal">
         UPDATE goal
            SET target_amount             = #{targetAmount},
                target_rent_middle_amount = #{targetRentMiddleAmount},
@@ -53,7 +53,7 @@
         )
     </select>
 
-    <select id="findActiveByMemberId" resultType="com.team.independence.goal.domain.Goal">
+    <select id="findActiveByMemberId" resultType="Goal">
         SELECT
             id, member_id, goal_type, target_amount, target_rent_middle_amount,
             target_date, monthly_saving, status,
@@ -67,7 +67,7 @@
         SELECT id FROM goal WHERE status = 'ACTIVE'
     </select>
 
-    <select id="findById" resultType="com.team.independence.goal.domain.Goal">
+    <select id="findById" resultType="Goal">
         SELECT
             id, member_id, goal_type, target_amount, target_rent_middle_amount,
             target_date, monthly_saving, status,

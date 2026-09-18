@@ -2,9 +2,9 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.team.independence.policy.mapper.PolicyMapper">
+<mapper namespace="PolicyMapper">
 
-    <resultMap id="policyResultMap" type="com.team.independence.policy.domain.Policy">
+    <resultMap id="policyResultMap" type="Policy">
         <id     property="id"                 column="id"/>
         <result property="sourceApi"          column="source_api"/>
         <result property="policyApiId"        column="policy_api_id"/>

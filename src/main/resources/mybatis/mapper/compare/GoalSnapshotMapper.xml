@@ -6,9 +6,9 @@
   ★ 도메인별로 XML을 분리한다 (git 충돌 최소화).
     각자 자기 도메인 폴더의 XML만 수정할 것.
 -->
-<mapper namespace="com.team.independence.compare.mapper.GoalSnapshotMapper">
+<mapper namespace="GoalSnapshotMapper">
 
-    <resultMap id="goalSnapshotMap" type="com.team.independence.compare.domain.GoalSnapshot">
+    <resultMap id="goalSnapshotMap" type="GoalSnapshot">
         <id     property="id"              column="id"/>
         <result property="memberId"        column="member_id"/>
         <result property="goalId"          column="goal_id"/>
@@ -163,7 +163,7 @@
         <include refid="cohortWhere"/>
     </select>
 
-    <select id="countByDealType" resultType="com.team.independence.compare.dto.DealTypeCount">
+    <select id="countByDealType" resultType="DealTypeCount">
         SELECT deal_type AS dealType,
                COUNT(*)  AS `count`
         FROM goal_snapshot
@@ -172,7 +172,7 @@
         ORDER BY COUNT(*) DESC
     </select>
 
-    <select id="findAverages" resultType="com.team.independence.compare.dto.CohortAverages">
+    <select id="findAverages" resultType="CohortAverages">
         SELECT ROUND(AVG(net_assets))          AS averageNetAssets,
                ROUND(AVG(target_amount))       AS averageTargetAmount,
                ROUND(AVG(prep_months))         AS averagePrepMonths,
@@ -185,7 +185,7 @@
       cohortWhere 안의 컬럼은 goal_snapshot에만 있어서 조인해도 이름이 겹치지 않는다.
       (region은 code / sido / sigungu / full_name 뿐)
     -->
-    <select id="countTopRegions" resultType="com.team.independence.compare.dto.RegionCount">
+    <select id="countTopRegions" resultType="RegionCount">
         SELECT g.region_code AS regionCode,
                r.sigungu     AS regionName,
                COUNT(*)      AS `count`
@@ -202,7 +202,7 @@
       LEAST(..., 9) 로 90% 이상은 모두 마지막 구간(90~100%)에 넣는다.
     -->
     <select id="countByAchievementBucket"
-            resultType="com.team.independence.compare.dto.AchievementBucketCount">
+            resultType="AchievementBucketCount">
         SELECT LEAST(FLOOR(achievement_rate / 10), 9) AS bucketIndex,
                COUNT(*)                               AS `count`
         FROM goal_snapshot
@@ -215,7 +215,7 @@
       월 저축액을 오름차순으로 4등분(NTILE)한 뒤 가운데 두 덩어리만 남긴다.
       코호트의 약 절반이 들어가는 구간이라 양 끝 극단값에 흔들리지 않는다.
     -->
-    <select id="findSavingRange" resultType="com.team.independence.compare.dto.SavingRangeResult">
+    <select id="findSavingRange" resultType="SavingRangeResult">
         SELECT MIN(monthly_saving) AS cohortRangeMin,
                MAX(monthly_saving) AS cohortRangeMax
         FROM (
@@ -228,7 +228,7 @@
     </select>
 
     <!-- 코호트 소득분위 분포. income_bracket IS NOT NULL인 행만 집계 -->
-    <select id="countByIncomeBracket" resultType="com.team.independence.compare.dto.IncomeBracketCount">
+    <select id="countByIncomeBracket" resultType="IncomeBracketCount">
         SELECT income_bracket AS incomeBracket,
                COUNT(*)       AS `count`
         FROM goal_snapshot
@@ -239,7 +239,7 @@
     </select>
 
     <!-- 코호트 직업군 분포. occupation_type IS NOT NULL인 행만 집계 -->
-    <select id="countByOccupationType" resultType="com.team.independence.compare.dto.OccupationTypeCount">
+    <select id="countByOccupationType" resultType="OccupationTypeCount">
         SELECT occupation_type AS occupationType,
                COUNT(*)        AS `count`
         FROM goal_snapshot

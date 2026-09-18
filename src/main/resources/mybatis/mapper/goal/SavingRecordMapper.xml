@@ -2,9 +2,9 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.team.independence.goal.mapper.SavingRecordMapper">
+<mapper namespace="SavingRecordMapper">
 
-    <resultMap id="savingRecordMap" type="com.team.independence.goal.domain.SavingRecord">
+    <resultMap id="savingRecordMap" type="SavingRecord">
         <id     property="id"            column="id"/>
         <result property="goalId"        column="goal_id"/>
         <result property="recordYm"      column="record_ym"/>

@@ -2,9 +2,9 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.team.independence.asset.mapper.ConnectedAccountMapper">
+<mapper namespace="ConnectedAccountMapper">
 
-    <resultMap id="connectedAccountMap" type="com.team.independence.asset.domain.codef.ConnectedAccount">
+    <resultMap id="connectedAccountMap" type="ConnectedAccount">
         <id     property="id"              column="id"/>
         <result property="memberId"        column="member_id"/>
         <result property="connectedId"     column="connected_id"/>
@@ -23,17 +23,17 @@
          WHERE member_id = #{memberId}
     </select>
 
-    <select id="findAllMemberIds" resultType="java.lang.Long">
+    <select id="findAllMemberIds" resultType="long">
         SELECT member_id FROM connected_account WHERE connected_status = 'ACTIVE'
     </select>
 
-    <insert id="insert" parameterType="com.team.independence.asset.domain.codef.ConnectedAccount"
+    <insert id="insert" parameterType="ConnectedAccount"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO connected_account (member_id, connected_id, birth_date, connected_status)
         VALUES (#{memberId}, #{connectedId}, #{birthDate}, 'ACTIVE')
     </insert>
 
-    <update id="updateSyncStatus" parameterType="com.team.independence.asset.domain.codef.ConnectedAccount">
+    <update id="updateSyncStatus" parameterType="ConnectedAccount">
         UPDATE connected_account
            SET sync_status    = #{syncStatus},
                last_synced_at = #{lastSyncedAt}

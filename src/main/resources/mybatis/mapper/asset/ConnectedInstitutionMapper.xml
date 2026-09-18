@@ -2,9 +2,9 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.team.independence.asset.mapper.ConnectedInstitutionMapper">
+<mapper namespace="ConnectedInstitutionMapper">
 
-    <resultMap id="connectedInstitutionMap" type="com.team.independence.asset.domain.codef.ConnectedInstitution">
+    <resultMap id="connectedInstitutionMap" type="ConnectedInstitution">
         <id     property="id"                   column="id"/>
         <result property="connectedAccountId"   column="connected_account_id"/>
         <result property="institutionCode"      column="institution_code"/>
@@ -17,7 +17,7 @@
         <result property="updatedAt"            column="updated_at"/>
     </resultMap>
 
-    <resultMap id="linkedOrgMap" type="com.team.independence.asset.dto.connection.LinkedOrganizationResponse">
+    <resultMap id="linkedOrgMap" type="LinkedOrganizationResponse">
         <result property="organizationCode" column="institution_code"/>
         <result property="organizationName" column="name"/>
         <result property="businessType"     column="business_type"/>
@@ -33,7 +33,7 @@
          ORDER BY created_at
     </select>
 
-    <update id="updateSyncResult" parameterType="com.team.independence.asset.domain.codef.ConnectedInstitution">
+    <update id="updateSyncResult" parameterType="ConnectedInstitution">
         UPDATE connected_institution
            SET status              = #{status},
                last_synced_at      = #{lastSyncedAt},
@@ -43,7 +43,7 @@
          WHERE id = #{id}
     </update>
 
-    <insert id="insert" parameterType="com.team.independence.asset.domain.codef.ConnectedInstitution">
+    <insert id="insert" parameterType="ConnectedInstitution">
         INSERT INTO connected_institution (connected_account_id, institution_code, status)
         VALUES (#{connectedAccountId}, #{institutionCode}, 'ACTIVE')
     </insert>

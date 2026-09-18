@@ -2,9 +2,9 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.team.independence.asset.mapper.AssetAccountMapper">
+<mapper namespace="AssetAccountMapper">
 
-    <resultMap id="assetAccountMap" type="com.team.independence.asset.domain.account.AssetAccount">
+    <resultMap id="assetAccountMap" type="AssetAccount">
         <id     property="id"                       column="id"/>
         <result property="connectedInstitutionId"   column="connected_institution_id"/>
         <result property="accountType"              column="account_type"/>
@@ -24,7 +24,7 @@
         <result property="updatedAt"                column="updated_at"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.team.independence.asset.domain.account.AssetAccount"
+    <insert id="insert" parameterType="AssetAccount"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO asset_account
             (connected_institution_id, account_type, asset_category,
@@ -62,7 +62,7 @@
          WHERE connected_institution_id = #{connectedInstitutionId}
     </select>
 
-    <resultMap id="assetAccountQueryMap" type="com.team.independence.asset.dto.account.AssetAccountQueryItem">
+    <resultMap id="assetAccountQueryMap" type="AssetAccountQueryItem">
         <result property="id"               column="id"/>
         <result property="institutionName"  column="institution_name"/>
         <result property="accountType"      column="account_type"/>
@@ -87,7 +87,7 @@
          ORDER BY aa.asset_category, i.name
     </select>
 
-    <resultMap id="assetAccountDetailMap" type="com.team.independence.asset.dto.account.AssetAccountDetailItem">
+    <resultMap id="assetAccountDetailMap" type="AssetAccountDetailItem">
         <result property="institutionName"  column="institution_name"/>
         <result property="accountType"      column="account_type"/>
         <result property="assetCategory"    column="asset_category"/>
@@ -147,7 +147,7 @@
          ORDER BY i.name, aa.asset_category
     </select>
 
-    <select id="sumCurrentValueByMemberId" parameterType="long" resultType="java.lang.Long">
+    <select id="sumCurrentValueByMemberId" parameterType="long" resultType="long">
         SELECT COALESCE(SUM(aa.current_value), 0)
         FROM asset_account aa
                  JOIN connected_institution ci ON aa.connected_institution_id = ci.id

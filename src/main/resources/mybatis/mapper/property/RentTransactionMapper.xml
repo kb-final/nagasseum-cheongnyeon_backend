@@ -2,9 +2,9 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.team.independence.property.mapper.RentTransactionMapper">
+<mapper namespace="RentTransactionMapper">
 
-    <insert id="insert" parameterType="com.team.independence.property.domain.RentTransaction">
+    <insert id="insert" parameterType="RentTransaction">
         INSERT INTO rent_transaction (
             region_code, housing_type, dong_name, jibun, complex_name,
             area, deal_type, deposit, monthly_rent, floor, build_year,
@@ -42,7 +42,7 @@
 
     <!-- 가격 모델(μ, σ) 산출용 월별 (거래연월, 보증금, 면적) 조회
          deposit = 0 이상치 제외. 월별 그룹핑, 중앙값 산출은 애플리케이션에서 처리 -->
-    <select id="findAmountsForPriceModel" resultType="com.team.independence.property.dto.MonthlyPricePoint">
+    <select id="findAmountsForPriceModel" resultType="MonthlyPricePoint">
         SELECT deal_ym, deposit, area
           FROM rent_transaction
          WHERE region_code  = #{regionCode}
@@ -58,7 +58,7 @@
          해당하는 원본 (deal_ym, deposit, area) 행을 한 번에 반환한다. 조합별 버킷 분리·월별 중앙값 산출은
          서비스에서 한다. RealisticAlgorithm·HoldOutAlgorithm이 40조합 × 개별 쿼리 대신 이 한 방으로 대체.
          (housing_type, deal_type)를 IN으로 묶으면 idx_rent_query를 조합별 서브레인지로 그대로 탄다. -->
-    <select id="findAmountsForPriceModelBatch" resultType="com.team.independence.property.dto.PriceModelBatchRow">
+    <select id="findAmountsForPriceModelBatch" resultType="PriceModelBatchRow">
         SELECT housing_type, deal_type, deal_ym, deposit, area
           FROM rent_transaction
          WHERE region_code = #{regionCode}
@@ -81,7 +81,7 @@
          시도 요청이어도 LIKE가 아니라 IN(시군구 목록)으로 받는다. LIKE는 region_code가 범위 조건이
          되어 뒤따르는 housing_type·deal_type·deal_ym을 인덱스 키로 못 쓰고 시도 전체를 훑지만,
          IN은 코드별 등치 조건이라 조합마다 idx_rent_query 서브레인지 스캔으로 좁혀진다. -->
-    <select id="findAggregatedMedian" resultType="com.team.independence.property.dto.MedianAggResult">
+    <select id="findAggregatedMedian" resultType="MedianAggResult">
         SELECT
             MAX(CASE WHEN dep_rn  = CEIL(0.25 * total) THEN deposit      END) AS deposit_q1,
             MAX(CASE WHEN dep_rn  = CEIL(0.50 * total) THEN deposit      END) AS deposit_q2,
@@ -119,7 +119,7 @@
          LIKE '시도%' 전체 스캔 대신 IN(코드 목록)을 사용해 idx_rent_query 인덱스를
          region_code별로 개별 탄다(25개 sub-range scan → 1회 왕복).
          RealisticAlgorithm.selectRegion()에서 N번 개별 조회를 대체한다. -->
-    <select id="findMediansByRegionCodes" resultType="com.team.independence.property.dto.SigunguMedianResult">
+    <select id="findMediansByRegionCodes" resultType="SigunguMedianResult">
         SELECT region_code,
                MAX(CASE WHEN dep_rn  = CEIL(0.50 * total) THEN deposit      END) AS deposit_median,
                MAX(CASE WHEN rent_rn = CEIL(0.50 * total) THEN monthly_rent END) AS rent_median,
@@ -156,7 +156,7 @@
          평수 버킷 경계(평 → ㎡ floor 환산): 4p=13, 9p=29 / 10p=33, 14p=46 / 15p=49, 19p=62
                                               20p=66, 25p=82 / 26p=85, 40p=132
          버킷 사이 공백(area 30-32, 47-48, 63-65, 83-84)은 WHERE 절에서 제외한다. -->
-    <select id="findBulkMedianBatch" resultType="com.team.independence.property.dto.BulkMedianResult">
+    <select id="findBulkMedianBatch" resultType="BulkMedianResult">
         SELECT
             housing_type,
             deal_type,
